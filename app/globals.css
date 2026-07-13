@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #17202f;
+  --muted: #687386;
+  --line: #e5e8ed;
+  --paper: #fbfbfa;
+  --mist: #f3f5f7;
+  --teal: #0e766e;
+  --teal-soft: #e7f4f1;
+  --coral: #d85f47;
+  --amber: #b7791f;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body { margin: 0; color: var(--ink); background: var(--paper); font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+textarea:focus, input:focus { outline: 3px solid rgba(14,118,110,.16); border-color: var(--teal); }
+button:focus-visible { outline: 3px solid rgba(14,118,110,.16); outline-offset: 2px; }
+
+.dot-grid { background-image: radial-gradient(#d8dedc 1px, transparent 1px); background-size: 18px 18px; }
+.card { border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 10px 25px rgba(23,32,47,.035); }
+.label { font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; color: var(--muted); }
+.prose p { margin: 0 0 12px; line-height: 1.8; }

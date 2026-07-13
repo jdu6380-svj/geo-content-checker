@@ -1,0 +1,37 @@
+{
+  "name": "geo-content-checker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint",
+    "setup:env": "node scripts/setup-local-env.mjs",
+    "blackbox": "node scripts/blackbox.mjs",
+    "blackbox:fallback": "node scripts/blackbox.mjs --expect-source=fallback",
+    "blackbox:model": "node scripts/blackbox.mjs --expect-source=model"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.38.0",
+    "jose": "^6.2.3",
+    "next": "15.5.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.0",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "eslint": "^9.22.0",
+    "eslint-config-next": "15.5.9",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.0.15",
+    "typescript": "^5.8.2"
+  }
+}
