@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { withGeoRequestLogging } from "@/lib/server/geo-observability";
+import {
+  areDistinctSecuritySecrets,
+  isHttpsUrl,
+} from "@/lib/server/security-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,14 +26,16 @@ function isConfigured(name: string): boolean {
 async function handleGet(_request: NextRequest): Promise<Response> {
   const checks = {
     modelConfigured:
-      isConfigured("OPENAI_BASE_URL") &&
+      isHttpsUrl(process.env.OPENAI_BASE_URL) &&
       isConfigured("OPENAI_API_KEY") &&
       isConfigured("OPENAI_MODEL"),
     redisConfigured:
-      isConfigured("UPSTASH_REDIS_REST_URL") &&
+      isHttpsUrl(process.env.UPSTASH_REDIS_REST_URL) &&
       isConfigured("UPSTASH_REDIS_REST_TOKEN"),
-    securityConfigured:
-      isConfigured("RATE_LIMIT_SALT") && isConfigured("ANALYSIS_TOKEN_SECRET"),
+    securityConfigured: areDistinctSecuritySecrets(
+      process.env.RATE_LIMIT_SALT,
+      process.env.ANALYSIS_TOKEN_SECRET,
+    ),
   };
   const ready = Object.values(checks).every(Boolean);
   const body: HealthResponse = {

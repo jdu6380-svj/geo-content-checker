@@ -107,12 +107,12 @@ export function DatePicker({ value, onChange, optional = true }: DatePickerProps
         aria-expanded={open}
         aria-label={value ? `发布日期 ${value}，点击修改` : "选择发布日期，可选"}
         onClick={() => (open ? setOpen(false) : openCalendar())}
-        className="flex h-11 w-full items-center justify-between rounded-lg border border-[#d9dee5] bg-white px-3 text-left font-normal text-[#17202f] hover:border-[#93c4bd]"
+        className="flex h-11 w-full items-center justify-between rounded-lg border border-[#d6dde2] bg-white px-3 text-left font-normal text-[#17212b] hover:border-[#8ab9b2]"
       >
         <span className={value ? "" : "text-[#687386]"}>
           {value || (optional ? "选择日期（选填）" : "选择日期")}
         </span>
-        <span aria-hidden="true" className="text-base text-[#0e766e]">▣</span>
+        <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded border border-[#b9d4cf] bg-[#edf7f5] text-xs font-bold text-[#0b6b63]">日</span>
       </button>
 
       {open ? (

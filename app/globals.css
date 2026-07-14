@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #17202f;
-  --muted: #687386;
-  --line: #e5e8ed;
-  --paper: #fbfbfa;
-  --mist: #f3f5f7;
-  --teal: #0e766e;
-  --teal-soft: #e7f4f1;
-  --coral: #d85f47;
-  --amber: #b7791f;
+  --ink: #17212b;
+  --muted: #667085;
+  --line: #e1e6ea;
+  --paper: #f6f8f7;
+  --mist: #eef2f3;
+  --teal: #0b6b63;
+  --teal-soft: #e4f2ef;
+  --navy: #3d607d;
+  --navy-soft: #edf3f8;
+  --coral: #c95742;
+  --amber: #a66a13;
 }
 
 * { box-sizing: border-box; }
 html { background: var(--paper); }
-body { margin: 0; color: var(--ink); background: var(--paper); font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
-button, input, textarea { font: inherit; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input, textarea { min-width: 0; font: inherit; }
 button { cursor: pointer; }
-textarea:focus, input:focus { outline: 3px solid rgba(14,118,110,.16); border-color: var(--teal); }
-button:focus-visible { outline: 3px solid rgba(14,118,110,.16); outline-offset: 2px; }
+button, input, textarea { transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, box-shadow 160ms ease; }
+textarea:focus, input:focus { outline: 3px solid rgba(11,107,99,.14); border-color: var(--teal); }
+button:focus-visible { outline: 3px solid rgba(11,107,99,.16); outline-offset: 2px; }
+::selection { background: #cfe7e2; color: var(--ink); }
 
-.dot-grid { background-image: radial-gradient(#d8dedc 1px, transparent 1px); background-size: 18px 18px; }
-.card { border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 10px 25px rgba(23,32,47,.035); }
-.label { font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; color: var(--muted); }
-.prose p { margin: 0 0 12px; line-height: 1.8; }
+@layer components {
+  .dot-grid { background-image: radial-gradient(#d8dedc 1px, transparent 1px); background-size: 18px 18px; }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(23,33,43,.035), 0 10px 30px rgba(23,33,43,.035);
+  }
+  .label { font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; color: var(--muted); }
+  .prose p { margin: 0 0 12px; line-height: 1.8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

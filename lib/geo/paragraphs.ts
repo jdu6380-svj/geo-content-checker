@@ -53,7 +53,3 @@ export function createNumberedParagraphs(content: string): Paragraph[] {
     text,
   }));
 }
-
-export function paragraphsToPromptText(paragraphs: Paragraph[]): string {
-  return paragraphs.map(({ id, text }) => `[${id}] ${text}`).join("\n\n");
-}

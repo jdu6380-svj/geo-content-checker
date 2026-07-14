@@ -1,4 +1,4 @@
-# 见微 GEO 内容体检
+# 理据 GEO 内容体检
 
 面向中文公众号和博客长文的 GEO 准备度诊断原型。用户提交文章后，系统生成四维评分、预测读者问题、逐题证据诊断，以及按需生成 FAQ 和事实卡片。
 
@@ -16,6 +16,8 @@ npm run dev
 只读健康检查位于 `GET /api/health`。配置完整时返回 `200 / ok`，缺少模型、Redis 或生产安全配置时返回 `503 / degraded`；响应只包含布尔状态，不返回环境变量内容。
 
 服务端为所有 API 输出结构化日志，字段仅包含请求 ID、路由、状态码、耗时、结果来源、模型状态和限流模式。日志不会记录文章正文、问题证据、分析 Token、API Key 或内部 Prompt。
+
+生产响应默认包含 CSP、禁止 iframe、MIME 嗅探防护、严格 Referrer Policy、Permissions Policy 与 HSTS。`RATE_LIMIT_SALT` 和 `ANALYSIS_TOKEN_SECRET` 均要求至少 32 字节且不能相同；Redis 正常模式使用共享模型调用上限，配额降级模式每个实例最多调用模型 30 次/小时。导出的 Markdown 会转义正文中的原始 HTML。
 
 ## 真实服务配置
 
@@ -68,6 +70,7 @@ Preview 故障测试结束后，必须恢复 `REDIS_QUOTA_FAIL_OPEN=false`。
 
    ```bash
    npm run check
+   npm run security:unit
    ```
 
 4. 保持开发服务运行，执行完整接口黑盒测试：
@@ -123,6 +126,7 @@ Preview 故障测试结束后，必须恢复 `REDIS_QUOTA_FAIL_OPEN=false`。
 - 认证后的 gzip 请求
 - 模型结果与安全降级结果来源
 - 预热 30 分钟设备限流
+- 安全响应头与 Markdown 原始 HTML 转义
 
 测试脚本不会输出文章正文、分析令牌或环境密钥。
 

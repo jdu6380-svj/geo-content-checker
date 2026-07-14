@@ -66,6 +66,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         temperature: 0,
         timeoutMs: 4_000,
         maxTokens: 16,
+        rateLimitMode: rateLimit.mode,
       });
       warmed = true;
     } catch {

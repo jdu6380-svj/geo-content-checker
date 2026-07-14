@@ -12,6 +12,7 @@ const testIp = `198.51.100.${10 + (randomBytes(1)[0] % 190)}`;
 const clientId = randomUUID();
 const alternateClientId = randomUUID();
 const warmupClientId = randomUUID();
+const markdownClientId = randomUUID();
 const paragraphs = [
   {
     id: "Para-1",
@@ -100,6 +101,10 @@ await check("reports sanitized service readiness", async () => {
   assert.equal(Number.isNaN(Date.parse(result.body?.timestamp)), false);
   assert.deepEqual(Object.keys(result.body).sort(), ["checks", "status", "timestamp"]);
   assert.equal(result.response.headers.get("cache-control"), "no-store");
+  assert.equal(result.response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(result.response.headers.get("x-frame-options"), "DENY");
+  assert.equal(result.response.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  assert.match(result.response.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
 });
 
 await expectStatus(
@@ -257,6 +262,30 @@ await check("limits warmup to once per device window", async () => {
   assert.equal(first.response.status, 200, responseSummary(first));
   assert.equal(second.response.status, 429, responseSummary(second));
   assert.equal(second.body?.error, "RATE_LIMITED");
+});
+
+await check("escapes raw HTML in Markdown patches", async () => {
+  const sessionHeaders = headers({ clientId: markdownClientId });
+  const session = await request("/api/analysis-session", {
+    method: "POST",
+    headers: sessionHeaders,
+  });
+  assert.equal(session.response.status, 200, responseSummary(session));
+
+  const maliciousParagraphs = [
+    {
+      id: "Para-1",
+      text: "正文包含 <script>alert('x')</script> 标签，输出时必须作为普通文本处理。",
+    },
+  ];
+  const result = await request("/api/generate-patches", {
+    method: "POST",
+    headers: headers({ clientId: markdownClientId, token: session.body.token }),
+    body: JSON.stringify({ title: "Markdown 安全测试", numbered_paragraphs: maliciousParagraphs }),
+  });
+  assert.equal(result.response.status, 200, responseSummary(result));
+  assert.equal(typeof result.body?.markdown, "string");
+  assert.doesNotMatch(result.body.markdown, /<\/?script\b/i);
 });
 
 console.log(`PASS ${passed} black-box checks`);

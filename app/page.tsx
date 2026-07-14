@@ -69,10 +69,16 @@ const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
 ];
 
 const DIMENSION_META = [
-  ["questionCoverage", "问题覆盖度"],
-  ["factCompleteness", "事实完整度"],
-  ["structureClarity", "结构清晰度"],
-  ["freshness", "时效性"],
+  { key: "questionCoverage", label: "问题覆盖度", bar: "bg-[#0b6b63]" },
+  { key: "factCompleteness", label: "事实完整度", bar: "bg-[#3d607d]" },
+  { key: "structureClarity", label: "结构清晰度", bar: "bg-[#a66a13]" },
+  { key: "freshness", label: "时效性", bar: "bg-[#c95742]" },
+] as const;
+
+const SAMPLE_STYLES = [
+  { border: "border-l-[#0b6b63]", badge: "bg-[#e4f2ef] text-[#0b6b63]" },
+  { border: "border-l-[#a66a13]", badge: "bg-[#fff4d8] text-[#87540d]" },
+  { border: "border-l-[#c95742]", badge: "bg-[#fff0ed] text-[#a43e2b]" },
 ] as const;
 
 function getDailyUsage(): number {
@@ -415,6 +421,11 @@ export default function Home() {
     setLatestQuestion(null);
     setGeoAnalysisToken(null);
 
+    window.requestAnimationFrame(() => {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    });
+
     void openAnalysisSession(runId, article, articleParagraphs);
   }
 
@@ -548,22 +559,25 @@ export default function Home() {
 
     const report = scoring.data;
     return (
-      <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
-        <div className="card p-6">
-          <div className="label">综合 GEO 得分</div>
-          <div className="mt-5 flex items-end gap-2">
-            <strong className="text-6xl text-[#0e766e]">{report.totalScore}</strong>
-            <span className="pb-2 text-[#687386]">/ 100</span>
+      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="card overflow-hidden border-[#17212b] bg-[#17212b] p-5 text-white sm:p-6">
+          <div className="text-xs font-bold text-[#aeb9c5]">综合 GEO 得分</div>
+          <div className="mt-4 flex items-end gap-2">
+            <strong className="text-6xl text-[#7dc8bd]">{report.totalScore}</strong>
+            <span className="pb-2 text-[#c2cad3]">/ 100</span>
           </div>
-          <p className="mt-5 text-sm leading-6 text-[#687386]">
+          <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-[#7dc8bd]" style={{ width: `${report.totalScore}%` }} />
+          </div>
+          <p className="mt-4 text-sm leading-6 text-[#c2cad3]">
             该分数衡量内容被 AI 理解与引用的准备度，不代表实际收录或排名。
           </p>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-5 sm:p-6">
           <div className="label">四维看板</div>
-          <div className="mt-5 grid gap-5 sm:grid-cols-2">
-            {DIMENSION_META.map(([key, label]) => {
+          <div className="mt-5 grid gap-x-7 gap-y-5 min-[560px]:grid-cols-2">
+            {DIMENSION_META.map(({ key, label, bar }) => {
               const dimension = report.dimensions[key];
               const percentage = Math.round((dimension.score / dimension.max) * 100);
               return (
@@ -573,7 +587,7 @@ export default function Home() {
                     <span className="text-[#687386]">{dimension.score} / {dimension.max}</span>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#edf0f2]">
-                    <div className="h-full rounded-full bg-[#0e766e]" style={{ width: `${percentage}%` }} />
+                    <div className={`h-full rounded-full ${bar}`} style={{ width: `${percentage}%` }} />
                   </div>
                   <p className="mt-2 text-sm leading-6 text-[#687386]">{dimension.reason}</p>
                 </div>
@@ -637,33 +651,41 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#fbfbfa] text-[#17202f]">
-      <header className="border-b border-[#e5e8ed] bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
+    <main className="min-h-screen bg-[#f6f8f7] text-[#17212b]">
+      <header className="sticky top-0 z-40 border-b border-[#e1e6ea] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-5 lg:px-8">
           <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-[#0e766e] text-sm font-bold text-white">见</span>
+            <span className="relative grid h-10 w-10 place-items-center overflow-hidden rounded-lg bg-[#17212b] text-sm font-bold text-white">
+              理
+              <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 bg-[#3aa395]" />
+            </span>
             <div>
-              <div className="text-sm font-bold">见微 GEO</div>
-              <div className="text-xs text-[#687386]">内容体检工作台</div>
+              <div className="text-sm font-bold leading-5">理据 GEO</div>
+              <div className="hidden text-xs text-[#667085] sm:block">内容体检工作台</div>
             </div>
           </div>
-          <span className="rounded-full bg-[#e7f4f1] px-3 py-1.5 text-xs font-semibold text-[#0e766e]">正文不保存</span>
+          <span className="rounded-full border border-[#cce2de] bg-[#edf7f5] px-3 py-1.5 text-xs font-semibold text-[#0b6b63]">正文不保存</span>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-5 sm:py-7 lg:px-8">
         {analysisStarted ? (
           <section
             aria-live="polite"
             aria-busy={session.status === "loading" || scoring.status === "loading" || questions.status === "loading"}
           >
-            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <button type="button" onClick={backToEditor} className="mb-3 text-sm font-semibold text-[#0e766e] hover:underline">
-                  ← 返回编辑
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={backToEditor}
+                  className="mb-4 inline-flex h-9 items-center gap-2 rounded-lg border border-[#d6dde2] bg-white px-3 text-sm font-semibold text-[#465266] hover:border-[#aebcc6] hover:bg-[#f8faf9]"
+                >
+                  <span aria-hidden="true">←</span>
+                  返回编辑
                 </button>
-                <p className="text-sm text-[#687386]">{draft.title}</p>
-                <h1 className="mt-1 text-3xl font-bold">体检报告</h1>
+                <p className="max-w-3xl break-words text-sm text-[#667085]">{draft.title}</p>
+                <h1 className="mt-1 text-2xl font-bold sm:text-3xl">体检报告</h1>
               </div>
               <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${reportStatus().className}`}>
                 {reportStatus().label}
@@ -703,20 +725,22 @@ export default function Home() {
 
               {renderScoreDashboard()}
 
-              <section className="mt-7">
+              <section className="mt-8">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="label">Question Diagnostics</p>
-                  <h2 className="mt-1 text-xl font-bold">AI 读者问题诊断</h2>
+                  <h2 className="mt-1 text-xl font-bold sm:text-2xl">AI 读者问题诊断</h2>
                 </div>
                 {questionOrder.length ? (
-                  <span className="text-sm text-[#687386]">已完成 {completedCount} / {questionOrder.length}</span>
+                  <span className="rounded-full border border-[#d6dde2] bg-white px-3 py-1.5 text-xs font-semibold text-[#667085]">
+                    已完成 {completedCount} / {questionOrder.length}
+                  </span>
                 ) : null}
               </div>
               {renderDiagnostics()}
 
               {questions.status === "success" ? (
-                <form onSubmit={submitFollowUp} className="mt-4 border border-[#dfe4e8] bg-white p-4 sm:p-5">
+                <form onSubmit={submitFollowUp} className="card mt-4 p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label htmlFor="follow-up-question" className="text-sm font-bold">测试读者真实提问</label>
                     <span className="text-xs text-[#687386]">{questionOrder.length} / 10</span>
@@ -732,12 +756,12 @@ export default function Home() {
                       maxLength={200}
                       disabled={!paragraphs.length || questionOrder.length >= 10}
                       placeholder="例如：文章解释清楚为什么选择 A 而不是 B 吗？"
-                      className="h-11 min-w-0 flex-1 rounded-lg border border-[#d9dee5] bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-[#f3f5f7]"
+                      className="h-11 min-w-0 flex-1 rounded-lg border border-[#d6dde2] bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-[#eef2f3]"
                     />
                     <button
                       type="submit"
                       disabled={!paragraphs.length || questionOrder.length >= 10 || !followUpQuestion.trim()}
-                      className="h-11 rounded-lg bg-[#17202f] px-5 text-sm font-bold text-white hover:bg-[#2a3444] disabled:cursor-not-allowed disabled:opacity-45"
+                      className="h-11 rounded-lg bg-[#17212b] px-5 text-sm font-bold text-white hover:bg-[#2a3642] disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       分析这个问题
                     </button>
@@ -776,15 +800,17 @@ export default function Home() {
           </section>
         ) : (
           <section>
-            <div className="mb-6">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+              <div>
               <p className="label">AI Search Readiness</p>
-              <h1 className="mt-2 text-3xl font-bold">新建内容体检</h1>
-              <p className="mt-2 text-sm text-[#687386]">公众号 / 博客中文长文</p>
+                <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">新建内容体检</h1>
+              </div>
+              <p className="text-sm text-[#667085]">公众号 / 博客中文长文</p>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(300px,.7fr)]">
-              <form onSubmit={submit} className="card p-5 sm:p-6">
-                <div className="grid gap-5 sm:grid-cols-[1fr_180px]">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_320px]">
+              <form onSubmit={submit} className="card p-4 sm:p-5">
+                <div className="grid gap-4 min-[560px]:grid-cols-[1fr_190px]">
                   <label className="grid gap-2 text-sm font-semibold">
                     <span>文章标题</span>
                     <input
@@ -794,7 +820,7 @@ export default function Home() {
                       maxLength={120}
                       aria-invalid={Boolean(fieldErrors.title)}
                       aria-describedby={fieldErrors.title ? "title-error" : undefined}
-                      className={`h-11 rounded-lg border bg-white px-3 font-normal ${fieldErrors.title ? "border-[#d85f47]" : "border-[#d9dee5]"}`}
+                      className={`h-11 rounded-lg border bg-white px-3 font-normal ${fieldErrors.title ? "border-[#c95742]" : "border-[#d6dde2]"}`}
                       placeholder="输入文章标题"
                     />
                     {fieldErrors.title ? <span id="title-error" className="text-xs font-normal text-[#a43e2b]">{fieldErrors.title}</span> : null}
@@ -805,7 +831,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <label className="mt-5 grid gap-2 text-sm font-semibold">
+                <label className="mt-4 grid gap-2 text-sm font-semibold">
                   <span className="flex items-center justify-between">
                     正文
                     <span className={remaining < 0 ? "text-[#d85f47]" : "font-normal text-[#687386]"}>{draft.content.length.toLocaleString()} / 12,000</span>
@@ -816,7 +842,7 @@ export default function Home() {
                     onChange={(event) => updateDraft("content", event.target.value)}
                     aria-invalid={Boolean(fieldErrors.content)}
                     aria-describedby={fieldErrors.content ? "content-error" : undefined}
-                    className={`min-h-[380px] resize-y rounded-lg border bg-white p-4 font-normal leading-7 ${fieldErrors.content ? "border-[#d85f47]" : "border-[#d9dee5]"}`}
+                    className={`min-h-[280px] resize-y rounded-lg border bg-white p-4 font-normal leading-7 sm:min-h-[300px] lg:min-h-[310px] ${fieldErrors.content ? "border-[#c95742]" : "border-[#d6dde2]"}`}
                     placeholder="粘贴文章正文"
                   />
                   {fieldErrors.content ? <span id="content-error" className="text-xs font-normal text-[#a43e2b]">{fieldErrors.content}</span> : null}
@@ -824,29 +850,39 @@ export default function Home() {
 
                 {error ? <p role="alert" className="mt-4 rounded-lg bg-[#fff0ed] px-4 py-3 text-sm text-[#a43e2b]">{error}</p> : null}
 
-                <div className="mt-5 flex items-center justify-between gap-4 border-t border-[#e5e8ed] pt-5">
-                  <span className="text-xs text-[#687386]">每日最多 10 次</span>
-                  <button type="submit" className="h-11 rounded-lg bg-[#0e766e] px-6 text-sm font-bold text-white hover:bg-[#0a625c]">
+                <div className="mt-4 flex flex-col gap-3 border-t border-[#e1e6ea] pt-4 min-[480px]:flex-row min-[480px]:items-center min-[480px]:justify-between">
+                  <span className="text-xs text-[#667085]">每日最多 10 次</span>
+                  <button type="submit" className="h-11 w-full rounded-lg bg-[#0b6b63] px-6 text-sm font-bold text-white shadow-[0_6px_16px_rgba(11,107,99,.18)] hover:bg-[#095c55] min-[480px]:w-auto">
                     立即体检
                   </button>
                 </div>
               </form>
 
-              <aside>
-                <h2 className="text-sm font-bold">演示样本</h2>
-                <div className="mt-3 grid gap-3">
-                  {SAMPLES.map((sample, index) => (
-                    <button key={sample.label} type="button" onClick={() => loadSample(sample)} className="card group p-4 text-left hover:border-[#93c4bd]">
+              <aside className="lg:sticky lg:top-24 lg:self-start">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold">演示样本</h2>
+                  <span className="text-xs text-[#8a94a3]">3 组</span>
+                </div>
+                <div className="mt-3 grid gap-3 min-[560px]:grid-cols-3 lg:grid-cols-1">
+                  {SAMPLES.map((sample, index) => {
+                    const style = SAMPLE_STYLES[index];
+                    return (
+                    <button
+                      key={sample.label}
+                      type="button"
+                      onClick={() => loadSample(sample)}
+                      className={`card group min-h-[128px] border-l-4 p-4 text-left transition-transform hover:-translate-y-0.5 hover:border-[#aebcc6] ${style.border}`}
+                    >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[#0e766e]">0{index + 1}</span>
-                        <span className="text-xs text-[#687386]">使用样本</span>
+                        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${style.badge}`}>0{index + 1}</span>
+                        <span className="text-xs font-semibold text-[#667085] group-hover:text-[#17212b]">载入样本</span>
                       </div>
                       <div className="mt-3 font-bold">{sample.label}</div>
-                      <div className="mt-1 text-sm text-[#687386]">{sample.note}</div>
+                      <div className="mt-1 text-sm leading-6 text-[#667085]">{sample.note}</div>
                     </button>
-                  ))}
+                  )})}
                 </div>
-                <div className="mt-5 border-l-2 border-[#d8e4e1] pl-4 text-xs leading-6 text-[#687386]">仅评估内容准备度，不保证 AI 搜索收录、排名或实际引用。</div>
+                <div className="mt-4 border-l-2 border-[#cbd8d5] pl-4 text-xs leading-6 text-[#667085]">仅评估内容准备度，不保证 AI 搜索收录、排名或实际引用。</div>
               </aside>
             </div>
           </section>

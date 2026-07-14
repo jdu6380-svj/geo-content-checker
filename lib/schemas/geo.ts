@@ -10,7 +10,7 @@ export const sourceSchema = z.enum(["model", "fallback"]);
 export const scoreDimensionSchema = z.object({
   score: z.number().int().min(0),
   max: z.number().int().positive(),
-  reason: z.string().min(1),
+  reason: z.string().trim().min(1).max(300),
 });
 
 export const evaluateScoringRequestSchema = z.object({

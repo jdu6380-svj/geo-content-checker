@@ -1,4 +1,8 @@
 import { markGeoRequestOutcome } from "@/lib/server/geo-observability";
+import {
+  consumeModelCallBudget,
+  type ModelCallBudgetMode,
+} from "@/lib/server/model-call-budget";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -10,6 +14,7 @@ type ChatCompletionOptions = {
   temperature?: number;
   timeoutMs?: number;
   maxTokens?: number;
+  rateLimitMode?: ModelCallBudgetMode;
 };
 
 export class ModelCallError extends Error {
@@ -32,6 +37,7 @@ export async function callOpenAICompatibleModel({
   temperature = 0.1,
   timeoutMs = 10_000,
   maxTokens,
+  rateLimitMode = process.env.NODE_ENV === "production" ? "fallback" : "memory",
 }: ChatCompletionOptions): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -40,6 +46,14 @@ export async function callOpenAICompatibleModel({
   if (!apiKey) {
     markGeoRequestOutcome({ modelStatus: "disabled" });
     throw new ModelCallError("OPENAI_API_KEY is not configured");
+  }
+
+  const budget = await consumeModelCallBudget(rateLimitMode);
+  if (!budget.allowed) {
+    markGeoRequestOutcome({ modelStatus: "rate-limited" });
+    throw new ModelCallError("Model call budget exhausted", {
+      retryAfter: String(budget.retryAfter),
+    });
   }
 
   const controller = new AbortController();

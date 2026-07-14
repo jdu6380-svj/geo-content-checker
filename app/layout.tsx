@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "见微 GEO · 内容体检",
+  title: "理据 GEO · 内容体检",
   description: "让内容更容易被 AI 正确理解与引用",
 };
 

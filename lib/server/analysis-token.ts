@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 
+import { isStrongSecuritySecret } from "@/lib/server/security-config";
+
 export const ANALYSIS_TOKEN_LIFETIME_SECONDS = 30 * 60;
 export const ANALYSIS_TOKEN_ISSUER = "geo-content-checker";
 export const ANALYSIS_TOKEN_AUDIENCE = "geo-analysis-api";
@@ -71,7 +73,15 @@ const tokenPayloadSchema = z.object({
 function getTokenSecret(): Uint8Array {
   const configuredSecret = process.env.ANALYSIS_TOKEN_SECRET?.trim();
 
-  if (configuredSecret) return new TextEncoder().encode(configuredSecret);
+  if (configuredSecret) {
+    if (
+      !isStrongSecuritySecret(configuredSecret) ||
+      configuredSecret === process.env.RATE_LIMIT_SALT?.trim()
+    ) {
+      throw new AnalysisTokenConfigurationError();
+    }
+    return new TextEncoder().encode(configuredSecret);
+  }
   if (process.env.NODE_ENV !== "production") {
     return new TextEncoder().encode(DEVELOPMENT_TOKEN_SECRET);
   }

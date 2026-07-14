@@ -90,7 +90,7 @@ export function PatchWorkshop({ title, paragraphs }: PatchWorkshopProps) {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="label">Patch Workshop</p>
-          <h2 className="mt-1 text-xl font-bold">内容补丁工坊</h2>
+          <h2 className="mt-1 text-xl font-bold sm:text-2xl">内容补丁工坊</h2>
         </div>
         {patches.status === "success" ? (
           <span className="rounded-full border border-[#d8e4e1] bg-white px-3 py-1.5 text-xs text-[#687386]">
@@ -106,12 +106,12 @@ export function PatchWorkshop({ title, paragraphs }: PatchWorkshopProps) {
       ) : null}
 
       {paragraphs.length && patches.status === "idle" ? (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border border-[#dfe4e8] bg-white p-5">
-          <p className="text-sm text-[#687386]">内容只取自原文，生成后仍需人工核对。</p>
+        <div className="mt-4 grid items-center gap-4 rounded-lg border border-[#dfe4e8] bg-white p-4 sm:grid-cols-[1fr_auto] sm:p-5">
+          <p className="text-sm leading-6 text-[#687386]">内容只取自原文，生成后仍需人工核对。</p>
           <button
             type="button"
             onClick={generatePatches}
-            className="h-10 rounded-lg bg-[#0e766e] px-5 text-sm font-bold text-white hover:bg-[#0a625c]"
+            className="h-10 w-full rounded-lg bg-[#0b6b63] px-5 text-sm font-bold text-white hover:bg-[#095c55] sm:w-auto"
           >
             生成内容补丁
           </button>
@@ -145,7 +145,7 @@ export function PatchWorkshop({ title, paragraphs }: PatchWorkshopProps) {
 
       {patches.status === "success" ? (
         <div className="mt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between">
             <div className="inline-flex rounded-lg border border-[#d9dee5] bg-white p-1" aria-label="补丁类型">
               <button
                 type="button"
@@ -165,13 +165,13 @@ export function PatchWorkshop({ title, paragraphs }: PatchWorkshopProps) {
               </button>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {copyStatus === "copied" ? <span className="text-xs font-semibold text-[#0e766e]">已复制</span> : null}
               {copyStatus === "manual" ? <span className="text-xs text-[#8a5b12]">请在下方手动复制</span> : null}
               <button
                 type="button"
                 onClick={copyMarkdown}
-                className="h-9 rounded-lg border border-[#b9c9c6] bg-white px-4 text-sm font-semibold text-[#0e766e] hover:bg-[#f3f7f6]"
+                className="h-9 w-full rounded-lg border border-[#b9c9c6] bg-white px-4 text-sm font-semibold text-[#0b6b63] hover:bg-[#f3f7f6] min-[420px]:w-auto"
               >
                 复制全部 Markdown
               </button>
@@ -204,15 +204,15 @@ export function PatchWorkshop({ title, paragraphs }: PatchWorkshopProps) {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {activeTab === "faq"
               ? patches.data.faqs.map((faq) => (
-                  <article key={`${faq.question}-${faq.evidence.paragraphId}`} className="card p-5">
+                  <article key={`${faq.question}-${faq.evidence.paragraphId}`} className="card border-t-4 border-t-[#0b6b63] p-5">
                     <h3 className="text-sm font-bold leading-6">{faq.question}</h3>
                     <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#465266]">{faq.answer}</p>
-                    <span className="mt-4 block text-xs font-bold text-[#0e766e]">{faq.evidence.paragraphId}</span>
+                    <span className="mt-4 block text-xs font-bold text-[#0b6b63]">{faq.evidence.paragraphId}</span>
                   </article>
                 ))
               : patches.data.factCards.map((card) => (
-                  <article key={`${card.label}-${card.evidence.paragraphId}`} className="card p-5">
-                    <span className="text-xs font-bold text-[#0e766e]">{card.label}</span>
+                  <article key={`${card.label}-${card.evidence.paragraphId}`} className="card border-t-4 border-t-[#3d607d] p-5">
+                    <span className="text-xs font-bold text-[#3d607d]">{card.label}</span>
                     <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#465266]">{card.value}</p>
                     <span className="mt-4 block text-xs font-bold text-[#687386]">{card.evidence.paragraphId}</span>
                   </article>

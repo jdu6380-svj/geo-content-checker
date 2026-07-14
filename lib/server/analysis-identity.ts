@@ -1,5 +1,7 @@
 import { createHmac } from "node:crypto";
 
+import { isStrongSecuritySecret } from "@/lib/server/security-config";
+
 const CLIENT_ID_HEADER = "x-geo-client-id";
 const DEVELOPMENT_RATE_LIMIT_SALT =
   "geo-content-checker-development-rate-limit-salt-v1";
@@ -59,7 +61,15 @@ function readClientId(headers: Headers): string | undefined {
 function getRateLimitSalt(): string {
   const configuredSalt = process.env.RATE_LIMIT_SALT?.trim();
 
-  if (configuredSalt) return configuredSalt;
+  if (configuredSalt) {
+    if (
+      !isStrongSecuritySecret(configuredSalt) ||
+      configuredSalt === process.env.ANALYSIS_TOKEN_SECRET?.trim()
+    ) {
+      throw new AnalysisIdentityConfigurationError();
+    }
+    return configuredSalt;
+  }
   if (process.env.NODE_ENV !== "production") return DEVELOPMENT_RATE_LIMIT_SALT;
 
   throw new AnalysisIdentityConfigurationError();
