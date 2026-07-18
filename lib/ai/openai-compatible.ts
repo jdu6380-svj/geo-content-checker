@@ -17,6 +17,17 @@ type ChatCompletionOptions = {
   rateLimitMode?: ModelCallBudgetMode;
 };
 
+export interface ModelTokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface ModelCallResult {
+  content: string;
+  usage?: ModelTokenUsage;
+}
+
 export class ModelCallError extends Error {
   readonly status?: number;
   readonly retryAfter?: string;
@@ -38,7 +49,7 @@ export async function callOpenAICompatibleModel({
   timeoutMs = 10_000,
   maxTokens,
   rateLimitMode = process.env.NODE_ENV === "production" ? "fallback" : "memory",
-}: ChatCompletionOptions): Promise<string> {
+}: ChatCompletionOptions): Promise<ModelCallResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
   const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -58,7 +69,12 @@ export async function callOpenAICompatibleModel({
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const modelStartedAt = performance.now();
   markGeoRequestOutcome({ modelStatus: "requested" });
+
+  function modelLatencyMs(): number {
+    return Math.max(0, Math.round(performance.now() - modelStartedAt));
+  }
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -81,6 +97,7 @@ export async function callOpenAICompatibleModel({
     if (!response.ok) {
       markGeoRequestOutcome({
         modelStatus: response.status === 429 ? "rate-limited" : "failed",
+        modelLatencyMs: modelLatencyMs(),
       });
       throw new ModelCallError(`Model request failed with status ${response.status}`, {
         status: response.status,
@@ -93,25 +110,105 @@ export async function callOpenAICompatibleModel({
       typeof payload === "object" && payload !== null && "choices" in payload
         ? (payload as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content
         : undefined;
+    const rawUsage =
+      typeof payload === "object" && payload !== null && "usage" in payload
+        ? (payload as {
+            usage?: {
+              prompt_tokens?: unknown;
+              completion_tokens?: unknown;
+              total_tokens?: unknown;
+            };
+          }).usage
+        : undefined;
+    const usage = normalizeUsage(rawUsage);
 
     if (typeof content !== "string" || !content.trim()) {
-      markGeoRequestOutcome({ modelStatus: "invalid-output" });
+      markGeoRequestOutcome({
+        modelStatus: "invalid-output",
+        modelLatencyMs: modelLatencyMs(),
+        ...usageLogFields(usage),
+      });
       throw new ModelCallError("Model returned empty content");
     }
 
-    markGeoRequestOutcome({ modelStatus: "success" });
-    return content;
+    markGeoRequestOutcome({
+      modelStatus: "success",
+      modelLatencyMs: modelLatencyMs(),
+      ...usageLogFields(usage),
+    });
+    return { content, ...(usage ? { usage } : {}) };
   } catch (error) {
     if (error instanceof ModelCallError) throw error;
     if (error instanceof Error && error.name === "AbortError") {
-      markGeoRequestOutcome({ modelStatus: "timeout" });
+      markGeoRequestOutcome({ modelStatus: "timeout", modelLatencyMs: modelLatencyMs() });
       throw new ModelCallError("Model request timed out", { cause: error });
     }
-    markGeoRequestOutcome({ modelStatus: "failed" });
+    markGeoRequestOutcome({ modelStatus: "failed", modelLatencyMs: modelLatencyMs() });
     throw new ModelCallError("Model request failed", {
       cause: error instanceof Error ? error : undefined,
     });
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function normalizeTokenCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function normalizeUsage(
+  usage:
+    | {
+        prompt_tokens?: unknown;
+        completion_tokens?: unknown;
+        total_tokens?: unknown;
+      }
+    | undefined,
+): ModelTokenUsage | undefined {
+  const promptTokens = normalizeTokenCount(usage?.prompt_tokens);
+  const completionTokens = normalizeTokenCount(usage?.completion_tokens);
+  const totalTokens = normalizeTokenCount(usage?.total_tokens);
+
+  if (promptTokens === undefined || completionTokens === undefined) return undefined;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: totalTokens ?? promptTokens + completionTokens,
+  };
+}
+
+function optionalRate(name: string): number | undefined {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function estimateCostUsd(usage: ModelTokenUsage): number | undefined {
+  const inputRate = optionalRate("MODEL_INPUT_COST_USD_PER_MILLION_TOKENS");
+  const outputRate = optionalRate("MODEL_OUTPUT_COST_USD_PER_MILLION_TOKENS");
+  if (inputRate === undefined || outputRate === undefined) return undefined;
+
+  return Number(
+    (
+      (usage.promptTokens * inputRate + usage.completionTokens * outputRate) /
+      1_000_000
+    ).toFixed(8),
+  );
+}
+
+function usageLogFields(usage: ModelTokenUsage | undefined): {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  estimatedCostUsd?: number;
+} {
+  if (!usage) return {};
+  const estimatedCostUsd = estimateCostUsd(usage);
+  return {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
+    ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
+  };
 }

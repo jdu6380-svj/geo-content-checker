@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import http from "node:http";
+import https from "node:https";
 import { gzipSync } from "node:zlib";
 
 const baseUrl = (process.env.GEO_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
@@ -13,6 +15,7 @@ const clientId = randomUUID();
 const alternateClientId = randomUUID();
 const warmupClientId = randomUUID();
 const markdownClientId = randomUUID();
+const oversizedClientId = randomUUID();
 const paragraphs = [
   {
     id: "Para-1",
@@ -72,6 +75,52 @@ async function request(path, init) {
   return { response, body };
 }
 
+async function requestWithDeclaredLength(path, declaredLength, body) {
+  const target = new URL(`${baseUrl}${path}`);
+  const transport = target.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const outgoing = transport.request(
+      target,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": String(declaredLength),
+          "X-GEO-Client-ID": oversizedClientId,
+          "X-Forwarded-For": testIp,
+          Connection: "close",
+        },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          let parsed = null;
+          try {
+            parsed = text ? JSON.parse(text) : null;
+          } catch {
+            parsed = text;
+          }
+          assert.match(
+            String(response.headers["x-request-id"] || ""),
+            requestIdPattern,
+            `missing or invalid request id for ${path}`,
+          );
+          resolve({
+            response: { status: response.statusCode, headers: response.headers },
+            body: parsed,
+          });
+        });
+      },
+    );
+    outgoing.setTimeout(10_000, () => outgoing.destroy(new Error("raw request timed out")));
+    outgoing.on("error", reject);
+    outgoing.end(body);
+  });
+}
+
 async function check(name, test) {
   await test();
   passed += 1;
@@ -93,9 +142,11 @@ await check("reports sanitized service readiness", async () => {
   assert.ok([200, 503].includes(result.response.status), responseSummary(result));
   assert.ok(result.body?.status === "ok" || result.body?.status === "degraded");
   assert.deepEqual(Object.keys(result.body?.checks || {}).sort(), [
+    "feedbackConfigured",
     "modelConfigured",
     "redisConfigured",
     "securityConfigured",
+    "sentryConfigured",
   ]);
   assert.ok(Object.values(result.body.checks).every((value) => typeof value === "boolean"));
   assert.equal(Number.isNaN(Date.parse(result.body?.timestamp)), false);
@@ -105,6 +156,40 @@ await check("reports sanitized service readiness", async () => {
   assert.equal(result.response.headers.get("x-frame-options"), "DENY");
   assert.equal(result.response.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
   assert.match(result.response.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
+});
+
+await expectStatus(
+  "rejects 12,001 article characters",
+  "/api/evaluate-scoring",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ ...article, content: "中".repeat(12_001) }),
+  },
+  400,
+  "INVALID_REQUEST",
+);
+
+await expectStatus(
+  "rejects oversized uncompressed body",
+  "/api/evaluate-scoring",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ ...article, content: "A".repeat(140 * 1024) }),
+  },
+  413,
+  "PAYLOAD_TOO_LARGE",
+);
+
+await check("rejects oversized declared Content-Length", async () => {
+  const result = await requestWithDeclaredLength(
+    "/api/evaluate-scoring",
+    129 * 1024,
+    JSON.stringify(article),
+  );
+  assert.equal(result.response.status, 413, responseSummary(result));
+  assert.equal(result.body?.error, "PAYLOAD_TOO_LARGE");
 });
 
 await expectStatus(
@@ -156,6 +241,7 @@ await expectStatus(
 );
 
 let token = "";
+let sessionRunId = "";
 await check("creates signed analysis session", async () => {
   const result = await request("/api/analysis-session", {
     method: "POST",
@@ -163,8 +249,74 @@ await check("creates signed analysis session", async () => {
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(typeof result.body?.token, "string");
+  assert.equal(typeof result.body?.runId, "string");
   assert.equal(result.body?.operations?.diagnose, 10);
   token = result.body.token;
+  sessionRunId = result.body.runId;
+});
+
+await expectStatus(
+  "rejects unknown beta event",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "article_uploaded" }),
+  },
+  400,
+  "INVALID_EVENT",
+);
+
+await check("records visit idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "visit" }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
+});
+
+await expectStatus(
+  "requires token for completed analysis event",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "analysis_completed", runId: sessionRunId }),
+  },
+  401,
+  "ANALYSIS_SESSION_REQUIRED",
+);
+
+await expectStatus(
+  "rejects mismatched completed analysis run",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({ event: "analysis_completed", runId: randomUUID() }),
+  },
+  403,
+  "RUN_ID_MISMATCH",
+);
+
+await check("records completed analysis idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({ event: "analysis_completed", runId: sessionRunId }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
 });
 
 await expectStatus(

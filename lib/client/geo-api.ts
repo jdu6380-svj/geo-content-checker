@@ -23,6 +23,11 @@ export interface AnalysisSessionClientData {
   rateLimitMode: string;
 }
 
+export type GeoBetaEvent =
+  | { event: "visit" }
+  | { event: "feedback_clicked" }
+  | { event: "analysis_completed"; runId: string };
+
 export type GeoConcurrencyPool = {
   schedule<T>(task: () => Promise<T>): Promise<T>;
 };
@@ -142,6 +147,17 @@ export async function postGeoJson<TBody>(
     body: requestBody,
     cache: requestOptions.cache ?? "no-store",
   });
+}
+
+export async function postGeoBetaEvent(event: GeoBetaEvent): Promise<void> {
+  try {
+    await postGeoJson("/api/beta-event", event, {
+      includeAnalysisToken: event.event === "analysis_completed",
+      keepalive: true,
+    });
+  } catch {
+    // Metrics must never interrupt the analysis workflow.
+  }
 }
 
 export function createGeoConcurrencyPool(concurrency: number): GeoConcurrencyPool {

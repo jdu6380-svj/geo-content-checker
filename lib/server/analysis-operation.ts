@@ -287,10 +287,9 @@ function readToken(request: Request): string {
   return token;
 }
 
-export async function authorizeAnalysisOperation(
+export async function verifyAnalysisSession(
   request: Request,
-  operation: AnalysisOperation,
-): Promise<AnalysisOperationAuthorization> {
+): Promise<AnalysisTokenClaims> {
   let claims: AnalysisTokenClaims;
   try {
     claims = await verifyAnalysisToken(readToken(request));
@@ -346,6 +345,15 @@ export async function authorizeAnalysisOperation(
       publicMessage: "分析会话与当前设备不匹配，请重新发起体检。",
     });
   }
+
+  return claims;
+}
+
+export async function authorizeAnalysisOperation(
+  request: Request,
+  operation: AnalysisOperation,
+): Promise<AnalysisOperationAuthorization> {
+  const claims = await verifyAnalysisSession(request);
 
   return consumeOperation(claims, operation);
 }

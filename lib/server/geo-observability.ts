@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
+import * as Sentry from "@sentry/nextjs";
 import type { NextRequest } from "next/server";
 
 export type GeoResponseSource = "model" | "fallback" | "none";
@@ -20,6 +21,11 @@ interface GeoRequestContext {
   startedAt: number;
   source: GeoResponseSource;
   modelStatus: GeoModelStatus;
+  modelLatencyMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  estimatedCostUsd?: number;
 }
 
 type RouteHandler = (request: NextRequest) => Promise<Response>;
@@ -37,6 +43,15 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     source: context.source,
     modelStatus: context.modelStatus,
     rateLimitMode: response.headers.get("X-GEO-RateLimit-Mode") ?? "none",
+    ...(context.modelLatencyMs === undefined ? {} : { modelLatencyMs: context.modelLatencyMs }),
+    ...(context.promptTokens === undefined ? {} : { promptTokens: context.promptTokens }),
+    ...(context.completionTokens === undefined
+      ? {}
+      : { completionTokens: context.completionTokens }),
+    ...(context.totalTokens === undefined ? {} : { totalTokens: context.totalTokens }),
+    ...(context.estimatedCostUsd === undefined
+      ? {}
+      : { estimatedCostUsd: context.estimatedCostUsd }),
   };
   const serialized = JSON.stringify(event);
 
@@ -52,11 +67,21 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
 export function markGeoRequestOutcome(params: {
   source?: GeoResponseSource;
   modelStatus?: GeoModelStatus;
+  modelLatencyMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  estimatedCostUsd?: number;
 }): void {
   const context = requestStorage.getStore();
   if (!context) return;
   if (params.source) context.source = params.source;
   if (params.modelStatus) context.modelStatus = params.modelStatus;
+  if (params.modelLatencyMs !== undefined) context.modelLatencyMs = params.modelLatencyMs;
+  if (params.promptTokens !== undefined) context.promptTokens = params.promptTokens;
+  if (params.completionTokens !== undefined) context.completionTokens = params.completionTokens;
+  if (params.totalTokens !== undefined) context.totalTokens = params.totalTokens;
+  if (params.estimatedCostUsd !== undefined) context.estimatedCostUsd = params.estimatedCostUsd;
 }
 
 export function withGeoRequestLogging(route: string, handler: RouteHandler): RouteHandler {
@@ -79,6 +104,10 @@ export function withGeoRequestLogging(route: string, handler: RouteHandler): Rou
           { status: 500 },
         );
         context.modelStatus = context.modelStatus === "requested" ? "failed" : context.modelStatus;
+        Sentry.captureException(error, {
+          tags: { route },
+          extra: { requestId: context.requestId },
+        });
         console.error(
           JSON.stringify({
             event: "geo_api_unhandled_error",

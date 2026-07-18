@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { MAX_ARTICLE_CHARACTERS } from "@/lib/constants/input-limits";
+
 export const paragraphSchema = z.object({
   id: z.string().regex(/^Para-\d+$/),
   text: z.string().min(1).max(800),
@@ -19,7 +21,7 @@ export const evaluateScoringRequestSchema = z.object({
     .string()
     .trim()
     .min(1, "请输入文章正文")
-    .max(12_000, "正文最多 12,000 字"),
+    .max(MAX_ARTICLE_CHARACTERS, "正文最多 12,000 字"),
   publishedAt: z.string().trim().max(32).optional().or(z.literal("")),
 });
 

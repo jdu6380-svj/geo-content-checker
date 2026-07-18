@@ -1,10 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
-import { DatePicker } from "@/components/date-picker";
-import { DiagnosticAccordion } from "@/components/diagnostic-accordion";
-import { PatchWorkshop } from "@/components/patch-workshop";
+import { AppHeader } from "@/components/app-header";
+import { EditorWorkspace } from "@/components/editor-workspace";
+import { ReportWorkspace } from "@/components/report-workspace";
 import {
   readCachedReport,
   saveCachedReport,
@@ -14,11 +14,13 @@ import {
 } from "@/lib/client/report-state";
 import {
   postGeoJson,
+  postGeoBetaEvent,
   scheduleGeoDiagnostic,
   setGeoAnalysisToken,
   warmGeoApi,
   type AnalysisSessionClientData,
 } from "@/lib/client/geo-api";
+import { MAX_ARTICLE_CHARACTERS } from "@/lib/constants/input-limits";
 import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 import type {
   DiagnosticResult,
@@ -34,6 +36,11 @@ type ArticleDraft = {
 };
 
 type FieldErrors = Partial<Record<"title" | "content", string>>;
+type SamplePresentationMeta = {
+  status: string;
+  description: string;
+  badgeClassName: string;
+};
 type SessionState =
   | { status: "idle" | "loading" | "success" }
   | { status: "error"; error: string };
@@ -69,17 +76,56 @@ const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
 ];
 
 const DIMENSION_META = [
-  { key: "questionCoverage", label: "问题覆盖度", bar: "bg-[#0b6b63]" },
-  { key: "factCompleteness", label: "事实完整度", bar: "bg-[#3d607d]" },
-  { key: "structureClarity", label: "结构清晰度", bar: "bg-[#a66a13]" },
-  { key: "freshness", label: "时效性", bar: "bg-[#c95742]" },
+  { key: "questionCoverage", label: "问题覆盖度", bar: "bg-[#08766e]" },
+  { key: "factCompleteness", label: "事实完整度", bar: "bg-[#416b8a]" },
+  { key: "structureClarity", label: "结构清晰度", bar: "bg-[#b7791f]" },
+  { key: "freshness", label: "时效性", bar: "bg-[#c65d4b]" },
 ] as const;
 
-const SAMPLE_STYLES = [
-  { border: "border-l-[#0b6b63]", badge: "bg-[#e4f2ef] text-[#0b6b63]" },
-  { border: "border-l-[#a66a13]", badge: "bg-[#fff4d8] text-[#87540d]" },
-  { border: "border-l-[#c95742]", badge: "bg-[#fff0ed] text-[#a43e2b]" },
-] as const;
+const SAMPLE_META: Record<number, SamplePresentationMeta> = {
+  0: {
+    status: "已通过",
+    description: "结构完整且信息源真实",
+    badgeClassName: "border-[#b9d9d4] bg-[#ecfdf5] text-[#0f766e]",
+  },
+  1: {
+    status: "风险",
+    description: "缺乏必要的事实证据支撑",
+    badgeClassName: "border-[#f1d69b] bg-[#fffbeb] text-[#a16207]",
+  },
+  2: {
+    status: "待优化",
+    description: "时效性模糊且结构混乱",
+    badgeClassName: "border-[#f1c8c0] bg-[#fff1f2] text-[#be123c]",
+  },
+};
+
+const EDITOR_SAMPLES = SAMPLES.map((sample, index) => ({
+  id: sample.label,
+  title: sample.title,
+  status: (SAMPLE_META[index] ?? SAMPLE_META[0]).status,
+  description: (SAMPLE_META[index] ?? SAMPLE_META[0]).description,
+  badgeClassName: (SAMPLE_META[index] ?? SAMPLE_META[0]).badgeClassName,
+}));
+
+const EDITOR_DIMENSIONS = DIMENSION_META.map(({ label }, index) => ({
+  label,
+  indicatorClassName:
+    index === 0
+      ? "bg-[#0f766e]"
+      : index === 1
+        ? "bg-[#5964cf]"
+        : index === 2
+          ? "bg-[#a86313]"
+          : "bg-[#c85745]",
+}));
+
+function scoreBand(score: number): { label: string; note: string } {
+  if (score >= 85) return { label: "准备充分", note: "核心问题、证据和结构较完整" };
+  if (score >= 70) return { label: "基础良好", note: "已经可读，仍有局部信息缺口" };
+  if (score >= 50) return { label: "需要补强", note: "关键事实与回答边界仍不完整" };
+  return { label: "风险较高", note: "建议先补足证据再发布" };
+}
 
 function getDailyUsage(): number {
   if (typeof window === "undefined") return 0;
@@ -166,30 +212,6 @@ function initialDiagnostics(questions: string[]): DiagnosticsState {
   );
 }
 
-function ScoreSkeleton() {
-  return (
-    <div className="grid gap-5 lg:grid-cols-[260px_1fr]" aria-label="正在生成评分">
-      <div className="card min-h-[210px] animate-pulse p-6 motion-reduce:animate-none">
-        <div className="h-3 w-24 rounded bg-[#e5e8ed]" />
-        <div className="mt-6 h-16 w-32 rounded bg-[#edf0f2]" />
-        <div className="mt-5 h-3 w-full rounded bg-[#edf0f2]" />
-      </div>
-      <div className="card min-h-[210px] animate-pulse p-6 motion-reduce:animate-none">
-        <div className="h-3 w-20 rounded bg-[#e5e8ed]" />
-        <div className="mt-6 grid gap-6 sm:grid-cols-2">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div key={index}>
-              <div className="h-3 w-24 rounded bg-[#e5e8ed]" />
-              <div className="mt-3 h-2 w-full rounded bg-[#edf0f2]" />
-              <div className="mt-3 h-3 w-4/5 rounded bg-[#edf0f2]" />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function Home() {
   const [draft, setDraft] = useState<ArticleDraft>(EMPTY_DRAFT);
   const [analysisStarted, setAnalysisStarted] = useState(false);
@@ -210,17 +232,40 @@ export default function Home() {
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const latestQuestionRef = useRef<HTMLDivElement>(null);
   const activeRunRef = useRef(0);
+  const activeSessionRunIdRef = useRef<string | null>(null);
+  const reportedRunIdsRef = useRef(new Set<string>());
 
-  const remaining = useMemo(() => 12_000 - draft.content.length, [draft.content]);
+  const contentText = draft?.content ?? "";
+  const contentLength = contentText.length;
+  const remaining = MAX_ARTICLE_CHARACTERS - contentLength;
   const completedCount = questionOrder.filter((question) => diagnostics[question]?.status === "success").length;
   const customQuestions = questionOrder.slice(5);
   const answeredCustomQuestions = customQuestions.filter(
     (question) => diagnostics[question]?.data?.answerability === "可以完全回答",
   ).length;
+  const currentScoreBand = scoring.status === "success" ? scoreBand(scoring.data.totalScore) : null;
+  const canAskFollowUp = paragraphs.length > 0 && questionOrder.length < 10;
+  const canSubmitFollowUp = canAskFollowUp && Boolean(followUpQuestion.trim());
 
   useEffect(() => {
     void warmGeoApi();
+    void postGeoBetaEvent({ event: "visit" });
   }, []);
+
+  useEffect(() => {
+    if (restoredFromCache || !analysisStarted) return;
+    if (scoring.status !== "success" || questions.status !== "success") return;
+    if (!questionOrder.length) return;
+    const allSettled = questionOrder.every((question) => {
+      const status = diagnostics[question]?.status;
+      return status === "success" || status === "error";
+    });
+    const runId = activeSessionRunIdRef.current;
+    if (!allSettled || !runId || reportedRunIdsRef.current.has(runId)) return;
+
+    reportedRunIdsRef.current.add(runId);
+    void postGeoBetaEvent({ event: "analysis_completed", runId });
+  }, [analysisStarted, diagnostics, questionOrder, questions.status, restoredFromCache, scoring.status]);
 
   useEffect(() => {
     if (!latestQuestion) return;
@@ -288,6 +333,13 @@ export default function Home() {
     setError("");
     setFieldErrors({});
     setRestoredFromCache(false);
+  }
+
+  function handleLoadSample(sample: (typeof SAMPLES)[number]) {
+    const isDirty = (draft?.title?.trim() ?? "") !== "" || contentText.trim() !== "";
+    if (!isDirty || window.confirm("加载样本将覆盖当前已输入内容，确认继续吗？")) {
+      loadSample(sample);
+    }
   }
 
   async function loadScoring(runId: number, article: ArticleDraft) {
@@ -389,6 +441,7 @@ export default function Home() {
       if (activeRunRef.current !== runId) return;
 
       setGeoAnalysisToken(session.token);
+      activeSessionRunIdRef.current = session.runId;
       setSession({ status: "success" });
       recordUsage();
       void loadScoring(runId, article);
@@ -420,6 +473,7 @@ export default function Home() {
     setFollowUpError("");
     setLatestQuestion(null);
     setGeoAnalysisToken(null);
+    activeSessionRunIdRef.current = null;
 
     window.requestAnimationFrame(() => {
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -434,8 +488,8 @@ export default function Home() {
     setError("");
 
     const nextFieldErrors: FieldErrors = {};
-    if (!draft.title.trim()) nextFieldErrors.title = "请输入文章标题。";
-    if (!draft.content.trim()) nextFieldErrors.content = "请粘贴文章正文。";
+    if (!(draft.title ?? "").trim()) nextFieldErrors.title = "请输入文章标题。";
+    if (!contentText.trim()) nextFieldErrors.content = "请粘贴文章正文。";
 
     if (Object.keys(nextFieldErrors).length) {
       setFieldErrors(nextFieldErrors);
@@ -445,7 +499,7 @@ export default function Home() {
       });
       return;
     }
-    if (draft.content.length > 12_000) {
+    if (contentLength > MAX_ARTICLE_CHARACTERS) {
       setError("正文超过 12,000 字，请删减后重试。");
       return;
     }
@@ -454,7 +508,7 @@ export default function Home() {
       return;
     }
 
-    startAnalysis(draft);
+    startAnalysis({ ...draft, content: contentText });
   }
 
   function backToEditor() {
@@ -463,6 +517,13 @@ export default function Home() {
     setSession({ status: "idle" });
     setExpandedQuestion(null);
     setError("");
+  }
+
+  function scrollToSection(sectionId: string) {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    section.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   }
 
   function retryScoring() {
@@ -541,351 +602,78 @@ export default function Home() {
     );
   }
 
-  function renderScoreDashboard() {
-    if (scoring.status === "loading" || scoring.status === "idle") return <ScoreSkeleton />;
-    if (scoring.status === "error") {
-      return (
-        <div className="card flex min-h-[150px] flex-col items-start justify-center p-6">
-          <h2 className="font-bold">评分暂时失败</h2>
-          <p className="mt-2 text-sm text-[#687386]">{scoring.error}</p>
-          {!restoredFromCache && draft.content ? (
-            <button type="button" onClick={retryScoring} className="mt-4 h-9 rounded-lg bg-[#0e766e] px-4 text-sm font-semibold text-white">
-              重新评分
-            </button>
-          ) : null}
-        </div>
-      );
-    }
-
-    const report = scoring.data;
-    return (
-      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div className="card overflow-hidden border-[#17212b] bg-[#17212b] p-5 text-white sm:p-6">
-          <div className="text-xs font-bold text-[#aeb9c5]">综合 GEO 得分</div>
-          <div className="mt-4 flex items-end gap-2">
-            <strong className="text-6xl text-[#7dc8bd]">{report.totalScore}</strong>
-            <span className="pb-2 text-[#c2cad3]">/ 100</span>
-          </div>
-          <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-[#7dc8bd]" style={{ width: `${report.totalScore}%` }} />
-          </div>
-          <p className="mt-4 text-sm leading-6 text-[#c2cad3]">
-            该分数衡量内容被 AI 理解与引用的准备度，不代表实际收录或排名。
-          </p>
-        </div>
-
-        <div className="card p-5 sm:p-6">
-          <div className="label">四维看板</div>
-          <div className="mt-5 grid gap-x-7 gap-y-5 min-[560px]:grid-cols-2">
-            {DIMENSION_META.map(({ key, label, bar }) => {
-              const dimension = report.dimensions[key];
-              const percentage = Math.round((dimension.score / dimension.max) * 100);
-              return (
-                <div key={key}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-semibold">{label}</span>
-                    <span className="text-[#687386]">{dimension.score} / {dimension.max}</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#edf0f2]">
-                    <div className={`h-full rounded-full ${bar}`} style={{ width: `${percentage}%` }} />
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-[#687386]">{dimension.reason}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function renderDiagnostics() {
-    if (questions.status === "loading" || questions.status === "idle") {
-      return (
-        <div className="mt-3 grid gap-3" aria-label="正在预测读者问题">
-          {Array.from({ length: 5 }, (_, index) => (
-            <div key={index} className="card flex min-h-[76px] items-center gap-3 p-4">
-              <span className="h-8 w-8 rounded-lg bg-[#edf0f2]" />
-              <span className="h-4 w-2/3 animate-pulse rounded bg-[#edf0f2] motion-reduce:animate-none" />
-            </div>
-          ))}
-        </div>
-      );
-    }
-    if (questions.status === "error") {
-      return (
-        <div className="card mt-3 p-5">
-          <p className="font-semibold">{questions.error}</p>
-          {!restoredFromCache && paragraphs.length ? (
-            <button type="button" onClick={retryQuestions} className="mt-3 h-9 rounded-lg bg-[#0e766e] px-4 text-sm font-semibold text-white">
-              重新生成问题
-            </button>
-          ) : null}
-        </div>
-      );
-    }
-
-    return (
-      <div className="mt-3 grid gap-3">
-        {questionOrder.map((question, index) => {
-          const item = diagnostics[question] ?? {
-            question,
-            status: "queued" as const,
-            errorCount: 0,
-          };
-          return (
-            <div key={question} ref={latestQuestion === question ? latestQuestionRef : undefined}>
-              <DiagnosticAccordion
-                id={String(index + 1).padStart(2, "0")}
-                item={item}
-                expanded={expandedQuestion === question}
-                onToggle={() => setExpandedQuestion((current) => (current === question ? null : question))}
-                onRetry={() => retryDiagnostic(question)}
-                canRetry={item.errorCount < 2 && paragraphs.length > 0}
-              />
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <main className="min-h-screen bg-[#f6f8f7] text-[#17212b]">
-      <header className="sticky top-0 z-40 border-b border-[#e1e6ea] bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-5 lg:px-8">
-          <div className="flex items-center gap-3">
-            <span className="relative grid h-10 w-10 place-items-center overflow-hidden rounded-lg bg-[#17212b] text-sm font-bold text-white">
-              理
-              <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 bg-[#3aa395]" />
-            </span>
-            <div>
-              <div className="text-sm font-bold leading-5">理据 GEO</div>
-              <div className="hidden text-xs text-[#667085] sm:block">内容体检工作台</div>
-            </div>
-          </div>
-          <span className="rounded-full border border-[#cce2de] bg-[#edf7f5] px-3 py-1.5 text-xs font-semibold text-[#0b6b63]">正文不保存</span>
-        </div>
-      </header>
+    <main className="app-shell">
+      <AppHeader
+        analysisStarted={analysisStarted}
+        onShowEditor={() => analysisStarted && backToEditor()}
+        onShowReport={() => scrollToSection("report-overview")}
+        onShowPatches={() => scrollToSection("patch-workshop")}
+        onNewAnalysis={backToEditor}
+        feedbackUrl={process.env.NEXT_PUBLIC_FEEDBACK_URL}
+        onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
+      />
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-5 sm:py-7 lg:px-8">
+      <div>
         {analysisStarted ? (
-          <section
-            aria-live="polite"
-            aria-busy={session.status === "loading" || scoring.status === "loading" || questions.status === "loading"}
-          >
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-              <div className="min-w-0">
-                <button
-                  type="button"
-                  onClick={backToEditor}
-                  className="mb-4 inline-flex h-9 items-center gap-2 rounded-lg border border-[#d6dde2] bg-white px-3 text-sm font-semibold text-[#465266] hover:border-[#aebcc6] hover:bg-[#f8faf9]"
-                >
-                  <span aria-hidden="true">←</span>
-                  返回编辑
-                </button>
-                <p className="max-w-3xl break-words text-sm text-[#667085]">{draft.title}</p>
-                <h1 className="mt-1 text-2xl font-bold sm:text-3xl">体检报告</h1>
-              </div>
-              <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${reportStatus().className}`}>
-                {reportStatus().label}
-              </span>
-            </div>
-
-            {session.status === "error" ? (
-              <div role="alert" className="border border-[#f0d6d1] border-l-4 border-l-[#d85f47] bg-[#fff8f6] p-5 sm:p-6">
-                <h2 className="text-lg font-bold text-[#8f3524]">无法开始本次体检</h2>
-                <p className="mt-2 text-sm leading-6 text-[#6f453d]">{session.error}</p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => startAnalysis(draft)}
-                    className="h-10 rounded-lg bg-[#17202f] px-5 text-sm font-bold text-white hover:bg-[#2a3444]"
-                  >
-                    重新开始体检
-                  </button>
-                  <button
-                    type="button"
-                    onClick={backToEditor}
-                    className="h-10 rounded-lg border border-[#d8a99f] bg-white px-5 text-sm font-semibold text-[#8f3524]"
-                  >
-                    返回编辑
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <div hidden={session.status === "error"}>
-              {session.status === "loading" ? (
-                <div className="mb-5 flex items-center gap-3 border-l-2 border-[#93c4bd] bg-[#f3f7f6] px-4 py-3 text-sm text-[#465266]">
-                  <span aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#b9d9d4] border-t-[#0e766e] motion-reduce:animate-none" />
-                  <span>正在准备文章体检，请稍候。</span>
-                </div>
-              ) : null}
-
-              {renderScoreDashboard()}
-
-              <section className="mt-8">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <p className="label">Question Diagnostics</p>
-                  <h2 className="mt-1 text-xl font-bold sm:text-2xl">AI 读者问题诊断</h2>
-                </div>
-                {questionOrder.length ? (
-                  <span className="rounded-full border border-[#d6dde2] bg-white px-3 py-1.5 text-xs font-semibold text-[#667085]">
-                    已完成 {completedCount} / {questionOrder.length}
-                  </span>
-                ) : null}
-              </div>
-              {renderDiagnostics()}
-
-              {questions.status === "success" ? (
-                <form onSubmit={submitFollowUp} className="card mt-4 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <label htmlFor="follow-up-question" className="text-sm font-bold">测试读者真实提问</label>
-                    <span className="text-xs text-[#687386]">{questionOrder.length} / 10</span>
-                  </div>
-                  <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                    <input
-                      id="follow-up-question"
-                      value={followUpQuestion}
-                      onChange={(event) => {
-                        setFollowUpQuestion(event.target.value);
-                        setFollowUpError("");
-                      }}
-                      maxLength={200}
-                      disabled={!paragraphs.length || questionOrder.length >= 10}
-                      placeholder="例如：文章解释清楚为什么选择 A 而不是 B 吗？"
-                      className="h-11 min-w-0 flex-1 rounded-lg border border-[#d6dde2] bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-[#eef2f3]"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!paragraphs.length || questionOrder.length >= 10 || !followUpQuestion.trim()}
-                      className="h-11 rounded-lg bg-[#17212b] px-5 text-sm font-bold text-white hover:bg-[#2a3642] disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      分析这个问题
-                    </button>
-                  </div>
-                  {followUpError ? <p role="alert" className="mt-2 text-sm text-[#a43e2b]">{followUpError}</p> : null}
-                  {customQuestions.length ? (
-                    <p className="mt-3 text-xs text-[#687386]">
-                      追问覆盖率：{answeredCustomQuestions} / {customQuestions.length} 可完全回答
-                    </p>
-                  ) : null}
-                </form>
-              ) : null}
-              </section>
-
-              <PatchWorkshop title={draft.title} paragraphs={paragraphs} />
-
-              {scoring.status === "success" && scoring.data.numbered_paragraphs.length ? (
-                <section className="mt-7">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-lg font-bold">原文证据锚点</h2>
-                  <span className="text-xs text-[#687386]">共 {scoring.data.numbered_paragraphs.length} 段</span>
-                </div>
-                <div className="grid gap-3">
-                  {scoring.data.numbered_paragraphs.map((paragraph) => (
-                    <article key={paragraph.id} className="card grid gap-3 p-4 sm:grid-cols-[80px_1fr]">
-                      <span className="text-xs font-bold text-[#0e766e]">{paragraph.id}</span>
-                      <p className="text-sm leading-7 text-[#465266]">{paragraph.text}</p>
-                    </article>
-                  ))}
-                </div>
-                </section>
-              ) : restoredFromCache ? (
-                <p className="mt-7 border-l-2 border-[#d8e4e1] pl-4 text-sm text-[#687386]">缓存报告不保留原文段落。重新运行体检可查看完整证据锚点。</p>
-              ) : null}
-            </div>
-          </section>
+          <ReportWorkspace
+            title={draft.title}
+            publishedAt={draft.publishedAt}
+            contentAvailable={Boolean(draft.content)}
+            reportStatus={reportStatus()}
+            session={session}
+            scoring={scoring}
+            questions={questions}
+            scoreBand={currentScoreBand}
+            questionOrder={questionOrder}
+            diagnostics={diagnostics}
+            completedCount={completedCount}
+            expandedQuestion={expandedQuestion}
+            latestQuestion={latestQuestion}
+            latestQuestionRef={latestQuestionRef}
+            restoredFromCache={restoredFromCache}
+            paragraphs={paragraphs}
+            followUpQuestion={followUpQuestion}
+            followUpError={followUpError}
+            canAskFollowUp={canAskFollowUp}
+            canSubmitFollowUp={canSubmitFollowUp}
+            customQuestionCount={customQuestions.length}
+            answeredCustomQuestionCount={answeredCustomQuestions}
+            canRetryDiagnostic={(question) => {
+              const item = diagnostics[question];
+              return Boolean(item && item.errorCount < 2 && paragraphs.length > 0);
+            }}
+            onBackToEditor={backToEditor}
+            onRestartAnalysis={() => startAnalysis(draft)}
+            onRetryScoring={retryScoring}
+            onRetryQuestions={retryQuestions}
+            onRetryDiagnostic={retryDiagnostic}
+            onToggleQuestion={(question) =>
+              setExpandedQuestion((current) => (current === question ? null : question))
+            }
+            onFollowUpQuestionChange={(value) => {
+              setFollowUpQuestion(value);
+              setFollowUpError("");
+            }}
+            onSubmitFollowUp={submitFollowUp}
+            onScrollToSection={scrollToSection}
+          />
         ) : (
-          <section>
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-              <div>
-              <p className="label">AI Search Readiness</p>
-                <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">新建内容体检</h1>
-              </div>
-              <p className="text-sm text-[#667085]">公众号 / 博客中文长文</p>
-            </div>
-
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_320px]">
-              <form onSubmit={submit} className="card p-4 sm:p-5">
-                <div className="grid gap-4 min-[560px]:grid-cols-[1fr_190px]">
-                  <label className="grid gap-2 text-sm font-semibold">
-                    <span>文章标题</span>
-                    <input
-                      ref={titleRef}
-                      value={draft.title}
-                      onChange={(event) => updateDraft("title", event.target.value)}
-                      maxLength={120}
-                      aria-invalid={Boolean(fieldErrors.title)}
-                      aria-describedby={fieldErrors.title ? "title-error" : undefined}
-                      className={`h-11 rounded-lg border bg-white px-3 font-normal ${fieldErrors.title ? "border-[#c95742]" : "border-[#d6dde2]"}`}
-                      placeholder="输入文章标题"
-                    />
-                    {fieldErrors.title ? <span id="title-error" className="text-xs font-normal text-[#a43e2b]">{fieldErrors.title}</span> : null}
-                  </label>
-                  <div className="grid content-start gap-2 text-sm font-semibold">
-                    <span>发布日期</span>
-                    <DatePicker value={draft.publishedAt} onChange={(value) => updateDraft("publishedAt", value)} />
-                  </div>
-                </div>
-
-                <label className="mt-4 grid gap-2 text-sm font-semibold">
-                  <span className="flex items-center justify-between">
-                    正文
-                    <span className={remaining < 0 ? "text-[#d85f47]" : "font-normal text-[#687386]"}>{draft.content.length.toLocaleString()} / 12,000</span>
-                  </span>
-                  <textarea
-                    ref={contentRef}
-                    value={draft.content}
-                    onChange={(event) => updateDraft("content", event.target.value)}
-                    aria-invalid={Boolean(fieldErrors.content)}
-                    aria-describedby={fieldErrors.content ? "content-error" : undefined}
-                    className={`min-h-[280px] resize-y rounded-lg border bg-white p-4 font-normal leading-7 sm:min-h-[300px] lg:min-h-[310px] ${fieldErrors.content ? "border-[#c95742]" : "border-[#d6dde2]"}`}
-                    placeholder="粘贴文章正文"
-                  />
-                  {fieldErrors.content ? <span id="content-error" className="text-xs font-normal text-[#a43e2b]">{fieldErrors.content}</span> : null}
-                </label>
-
-                {error ? <p role="alert" className="mt-4 rounded-lg bg-[#fff0ed] px-4 py-3 text-sm text-[#a43e2b]">{error}</p> : null}
-
-                <div className="mt-4 flex flex-col gap-3 border-t border-[#e1e6ea] pt-4 min-[480px]:flex-row min-[480px]:items-center min-[480px]:justify-between">
-                  <span className="text-xs text-[#667085]">每日最多 10 次</span>
-                  <button type="submit" className="h-11 w-full rounded-lg bg-[#0b6b63] px-6 text-sm font-bold text-white shadow-[0_6px_16px_rgba(11,107,99,.18)] hover:bg-[#095c55] min-[480px]:w-auto">
-                    立即体检
-                  </button>
-                </div>
-              </form>
-
-              <aside className="lg:sticky lg:top-24 lg:self-start">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold">演示样本</h2>
-                  <span className="text-xs text-[#8a94a3]">3 组</span>
-                </div>
-                <div className="mt-3 grid gap-3 min-[560px]:grid-cols-3 lg:grid-cols-1">
-                  {SAMPLES.map((sample, index) => {
-                    const style = SAMPLE_STYLES[index];
-                    return (
-                    <button
-                      key={sample.label}
-                      type="button"
-                      onClick={() => loadSample(sample)}
-                      className={`card group min-h-[128px] border-l-4 p-4 text-left transition-transform hover:-translate-y-0.5 hover:border-[#aebcc6] ${style.border}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${style.badge}`}>0{index + 1}</span>
-                        <span className="text-xs font-semibold text-[#667085] group-hover:text-[#17212b]">载入样本</span>
-                      </div>
-                      <div className="mt-3 font-bold">{sample.label}</div>
-                      <div className="mt-1 text-sm leading-6 text-[#667085]">{sample.note}</div>
-                    </button>
-                  )})}
-                </div>
-                <div className="mt-4 border-l-2 border-[#cbd8d5] pl-4 text-xs leading-6 text-[#667085]">仅评估内容准备度，不保证 AI 搜索收录、排名或实际引用。</div>
-              </aside>
-            </div>
-          </section>
+          <EditorWorkspace
+            draft={draft}
+            contentLength={contentLength}
+            maxArticleCharacters={MAX_ARTICLE_CHARACTERS}
+            remaining={remaining}
+            fieldErrors={fieldErrors}
+            error={error}
+            titleRef={titleRef}
+            contentRef={contentRef}
+            samples={EDITOR_SAMPLES}
+            dimensions={EDITOR_DIMENSIONS}
+            onSubmit={submit}
+            onDraftChange={updateDraft}
+            onLoadSample={(index) => handleLoadSample(SAMPLES[index])}
+          />
         )}
       </div>
     </main>

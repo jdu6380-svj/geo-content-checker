@@ -161,7 +161,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
     const userPrompt = formatUntrustedPromptData({ title, paragraphs });
 
     try {
-      const raw = await callOpenAICompatibleModel({
+      const { content: raw } = await callOpenAICompatibleModel({
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

@@ -106,7 +106,7 @@ async function evaluateWithModel(params: {
     paragraphs: params.paragraphs,
   });
 
-  const raw = await callOpenAICompatibleModel({
+  const { content: raw } = await callOpenAICompatibleModel({
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
