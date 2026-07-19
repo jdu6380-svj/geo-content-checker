@@ -69,8 +69,12 @@ Primary 30-day gates:
 - 100 or more independent visitors.
 - 300 or more completed analyses.
 - First-analysis completion rate of at least 50%.
+- Report view rate is measured only after 10 seconds of foreground visibility at 50% or greater.
+- At least 30 diagnosis feedback responses with a positive rate of at least 70%.
 - Cross-date repeat rate of at least 20%.
 - 10 or more valid feedback participants.
 - 5 or more explicit expressions of willingness to pay.
+
+Before commercial launch, verify the 50-article Beta sample includes 20 public-account articles, 15 blog articles, and 15 professional articles. Complete the Commercial Readiness Check for sustained-use intent, AI result satisfaction, accepted error rates, controllable cost, and Production stability.
 
 Do not reopen visual optimization before at least 100 real analyses and 20 external users. The first product decision after 30 days is whether users return on another day.

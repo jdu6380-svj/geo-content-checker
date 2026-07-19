@@ -139,10 +139,22 @@ Analyze -> Diagnose -> Improve -> Verify -> Learn
 
 ### Phase B.2：受控真实 Beta
 
-- 使用邀请制 Preview 验证至少 50 篇真实公众号、博客和专业文章。
+- 使用邀请制 Preview 验证至少 50 篇真实内容，固定分层为 20 篇公众号、15 篇博客和 15 篇专业文章。
 - 至少收集 30 条诊断反馈，样本充分后目标正向反馈率 `>=70%`。
 - 验证 `analysis_completed -> patch_applied -> repeat_analysis` 内容智能闭环。
 - 至少 5 名不同匿名用户完成完整闭环。
+
+### Commercial Readiness Check
+
+B.2 通过后仍不自动进入商业上线。发布负责人必须确认：
+
+- 至少 5 名不同用户明确愿意持续使用，而不只是完成一次体验。
+- AI 诊断满意度达到 Beta 门禁，且不存在未关闭的系统性 Evidence 或误导建议问题。
+- 模型成功率、应用错误率和关键流程失败率处于已接受范围，无 P0 发布故障。
+- 每份成功报告成本、供应商预算和费用告警均可控。
+- Production 候选版本通过 Health、完整流程、Sentry、回滚演练和稳定性检查。
+
+Commercial Readiness Check 未通过时，可以继续受控 Beta，但不得公开商业发布或扩大付费流量。
 
 ## 7. 模型与 Evidence 门禁
 
@@ -182,6 +194,7 @@ analysis_completed + patch_applied + repeat_analysis
 - [ ] Redis、timeout、429、无效 JSON 和 fallback 故障验证通过。
 - [ ] B.1 模型稳定性、Evidence 和成本门禁通过。
 - [ ] B.2 真实 Beta 样本和信任指标达到最低要求。
+- [ ] Commercial Readiness Check 通过。
 - [ ] Production 回滚点和发布检查确认完成。
 
 所有阻断项清零前，PR 保持 Draft，不合并、不部署 Production、不创建标签。
