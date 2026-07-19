@@ -1,8 +1,8 @@
 # 理据 GEO 产品现状与路线图
 
-> 更新时间：2026-07-20  
-> 当前候选版本：`v0.1.0-beta.1`  
-> 当前分支：`feature/public-beta-hardening`  
+> 更新时间：2026-07-20
+> 当前候选版本：`v0.1.0-beta.1`
+> 当前分支：`feature/public-beta-hardening`
 > 当前阶段：核心契约与 Beta 体验优化，尚未部署 Preview 或 Production
 
 ## 1. 产品定位
