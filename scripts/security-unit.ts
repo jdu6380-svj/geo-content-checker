@@ -199,9 +199,22 @@ localStorageValues.set(reportCacheKey, JSON.stringify(incompatibleCache));
 assert.equal(readCachedReport(), null);
 
 assert.equal(betaEventSchema.safeParse({ event: "visit" }).success, true);
+assert.equal(betaEventSchema.safeParse({ event: "editor_started" }).success, true);
+assert.equal(
+  betaEventSchema.safeParse({ event: "analysis_started", runId: crypto.randomUUID() }).success,
+  true,
+);
 assert.equal(
   betaEventSchema.safeParse({ event: "analysis_completed", runId: crypto.randomUUID() }).success,
   true,
+);
+assert.equal(
+  betaEventSchema.safeParse({ event: "diagnosis_feedback", runId: crypto.randomUUID(), diagnosticIndex: 0, helpful: true }).success,
+  true,
+);
+assert.equal(
+  betaEventSchema.safeParse({ event: "diagnosis_feedback", runId: crypto.randomUUID(), diagnosticIndex: 10, helpful: true }).success,
+  false,
 );
 assert.equal(betaEventSchema.safeParse({ event: "unknown" }).success, false);
 assert.equal(betaEventSchema.safeParse({ event: "visit", content: "private" }).success, false);

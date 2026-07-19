@@ -29,6 +29,7 @@ type ReportStatusPresentation = {
 type ReportWorkspaceProps = {
   title: string;
   publishedAt: string;
+  runId: string | null;
   contentAvailable: boolean;
   reportStatus: ReportStatusPresentation;
   session: ReportSessionState;
@@ -64,6 +65,7 @@ type ReportWorkspaceProps = {
 export function ReportWorkspace({
   title,
   publishedAt,
+  runId,
   contentAvailable,
   reportStatus,
   session,
@@ -233,7 +235,7 @@ export function ReportWorkspace({
             </div>
 
             <div className="report-action-stage grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-              <PatchWorkshop title={title} paragraphs={paragraphs} diagnostics={diagnostics} />
+              <PatchWorkshop title={title} paragraphs={paragraphs} diagnostics={diagnostics} runId={runId} />
               <ReportEvidencePanel diagnostics={diagnostics} restoredFromCache={restoredFromCache} />
             </div>
           </div>

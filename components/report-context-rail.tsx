@@ -33,7 +33,7 @@ export function ReportContextRail({
   onRetryScoring,
 }: ReportContextRailProps) {
   return (
-    <div className="report-context-rail min-w-0">
+    <div id="report-core" className="report-context-rail min-w-0">
       <section className="surface-flat border-t-[3px] border-t-[#0f766e] p-4">
         <button
           type="button"

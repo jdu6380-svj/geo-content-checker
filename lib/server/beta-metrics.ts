@@ -1,7 +1,7 @@
 import { Redis } from "@upstash/redis";
 
+import type { BetaEvent, BetaRunEvent } from "@/lib/schemas/beta-event";
 import { hashBetaRunId } from "@/lib/server/beta-identity";
-import type { BetaEvent } from "@/lib/schemas/beta-event";
 
 export const BETA_METRICS_RETENTION_SECONDS = 90 * 24 * 60 * 60;
 
@@ -20,6 +20,61 @@ export class BetaMetricsUnavailableError extends Error {
   }
 }
 
+type DailyAnonymousEvent = Extract<
+  BetaEvent,
+  { event: "visit" | "editor_started" | "feedback_clicked" }
+>;
+
+type MetricConfig = Readonly<{
+  users: string;
+  count: string | null;
+  idempotency?: string;
+}>;
+
+const DAILY_EVENT_METRICS = {
+  visit: { users: "visitors", count: null },
+  editor_started: { users: "editor-starters", count: "editor-start-count" },
+  feedback_clicked: { users: "feedback-users", count: "feedback-count" },
+} as const satisfies Record<DailyAnonymousEvent["event"], MetricConfig>;
+
+const RUN_EVENT_METRICS = {
+  analysis_started: {
+    users: "analysis-starters",
+    count: "analysis-start-count",
+    idempotency: "analysis-started",
+  },
+  analysis_completed: {
+    users: "analysis-completers",
+    count: "analysis-count",
+    idempotency: "analysis",
+  },
+  report_viewed: {
+    users: "report-viewers",
+    count: "report-view-count",
+    idempotency: "report-viewed",
+  },
+  patch_requested: {
+    users: "patch-requesters",
+    count: "patch-request-count",
+    idempotency: "patch-requested",
+  },
+  patch_generated: {
+    users: "patch-generators",
+    count: "patch-generated-count",
+    idempotency: "patch-generated",
+  },
+  patch_copied: {
+    users: "patch-copiers",
+    count: "patch-copied-count",
+    idempotency: "patch-copied",
+  },
+  diagnosis_feedback: {
+    users: "diagnosis-feedback-users",
+    count: "diagnosis-feedback-count",
+    idempotency: "diagnosis-feedback",
+  },
+} as const satisfies Record<BetaRunEvent["event"], MetricConfig & { idempotency: string }>;
+
 const memorySets = new Map<string, Set<string>>();
 const memoryCounters = new Map<string, number>();
 const memoryExpirations = new Map<string, number>();
@@ -31,6 +86,20 @@ function utcDate(now: Date): string {
 
 function dailyKey(metric: string, date: string): string {
   return `geo:beta:v1:${metric}:${date}`;
+}
+
+function isDailyAnonymousEvent(event: BetaEvent): event is DailyAnonymousEvent {
+  return event.event === "visit" ||
+    event.event === "editor_started" ||
+    event.event === "feedback_clicked";
+}
+
+function runIdempotencyKey(event: BetaRunEvent): string {
+  const metric = RUN_EVENT_METRICS[event.event].idempotency;
+  const diagnosticSuffix = event.event === "diagnosis_feedback"
+    ? `:${event.diagnosticIndex}`
+    : "";
+  return `geo:beta:v1:idempotency:${metric}:${hashBetaRunId(event.runId)}${diagnosticSuffix}`;
 }
 
 function getRedisClient(): Redis | null {
@@ -81,6 +150,39 @@ function incrementMemoryCounter(key: string, nowMs: number): void {
   rememberExpiry(key, nowMs);
 }
 
+function recordAnonymousEventInMemory(
+  event: DailyAnonymousEvent,
+  anonymousId: string,
+  date: string,
+  nowMs: number,
+): RecordBetaEventResult {
+  const metrics = DAILY_EVENT_METRICS[event.event];
+  const added = addMemoryMember(dailyKey(metrics.users, date), anonymousId, nowMs);
+  if (added && metrics.count) incrementMemoryCounter(dailyKey(metrics.count, date), nowMs);
+  return { accepted: true, duplicate: !added, mode: "memory" };
+}
+
+function recordRunEventInMemory(
+  event: BetaRunEvent,
+  anonymousId: string,
+  date: string,
+  nowMs: number,
+): RecordBetaEventResult {
+  const idempotencyKey = runIdempotencyKey(event);
+  if (memoryExpirations.has(idempotencyKey)) {
+    return { accepted: true, duplicate: true, mode: "memory" };
+  }
+
+  rememberExpiry(idempotencyKey, nowMs);
+  const metrics = RUN_EVENT_METRICS[event.event];
+  addMemoryMember(dailyKey(metrics.users, date), anonymousId, nowMs);
+  incrementMemoryCounter(dailyKey(metrics.count, date), nowMs);
+  if (event.event === "diagnosis_feedback" && event.helpful) {
+    incrementMemoryCounter(dailyKey("diagnosis-helpful-count", date), nowMs);
+  }
+  return { accepted: true, duplicate: false, mode: "memory" };
+}
+
 function recordInMemory(
   event: BetaEvent,
   anonymousId: string,
@@ -90,31 +192,64 @@ function recordInMemory(
   const date = utcDate(now);
   cleanupMemory(nowMs);
 
-  if (event.event === "visit") {
-    const added = addMemoryMember(dailyKey("visitors", date), anonymousId, nowMs);
-    return { accepted: true, duplicate: !added, mode: "memory" };
-  }
-
-  if (event.event === "feedback_clicked") {
-    const added = addMemoryMember(dailyKey("feedback-users", date), anonymousId, nowMs);
-    if (added) incrementMemoryCounter(dailyKey("feedback-count", date), nowMs);
-    return { accepted: true, duplicate: !added, mode: "memory" };
-  }
-
-  const idempotencyKey = `geo:beta:v1:idempotency:analysis:${hashBetaRunId(event.runId)}`;
-  if (memoryExpirations.has(idempotencyKey)) {
-    return { accepted: true, duplicate: true, mode: "memory" };
-  }
-  rememberExpiry(idempotencyKey, nowMs);
-  addMemoryMember(dailyKey("analysis-completers", date), anonymousId, nowMs);
-  incrementMemoryCounter(dailyKey("analysis-count", date), nowMs);
-  return { accepted: true, duplicate: false, mode: "memory" };
+  return isDailyAnonymousEvent(event)
+    ? recordAnonymousEventInMemory(event, anonymousId, date, nowMs)
+    : recordRunEventInMemory(event, anonymousId, date, nowMs);
 }
 
 async function expireKeys(redis: Redis, keys: string[]): Promise<void> {
   const pipeline = redis.pipeline();
   for (const key of keys) pipeline.expire(key, BETA_METRICS_RETENTION_SECONDS);
   await pipeline.exec();
+}
+
+async function recordAnonymousEventWithRedis(
+  redis: Redis,
+  event: DailyAnonymousEvent,
+  anonymousId: string,
+  date: string,
+): Promise<RecordBetaEventResult> {
+  const metrics = DAILY_EVENT_METRICS[event.event];
+  const usersKey = dailyKey(metrics.users, date);
+  const added = await redis.sadd(usersKey, anonymousId);
+  const keys = [usersKey];
+
+  if (added !== 0 && metrics.count) {
+    const countKey = dailyKey(metrics.count, date);
+    await redis.incr(countKey);
+    keys.push(countKey);
+  }
+  await expireKeys(redis, keys);
+  return { accepted: true, duplicate: added === 0, mode: "redis" };
+}
+
+async function recordRunEventWithRedis(
+  redis: Redis,
+  event: BetaRunEvent,
+  anonymousId: string,
+  date: string,
+): Promise<RecordBetaEventResult> {
+  const inserted = await redis.set(runIdempotencyKey(event), "1", {
+    ex: BETA_METRICS_RETENTION_SECONDS,
+    nx: true,
+  });
+  if (inserted !== "OK") return { accepted: true, duplicate: true, mode: "redis" };
+
+  const metrics = RUN_EVENT_METRICS[event.event];
+  const usersKey = dailyKey(metrics.users, date);
+  const countKey = dailyKey(metrics.count, date);
+  const keys = [usersKey, countKey];
+  const pipeline = redis.pipeline();
+  pipeline.sadd(usersKey, anonymousId);
+  pipeline.incr(countKey);
+  if (event.event === "diagnosis_feedback" && event.helpful) {
+    const helpfulKey = dailyKey("diagnosis-helpful-count", date);
+    pipeline.incr(helpfulKey);
+    keys.push(helpfulKey);
+  }
+  await pipeline.exec();
+  await expireKeys(redis, keys);
+  return { accepted: true, duplicate: false, mode: "redis" };
 }
 
 async function recordWithRedis(
@@ -124,38 +259,9 @@ async function recordWithRedis(
   now: Date,
 ): Promise<RecordBetaEventResult> {
   const date = utcDate(now);
-
-  if (event.event === "visit") {
-    const key = dailyKey("visitors", date);
-    const added = await redis.sadd(key, anonymousId);
-    await redis.expire(key, BETA_METRICS_RETENTION_SECONDS);
-    return { accepted: true, duplicate: added === 0, mode: "redis" };
-  }
-
-  if (event.event === "feedback_clicked") {
-    const usersKey = dailyKey("feedback-users", date);
-    const countKey = dailyKey("feedback-count", date);
-    const added = await redis.sadd(usersKey, anonymousId);
-    if (added !== 0) await redis.incr(countKey);
-    await expireKeys(redis, added === 0 ? [usersKey] : [usersKey, countKey]);
-    return { accepted: true, duplicate: added === 0, mode: "redis" };
-  }
-
-  const idempotencyKey = `geo:beta:v1:idempotency:analysis:${hashBetaRunId(event.runId)}`;
-  const inserted = await redis.set(idempotencyKey, "1", {
-    ex: BETA_METRICS_RETENTION_SECONDS,
-    nx: true,
-  });
-  if (inserted !== "OK") return { accepted: true, duplicate: true, mode: "redis" };
-
-  const completersKey = dailyKey("analysis-completers", date);
-  const countKey = dailyKey("analysis-count", date);
-  const pipeline = redis.pipeline();
-  pipeline.sadd(completersKey, anonymousId);
-  pipeline.incr(countKey);
-  await pipeline.exec();
-  await expireKeys(redis, [completersKey, countKey]);
-  return { accepted: true, duplicate: false, mode: "redis" };
+  return isDailyAnonymousEvent(event)
+    ? recordAnonymousEventWithRedis(redis, event, anonymousId, date)
+    : recordRunEventWithRedis(redis, event, anonymousId, date);
 }
 
 export async function recordBetaEvent(

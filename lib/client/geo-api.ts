@@ -1,3 +1,5 @@
+import type { BetaEvent } from "@/lib/schemas/beta-event";
+
 const CLIENT_ID_STORAGE_KEY = "geo:client-id:v1";
 const ANALYSIS_TOKEN_STORAGE_KEY = "geo:analysis-token:v1";
 const COMPRESSION_THRESHOLD_BYTES = 8 * 1024;
@@ -23,11 +25,6 @@ export interface AnalysisSessionClientData {
   };
   rateLimitMode: string;
 }
-
-export type GeoBetaEvent =
-  | { event: "visit" }
-  | { event: "feedback_clicked" }
-  | { event: "analysis_completed"; runId: string };
 
 export type GeoConcurrencyPool = {
   schedule<T>(task: () => Promise<T>): Promise<T>;
@@ -149,10 +146,10 @@ export async function postGeoJson<TBody>(
   });
 }
 
-export async function postGeoBetaEvent(event: GeoBetaEvent): Promise<void> {
+export async function postGeoBetaEvent(event: BetaEvent): Promise<void> {
   try {
     await postGeoJson("/api/beta-event", event, {
-      includeAnalysisToken: event.event === "analysis_completed",
+      includeAnalysisToken: "runId" in event,
       keepalive: true,
     });
   } catch {

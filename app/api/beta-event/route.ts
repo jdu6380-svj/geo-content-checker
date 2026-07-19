@@ -31,7 +31,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       );
     }
 
-    if (input.data.event === "analysis_completed") {
+    if ("runId" in input.data) {
       const claims = await verifyAnalysisSession(request);
       if (claims.runId !== input.data.runId) {
         return NextResponse.json(

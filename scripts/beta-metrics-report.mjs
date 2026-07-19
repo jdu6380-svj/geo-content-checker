@@ -28,6 +28,10 @@ async function readDailySets(metric, dates) {
   return pipeline.exec();
 }
 
+async function readDailyCounts(metric, dates) {
+  return redis.mget(...dates.map((date) => dailyKey(metric, date)));
+}
+
 function unionSets(dailySets) {
   const result = new Set();
   for (const values of dailySets) {
@@ -36,23 +40,71 @@ function unionSets(dailySets) {
   return result;
 }
 
-const dates = recentUtcDates(retentionDays);
-const analysisCountKeys = dates.map((date) => dailyKey("analysis-count", date));
-const feedbackCountKeys = dates.map((date) => dailyKey("feedback-count", date));
+function sumCounts(values) {
+  return values.reduce((sum, value) => sum + Number(value || 0), 0);
+}
 
-const [visitorDays, completerDays, feedbackDays, analysisCounts, feedbackCounts] =
-  await Promise.all([
-    readDailySets("visitors", dates),
-    readDailySets("analysis-completers", dates),
-    readDailySets("feedback-users", dates),
-    redis.mget(...analysisCountKeys),
-    redis.mget(...feedbackCountKeys),
-  ]);
+function rate(numerator, denominator) {
+  return denominator > 0 ? Number((numerator / denominator).toFixed(4)) : 0;
+}
+
+const dates = recentUtcDates(retentionDays);
+const [
+  visitorDays,
+  editorStarterDays,
+  analysisStarterDays,
+  completerDays,
+  reportViewerDays,
+  patchRequesterDays,
+  patchGeneratorDays,
+  patchCopierDays,
+  diagnosisFeedbackUserDays,
+  feedbackDays,
+  editorStartCounts,
+  analysisStartCounts,
+  analysisCounts,
+  reportViewCounts,
+  patchRequestCounts,
+  patchGenerationCounts,
+  patchCopyCounts,
+  diagnosisFeedbackCounts,
+  diagnosisHelpfulCounts,
+  feedbackCounts,
+] = await Promise.all([
+  readDailySets("visitors", dates),
+  readDailySets("editor-starters", dates),
+  readDailySets("analysis-starters", dates),
+  readDailySets("analysis-completers", dates),
+  readDailySets("report-viewers", dates),
+  readDailySets("patch-requesters", dates),
+  readDailySets("patch-generators", dates),
+  readDailySets("patch-copiers", dates),
+  readDailySets("diagnosis-feedback-users", dates),
+  readDailySets("feedback-users", dates),
+  readDailyCounts("editor-start-count", dates),
+  readDailyCounts("analysis-start-count", dates),
+  readDailyCounts("analysis-count", dates),
+  readDailyCounts("report-view-count", dates),
+  readDailyCounts("patch-request-count", dates),
+  readDailyCounts("patch-generated-count", dates),
+  readDailyCounts("patch-copied-count", dates),
+  readDailyCounts("diagnosis-feedback-count", dates),
+  readDailyCounts("diagnosis-helpful-count", dates),
+  readDailyCounts("feedback-count", dates),
+]);
 
 const visitors = unionSets(visitorDays);
+const editorStarters = unionSets(editorStarterDays);
+const analysisStarters = unionSets(analysisStarterDays);
 const completers = unionSets(completerDays);
+const reportViewers = unionSets(reportViewerDays);
+const patchRequesters = unionSets(patchRequesterDays);
+const patchGenerators = unionSets(patchGeneratorDays);
+const patchCopiers = unionSets(patchCopierDays);
+const diagnosisFeedbackUsers = unionSets(diagnosisFeedbackUserDays);
 const feedbackUsers = unionSets(feedbackDays);
 const completionDatesByUser = new Map();
+
 for (let index = 0; index < completerDays.length; index += 1) {
   for (const value of Array.isArray(completerDays[index]) ? completerDays[index] : []) {
     const anonymousId = String(value);
@@ -65,21 +117,48 @@ for (let index = 0; index < completerDays.length; index += 1) {
 const repeatUsers = Array.from(completionDatesByUser.values()).filter(
   (completionDates) => completionDates.size >= 2,
 ).length;
-const completedAnalyses = analysisCounts.reduce((sum, value) => sum + Number(value || 0), 0);
-const feedbackClicks = feedbackCounts.reduce((sum, value) => sum + Number(value || 0), 0);
-const activationRate = visitors.size > 0 ? completers.size / visitors.size : 0;
-const repeatRate = completers.size > 0 ? repeatUsers / completers.size : 0;
+const editorStarts = sumCounts(editorStartCounts);
+const startedAnalyses = sumCounts(analysisStartCounts);
+const completedAnalyses = sumCounts(analysisCounts);
+const reportViews = sumCounts(reportViewCounts);
+const patchRequests = sumCounts(patchRequestCounts);
+const patchGenerations = sumCounts(patchGenerationCounts);
+const patchCopies = sumCounts(patchCopyCounts);
+const diagnosisFeedbacks = sumCounts(diagnosisFeedbackCounts);
+const helpfulDiagnosisFeedbacks = sumCounts(diagnosisHelpfulCounts);
+const feedbackClicks = sumCounts(feedbackCounts);
 
 console.log(
   JSON.stringify(
     {
       retentionDays,
       visitors: visitors.size,
+      editorStarts,
+      uniqueEditorStarters: editorStarters.size,
+      editorStartRate: rate(editorStarters.size, visitors.size),
+      startedAnalyses,
+      uniqueAnalysisStarters: analysisStarters.size,
       completedAnalyses,
       uniqueCompleters: completers.size,
-      activationRate: Number(activationRate.toFixed(4)),
+      analysisCompletionRate: rate(completedAnalyses, startedAnalyses),
+      activationRate: rate(completers.size, visitors.size),
+      reportViews,
+      uniqueReportViewers: reportViewers.size,
+      reportViewRate: rate(reportViews, completedAnalyses),
+      patchRequests,
+      uniquePatchRequesters: patchRequesters.size,
+      patchGenerations,
+      uniquePatchGenerators: patchGenerators.size,
+      patchGenerationRate: rate(patchGenerations, patchRequests),
+      patchCopies,
+      uniquePatchCopiers: patchCopiers.size,
+      patchCopyRate: rate(patchCopies, patchGenerations),
+      diagnosisFeedbacks,
+      helpfulDiagnosisFeedbacks,
+      diagnosisFeedbackUsers: diagnosisFeedbackUsers.size,
+      diagnosisFeedbackPositiveRate: rate(helpfulDiagnosisFeedbacks, diagnosisFeedbacks),
       repeatUsers,
-      repeatRate: Number(repeatRate.toFixed(4)),
+      repeatRate: rate(repeatUsers, completers.size),
       feedbackUsers: feedbackUsers.size,
       feedbackClicks,
       generatedAt: new Date().toISOString(),

@@ -239,9 +239,12 @@ export default function Home() {
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const latestQuestionRef = useRef<HTMLDivElement>(null);
   const activeRunRef = useRef(0);
-  const activeSessionRunIdRef = useRef<string | null>(null);
   const activeAnalysisHashRef = useRef<string | null>(null);
   const reportedRunIdsRef = useRef(new Set<string>());
+  const editorStartedReportedRef = useRef(false);
+  const reportViewedRunIdsRef = useRef(new Set<string>());
+  const reportViewDwellRef = useRef(new Map<string, number>());
+  const [activeSessionRunId, setActiveSessionRunId] = useState<string | null>(null);
 
   const contentText = draft?.content ?? "";
   const contentLength = contentText.length;
@@ -254,10 +257,19 @@ export default function Home() {
   const currentScoreBand = scoring.status === "success" ? scoreBand(scoring.data.totalScore) : null;
   const canAskFollowUp = paragraphs.length > 0 && questionOrder.length < 10;
   const canSubmitFollowUp = canAskFollowUp && Boolean(followUpQuestion.trim());
+  const reportReady = !restoredFromCache &&
+    analysisStarted &&
+    scoring.status === "success" &&
+    questions.status === "success" &&
+    questionOrder.length > 0 &&
+    questionOrder.every((question) => {
+      const status = diagnostics[question]?.status;
+      return status === "success" || status === "error";
+    });
 
   const restoreCachedAnalysis = useCallback((cached: CacheEnvelope, restoredDraft: ArticleDraft) => {
     activeAnalysisHashRef.current = cached.analysisHash;
-    activeSessionRunIdRef.current = null;
+    setActiveSessionRunId(null);
     setGeoAnalysisToken(null);
     if (restoredDraft.content) {
       markDraftAnalysis(restoredDraft, cached.analysisHash, "success");
@@ -290,12 +302,71 @@ export default function Home() {
       const status = diagnostics[question]?.status;
       return status === "success" || status === "error";
     });
-    const runId = activeSessionRunIdRef.current;
+    const runId = activeSessionRunId;
     if (!allSettled || !runId || reportedRunIdsRef.current.has(runId)) return;
 
     reportedRunIdsRef.current.add(runId);
     void postGeoBetaEvent({ event: "analysis_completed", runId });
-  }, [analysisStarted, diagnostics, questionOrder, questions.status, restoredFromCache, scoring.status]);
+  }, [activeSessionRunId, analysisStarted, diagnostics, questionOrder, questions.status, restoredFromCache, scoring.status]);
+
+  useEffect(() => {
+    const runId = activeSessionRunId;
+    if (!reportReady || !runId || reportViewedRunIdsRef.current.has(runId)) return;
+
+    const target = document.getElementById("report-core");
+    if (!target || typeof IntersectionObserver === "undefined") return;
+
+    let visibleEnough = false;
+    let reported = false;
+    let lastTick = performance.now();
+    let elapsed = reportViewDwellRef.current.get(runId) ?? 0;
+    let intervalId: number | null = null;
+
+    const finish = () => {
+      if (reported) return;
+      reported = true;
+      reportViewedRunIdsRef.current.add(runId);
+      reportViewDwellRef.current.set(runId, elapsed);
+      if (intervalId !== null) window.clearInterval(intervalId);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void postGeoBetaEvent({ event: "report_viewed", runId });
+    };
+
+    const tick = () => {
+      const now = performance.now();
+      if (visibleEnough && document.visibilityState === "visible") {
+        elapsed += Math.max(0, now - lastTick);
+      }
+      lastTick = now;
+      reportViewDwellRef.current.set(runId, elapsed);
+      if (elapsed >= 10_000) finish();
+    };
+
+    const handleVisibilityChange = () => {
+      tick();
+      lastTick = performance.now();
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        tick();
+        visibleEnough = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5);
+        lastTick = performance.now();
+      },
+      { threshold: [0, 0.5, 1] },
+    );
+
+    observer.observe(target);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    intervalId = window.setInterval(tick, 250);
+
+    return () => {
+      if (intervalId !== null) window.clearInterval(intervalId);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeSessionRunId, reportReady]);
 
   useEffect(() => {
     if (!latestQuestion) return;
@@ -374,6 +445,10 @@ export default function Home() {
   }, [analysisStarted, diagnostics, draft, questionOrder, questions, restoredFromCache, scoring]);
 
   function updateDraft(field: keyof ArticleDraft, value: string) {
+    if (!editorStartedReportedRef.current) {
+      editorStartedReportedRef.current = true;
+      void postGeoBetaEvent({ event: "editor_started" });
+    }
     setDraft((current) => ({ ...current, [field]: value }));
     if (field === "title" || field === "content") {
       setFieldErrors((current) => ({ ...current, [field]: undefined }));
@@ -381,6 +456,10 @@ export default function Home() {
   }
 
   function loadSample(sample: (typeof SAMPLES)[number]) {
+    if (!editorStartedReportedRef.current) {
+      editorStartedReportedRef.current = true;
+      void postGeoBetaEvent({ event: "editor_started" });
+    }
     activeRunRef.current += 1;
     setDraft({ title: sample.title, content: sample.content, publishedAt: sample.publishedAt });
     setAnalysisStarted(false);
@@ -512,9 +591,10 @@ export default function Home() {
       if (activeRunRef.current !== runId) return;
 
       setGeoAnalysisToken(session.token);
-      activeSessionRunIdRef.current = session.runId;
+      setActiveSessionRunId(session.runId);
       setSession({ status: "success" });
       recordUsage();
+      void postGeoBetaEvent({ event: "analysis_started", runId: session.runId });
       void loadScoring(runId, article);
       void loadQuestionsAndDiagnostics(runId, articleParagraphs, article);
     } catch (requestError) {
@@ -558,7 +638,7 @@ export default function Home() {
     setFollowUpError("");
     setLatestQuestion(null);
     setGeoAnalysisToken(null);
-    activeSessionRunIdRef.current = null;
+    setActiveSessionRunId(null);
 
     window.requestAnimationFrame(() => {
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -598,6 +678,8 @@ export default function Home() {
 
   function backToEditor() {
     activeRunRef.current += 1;
+    setActiveSessionRunId(null);
+    setGeoAnalysisToken(null);
     setAnalysisStarted(false);
     setSession({ status: "idle" });
     setExpandedQuestion(null);
@@ -712,6 +794,7 @@ export default function Home() {
             scoreBand={currentScoreBand}
             questionOrder={questionOrder}
             diagnostics={diagnostics}
+            runId={activeSessionRunId}
             completedCount={completedCount}
             expandedQuestion={expandedQuestion}
             latestQuestion={latestQuestion}

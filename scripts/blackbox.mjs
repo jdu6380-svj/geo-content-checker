@@ -293,6 +293,46 @@ await check("records visit idempotently", async () => {
   assert.equal(second.body?.duplicate, true);
 });
 
+await check("records editor start idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "editor_started" }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
+});
+
+await expectStatus(
+  "requires token for analysis started event",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "analysis_started", runId: sessionRunId }),
+  },
+  401,
+  "ANALYSIS_SESSION_REQUIRED",
+);
+
+await check("records analysis started idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({ event: "analysis_started", runId: sessionRunId }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
+});
+
 await expectStatus(
   "requires token for completed analysis event",
   "/api/beta-event",
@@ -329,6 +369,79 @@ await check("records completed analysis idempotently", async () => {
   assert.equal(first.body?.duplicate, false);
   assert.equal(second.response.status, 200, responseSummary(second));
   assert.equal(second.body?.duplicate, true);
+});
+
+for (const event of ["report_viewed", "patch_requested", "patch_generated", "patch_copied"]) {
+  await check(`records ${event} idempotently`, async () => {
+    const init = {
+      method: "POST",
+      headers: headers({ token }),
+      body: JSON.stringify({ event, runId: sessionRunId }),
+    };
+    const first = await request("/api/beta-event", init);
+    const second = await request("/api/beta-event", init);
+    assert.equal(first.response.status, 202, responseSummary(first));
+    assert.equal(first.body?.duplicate, false);
+    assert.equal(second.response.status, 200, responseSummary(second));
+    assert.equal(second.body?.duplicate, true);
+  });
+}
+
+await expectStatus(
+  "rejects diagnostic feedback with private content",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 0,
+      helpful: true,
+      question: "private question",
+    }),
+  },
+  400,
+  "INVALID_EVENT",
+);
+
+await check("accepts one feedback per diagnosis", async () => {
+  const first = await request("/api/beta-event", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 0,
+      helpful: true,
+    }),
+  });
+  const duplicate = await request("/api/beta-event", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 0,
+      helpful: false,
+    }),
+  });
+  const secondDiagnosis = await request("/api/beta-event", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 1,
+      helpful: false,
+    }),
+  });
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(duplicate.response.status, 200, responseSummary(duplicate));
+  assert.equal(duplicate.body?.duplicate, true);
+  assert.equal(secondDiagnosis.response.status, 202, responseSummary(secondDiagnosis));
+  assert.equal(secondDiagnosis.body?.duplicate, false);
 });
 
 await expectStatus(

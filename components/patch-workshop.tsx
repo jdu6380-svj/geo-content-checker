@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, RefreshCw, Sparkles, TextSelect } from "lucide-react";
 
-import { postGeoJson } from "@/lib/client/geo-api";
+import { postGeoBetaEvent, postGeoJson } from "@/lib/client/geo-api";
 import type { DiagnosticsState } from "@/lib/client/report-state";
 import type {
   GeneratePatchesResponse,
@@ -16,6 +16,7 @@ type PatchWorkshopProps = {
   title: string;
   paragraphs: Paragraph[];
   diagnostics: DiagnosticsState;
+  runId: string | null;
 };
 
 type PatchState =
@@ -112,7 +113,7 @@ function actionPresentation(action: PatchAction) {
   };
 }
 
-export function PatchWorkshop({ title, paragraphs, diagnostics }: PatchWorkshopProps) {
+export function PatchWorkshop({ title, paragraphs, diagnostics, runId }: PatchWorkshopProps) {
   const [activeMode, setActiveMode] = useState<PatchMode>("advice");
   const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(initialPatchStates);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
@@ -144,6 +145,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics }: PatchWorkshopP
     restoreActionFocusRef.current = document.activeElement === generateButtonRef.current;
     setActivePatch({ status: "loading" });
     setCopyStatus("idle");
+    if (runId) void postGeoBetaEvent({ event: "patch_requested", runId });
 
     try {
       const response = await postGeoJson("/api/generate-patches", {
@@ -155,6 +157,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics }: PatchWorkshopP
       if (!response.ok) throw new Error(await readError(response));
       const data = (await response.json()) as GeneratePatchesResponse;
       setActivePatch({ status: "success", data });
+      if (runId) void postGeoBetaEvent({ event: "patch_generated", runId });
     } catch (requestError) {
       setActivePatch({
         status: "error",
@@ -172,6 +175,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics }: PatchWorkshopP
         await copyWithClipboard(activePatch.data.markdown);
       }
       setCopyStatus("copied");
+      if (runId) void postGeoBetaEvent({ event: "patch_copied", runId });
     } catch {
       setCopyStatus("manual");
       window.requestAnimationFrame(() => manualCopyRef.current?.select());
