@@ -1,25 +1,31 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { EditorWorkspace } from "@/components/editor-workspace";
 import { ReportWorkspace } from "@/components/report-workspace";
 import {
+  createAnalysisHash,
+  markDraftAnalysis,
+  readDraftSession,
+  saveDraftSession,
+} from "@/lib/client/analysis-persistence";
+import {
+  postGeoBetaEvent,
+  postGeoJson,
+  scheduleGeoDiagnostic,
+  setGeoAnalysisToken,
+  type AnalysisSessionClientData,
+} from "@/lib/client/geo-api";
+import {
   readCachedReport,
   saveCachedReport,
+  type CacheEnvelope,
   type DiagnosticItem,
   type DiagnosticsState,
   type LoadState,
 } from "@/lib/client/report-state";
-import {
-  postGeoJson,
-  postGeoBetaEvent,
-  scheduleGeoDiagnostic,
-  setGeoAnalysisToken,
-  warmGeoApi,
-  type AnalysisSessionClientData,
-} from "@/lib/client/geo-api";
 import { MAX_ARTICLE_CHARACTERS } from "@/lib/constants/input-limits";
 import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 import type {
@@ -226,6 +232,7 @@ export default function Home() {
   const [followUpError, setFollowUpError] = useState("");
   const [latestQuestion, setLatestQuestion] = useState<string | null>(null);
   const [restoredFromCache, setRestoredFromCache] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const titleRef = useRef<HTMLInputElement>(null);
@@ -233,6 +240,7 @@ export default function Home() {
   const latestQuestionRef = useRef<HTMLDivElement>(null);
   const activeRunRef = useRef(0);
   const activeSessionRunIdRef = useRef<string | null>(null);
+  const activeAnalysisHashRef = useRef<string | null>(null);
   const reportedRunIdsRef = useRef(new Set<string>());
 
   const contentText = draft?.content ?? "";
@@ -247,8 +255,30 @@ export default function Home() {
   const canAskFollowUp = paragraphs.length > 0 && questionOrder.length < 10;
   const canSubmitFollowUp = canAskFollowUp && Boolean(followUpQuestion.trim());
 
+  const restoreCachedAnalysis = useCallback((cached: CacheEnvelope, restoredDraft: ArticleDraft) => {
+    activeAnalysisHashRef.current = cached.analysisHash;
+    activeSessionRunIdRef.current = null;
+    setGeoAnalysisToken(null);
+    if (restoredDraft.content) {
+      markDraftAnalysis(restoredDraft, cached.analysisHash, "success");
+    }
+    setDraft(restoredDraft);
+    setParagraphs([]);
+    setScoring({ status: "success", data: cached.report.scoring });
+    setQuestions({
+      status: "success",
+      data: {
+        questions: cached.report.questionOrder,
+        source: cached.report.questionSource,
+      },
+    });
+    setQuestionOrder(cached.report.questionOrder);
+    setDiagnostics(cached.report.diagnostics);
+    setAnalysisStarted(true);
+    setRestoredFromCache(true);
+  }, []);
+
   useEffect(() => {
-    void warmGeoApi();
     void postGeoBetaEvent({ event: "visit" });
   }, []);
 
@@ -277,20 +307,48 @@ export default function Home() {
   }, [latestQuestion]);
 
   useEffect(() => {
-    const cached = readCachedReport();
-    if (!cached) return;
+    let cancelled = false;
 
-    setDraft({ title: cached.title, content: "", publishedAt: cached.publishedAt });
-    setScoring({ status: "success", data: cached.scoring });
-    setQuestions({
-      status: "success",
-      data: { questions: cached.questionOrder, source: "fallback" },
-    });
-    setQuestionOrder(cached.questionOrder);
-    setDiagnostics(cached.diagnostics);
-    setAnalysisStarted(true);
-    setRestoredFromCache(true);
-  }, []);
+    async function restoreSession() {
+      const stored = readDraftSession();
+      const cached = readCachedReport();
+
+      if (stored) {
+        const storedHash = await createAnalysisHash(stored.draft);
+        if (cancelled) return;
+
+        setDraft(stored.draft);
+        if (stored.analysis?.status === "running") {
+          markDraftAnalysis(stored.draft, storedHash, "failed");
+          setError("上次分析在完成前中断，草稿已恢复，请重新分析。");
+        } else if (
+          stored.analysis?.status === "success" &&
+          stored.analysis.analysisHash === storedHash &&
+          cached?.analysisHash === storedHash
+        ) {
+          restoreCachedAnalysis(cached, stored.draft);
+        }
+      } else if (cached) {
+        restoreCachedAnalysis(cached, {
+          title: cached.report.title,
+          content: "",
+          publishedAt: cached.report.publishedAt,
+        });
+      }
+
+      if (!cancelled) setStorageReady(true);
+    }
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [restoreCachedAnalysis]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    saveDraftSession(draft);
+  }, [draft, storageReady]);
 
   useEffect(() => {
     if (restoredFromCache || !analysisStarted || scoring.status !== "success" || questions.status !== "success") return;
@@ -301,14 +359,19 @@ export default function Home() {
     });
     if (!allSettled) return;
 
+    const analysisHash = activeAnalysisHashRef.current;
+    if (!analysisHash) return;
+
+    markDraftAnalysis(draft, analysisHash, "success");
     saveCachedReport({
       title: draft.title,
       publishedAt: draft.publishedAt,
       scoring: scoring.data,
+      questionSource: questions.data.source,
       questionOrder,
       diagnostics,
-    });
-  }, [analysisStarted, diagnostics, draft.publishedAt, draft.title, questionOrder, questions, restoredFromCache, scoring]);
+    }, analysisHash);
+  }, [analysisStarted, diagnostics, draft, questionOrder, questions, restoredFromCache, scoring]);
 
   function updateDraft(field: keyof ArticleDraft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -350,6 +413,8 @@ export default function Home() {
       if (activeRunRef.current === runId) setScoring({ status: "success", data });
     } catch (requestError) {
       if (activeRunRef.current !== runId) return;
+      const analysisHash = activeAnalysisHashRef.current;
+      if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
       setScoring({
         status: "error",
         error: requestError instanceof Error ? requestError.message : "评分暂时失败。",
@@ -390,10 +455,14 @@ export default function Home() {
     }
   }
 
-  async function loadQuestionsAndDiagnostics(runId: number, articleParagraphs: Paragraph[], title: string) {
+  async function loadQuestionsAndDiagnostics(
+    runId: number,
+    articleParagraphs: Paragraph[],
+    article: ArticleDraft,
+  ) {
     try {
       const response = await postGeoJson("/api/predict-questions", {
-        title,
+        title: article.title,
         numbered_paragraphs: articleParagraphs,
       });
       if (!response.ok) throw new Error(await responseError(response, "问题预测暂时失败。"));
@@ -406,12 +475,14 @@ export default function Home() {
       await Promise.all(
         data.questions.map((question) =>
           scheduleGeoDiagnostic(() =>
-            diagnoseQuestion(runId, title, articleParagraphs, question),
+            diagnoseQuestion(runId, article.title, articleParagraphs, question),
           ),
         ),
       );
     } catch (requestError) {
       if (activeRunRef.current !== runId) return;
+      const analysisHash = activeAnalysisHashRef.current;
+      if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
       setQuestions({
         status: "error",
         error: requestError instanceof Error ? requestError.message : "问题预测暂时失败。",
@@ -445,9 +516,11 @@ export default function Home() {
       setSession({ status: "success" });
       recordUsage();
       void loadScoring(runId, article);
-      void loadQuestionsAndDiagnostics(runId, articleParagraphs, article.title);
+      void loadQuestionsAndDiagnostics(runId, articleParagraphs, article);
     } catch (requestError) {
       if (activeRunRef.current !== runId) return;
+      const analysisHash = activeAnalysisHashRef.current;
+      if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
       const message = requestError instanceof Error ? requestError.message : "暂时无法开始体检。";
       setSession({ status: "error", error: message });
       setScoring({ status: "idle" });
@@ -455,11 +528,23 @@ export default function Home() {
     }
   }
 
-  function startAnalysis(article: ArticleDraft) {
+  async function startAnalysis(article: ArticleDraft, force = false) {
     const runId = activeRunRef.current + 1;
     activeRunRef.current = runId;
+    const analysisHash = await createAnalysisHash(article);
+    if (activeRunRef.current !== runId) return;
+
+    const cached = readCachedReport();
+    if (!force && cached?.analysisHash === analysisHash) {
+      markDraftAnalysis(article, analysisHash, "success");
+      restoreCachedAnalysis(cached, article);
+      return;
+    }
+
     const articleParagraphs = createNumberedParagraphs(article.content);
 
+    activeAnalysisHashRef.current = analysisHash;
+    markDraftAnalysis(article, analysisHash, "running");
     setParagraphs(articleParagraphs);
     setAnalysisStarted(true);
     setSession({ status: "loading" });
@@ -508,7 +593,7 @@ export default function Home() {
       return;
     }
 
-    startAnalysis({ ...draft, content: contentText });
+    void startAnalysis({ ...draft, content: contentText });
   }
 
   function backToEditor() {
@@ -527,11 +612,11 @@ export default function Home() {
   }
 
   function retryScoring() {
-    startAnalysis(draft);
+    void startAnalysis(draft, true);
   }
 
   function retryQuestions() {
-    startAnalysis(draft);
+    void startAnalysis(draft, true);
   }
 
   function reportStatus() {
@@ -644,7 +729,7 @@ export default function Home() {
               return Boolean(item && item.errorCount < 2 && paragraphs.length > 0);
             }}
             onBackToEditor={backToEditor}
-            onRestartAnalysis={() => startAnalysis(draft)}
+            onRestartAnalysis={() => void startAnalysis(draft, true)}
             onRetryScoring={retryScoring}
             onRetryQuestions={retryQuestions}
             onRetryDiagnostic={retryDiagnostic}

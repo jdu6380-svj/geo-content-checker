@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { callOpenAICompatibleModel } from "@/lib/ai/openai-compatible";
+import { WARMUP_STATUS } from "@/lib/constants/analysis-contract";
 import {
   AnalysisIdentityConfigurationError,
   InvalidAnalysisClientIdError,
@@ -24,13 +25,23 @@ export const maxDuration = 5;
 function responseHeaders(requestId: string, mode?: string): HeadersInit {
   return {
     "Cache-Control": "no-store",
+    Deprecation: "true",
     "X-Request-ID": requestId,
+    "X-GEO-Warmup-Status": WARMUP_STATUS,
     ...(mode ? { "X-GEO-RateLimit-Mode": mode } : {}),
   };
 }
 
 async function handlePost(request: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+  console.warn(
+    JSON.stringify({
+      event: "geo_api_deprecation_warning",
+      requestId,
+      route: "/api/warmup",
+      status: WARMUP_STATUS,
+    }),
+  );
 
   try {
     const identity = resolveAnalysisIdentity(request);
@@ -75,7 +86,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
     markGeoRequestOutcome({ source: warmed ? "model" : "fallback" });
 
     return NextResponse.json(
-      { warmed, rateLimitMode: rateLimit.mode },
+      { warmed, rateLimitMode: rateLimit.mode, status: WARMUP_STATUS },
       { headers: responseHeaders(requestId, rateLimit.mode) },
     );
   } catch (error) {

@@ -34,7 +34,6 @@ export type GeoConcurrencyPool = {
 
 let memoryClientId: string | null = null;
 let memoryAnalysisToken: string | null = null;
-let warmupRequest: Promise<void> | null = null;
 
 function createUuid(): string {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -200,18 +199,4 @@ const diagnosticPool = createGeoConcurrencyPool(2);
 
 export function scheduleGeoDiagnostic<T>(task: () => Promise<T>): Promise<T> {
   return diagnosticPool.schedule(task);
-}
-
-export function warmGeoApi(): Promise<void> {
-  if (!warmupRequest) {
-    warmupRequest = postGeoJson(
-      "/api/warmup",
-      {},
-      { includeAnalysisToken: false },
-    )
-      .then(() => undefined)
-      .catch(() => undefined);
-  }
-
-  return warmupRequest;
 }

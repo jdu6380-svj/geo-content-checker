@@ -412,7 +412,11 @@ await check("limits warmup to once per device window", async () => {
   const first = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
   const second = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
   assert.equal(first.response.status, 200, responseSummary(first));
+  assert.equal(first.body?.status, "deprecated");
+  assert.equal(first.response.headers.get("deprecation"), "true");
+  assert.equal(first.response.headers.get("x-geo-warmup-status"), "deprecated");
   assert.equal(second.response.status, 429, responseSummary(second));
+  assert.equal(second.response.headers.get("deprecation"), "true");
   assert.equal(second.body?.error, "RATE_LIMITED");
 });
 

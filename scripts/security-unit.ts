@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
+import {
+  createAnalysisHash,
+  DRAFT_CONTENT_MAX_BYTES,
+  parseDraftSession,
+  serializeDraftSession,
+} from "../lib/client/analysis-persistence.ts";
+import {
+  ANALYSIS_CONTRACT_VERSION,
+  ANALYSIS_VERSION,
+  REPORT_SCHEMA_VERSION,
+} from "../lib/constants/analysis-contract.ts";
 import { MAX_ARTICLE_CHARACTERS } from "../lib/constants/input-limits.ts";
 import { formatPatchMarkdown } from "../lib/markdown/patch-markdown.ts";
 import { betaEventSchema } from "../lib/schemas/beta-event.ts";
@@ -17,6 +28,52 @@ import {
 import { scrubSentryEvent } from "../lib/sentry-scrub.ts";
 
 assert.equal(MAX_ARTICLE_CHARACTERS, 12_000);
+
+const normalizedHash = await createAnalysisHash({
+  title: "  测试标题  ",
+  content: "第一行\r\n第二行\r\n",
+  publishedAt: "",
+});
+assert.equal(
+  normalizedHash,
+  await createAnalysisHash({
+    title: "测试标题",
+    content: "第一行\n第二行",
+    publishedAt: "   ",
+  }),
+);
+assert.notEqual(
+  normalizedHash,
+  await createAnalysisHash({
+    title: "测试标题",
+    content: "第一行\n第二行已修改",
+    publishedAt: "",
+  }),
+);
+
+const draftEnvelope = {
+  analysisVersion: ANALYSIS_VERSION,
+  analysisContractVersion: ANALYSIS_CONTRACT_VERSION,
+  reportSchemaVersion: REPORT_SCHEMA_VERSION,
+  savedAt: new Date().toISOString(),
+  draft: { title: "标题", content: "正文", publishedAt: "" },
+  analysis: { analysisHash: normalizedHash, status: "success" as const },
+};
+const serializedDraft = serializeDraftSession(draftEnvelope);
+assert.equal(typeof serializedDraft, "string");
+assert.deepEqual(parseDraftSession(serializedDraft ?? ""), draftEnvelope);
+assert.equal(
+  serializeDraftSession({
+    ...draftEnvelope,
+    draft: { ...draftEnvelope.draft, content: "中".repeat(DRAFT_CONTENT_MAX_BYTES) },
+  }),
+  null,
+);
+assert.equal(
+  parseDraftSession(JSON.stringify({ ...draftEnvelope, analysisContractVersion: 999 })),
+  null,
+);
+
 assert.equal(betaEventSchema.safeParse({ event: "visit" }).success, true);
 assert.equal(
   betaEventSchema.safeParse({ event: "analysis_completed", runId: crypto.randomUUID() }).success,
