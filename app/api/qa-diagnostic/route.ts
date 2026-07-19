@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { callOpenAICompatibleModel, ModelCallError } from "@/lib/ai/openai-compatible";
 import { cleanModelJson } from "@/lib/ai/json";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
+import { validateDiagnosticEvidence } from "@/lib/geo/evidence";
 import {
   modelDiagnosticSchema,
   qaDiagnosticRequestSchema,
@@ -88,7 +89,7 @@ function fallbackDiagnostic(question: string, paragraphs: Paragraph[]): Diagnost
   const asksForEvidence = /事实|案例|来源|证据|数据/.test(question);
 
   if (riskyParagraph) {
-    return {
+    return validateDiagnosticEvidence({
       question,
       answerability: "有风险",
       riskLevel: "high",
@@ -96,11 +97,11 @@ function fallbackDiagnostic(question: string, paragraphs: Paragraph[]): Diagnost
       missingInfo: ["原文包含绝对化或无法由当前材料验证的承诺。"],
       recommendation: "将绝对化结论改为有条件的表述，并补充可核验的来源、适用范围和限制条件。",
       source: "fallback",
-    };
+    }, paragraphs);
   }
 
   if (best && best.score >= 3 && (!asksForEvidence || VERIFIABLE_FACT_PATTERN.test(best.paragraph.text))) {
-    return {
+    return validateDiagnosticEvidence({
       question,
       answerability: "可以完全回答",
       riskLevel: "low",
@@ -108,10 +109,10 @@ function fallbackDiagnostic(question: string, paragraphs: Paragraph[]): Diagnost
       missingInfo: [],
       recommendation: "保留当前直接回答，并考虑用小标题或 FAQ 进一步强化问题与答案的对应关系。",
       source: "fallback",
-    };
+    }, paragraphs);
   }
 
-  return {
+  return validateDiagnosticEvidence({
     question,
     answerability: "信息不足",
     riskLevel: "medium",
@@ -121,26 +122,7 @@ function fallbackDiagnostic(question: string, paragraphs: Paragraph[]): Diagnost
     missingInfo: ["原文缺少对该问题直接、完整的回答。"],
     recommendation: "增加一个直接回应该问题的小节，并补充事实依据、适用范围或限制条件。",
     source: "fallback",
-  };
-}
-
-function validateEvidence(result: DiagnosticResult, paragraphs: Paragraph[]): DiagnosticResult {
-  const paragraphMap = new Map(paragraphs.map((paragraph) => [paragraph.id, paragraph.text]));
-  const evidence = result.evidence.filter((item) => paragraphMap.get(item.paragraphId)?.includes(item.quote));
-  const mustDowngrade = result.answerability === "可以完全回答" && evidence.length === 0;
-
-  return {
-    ...result,
-    answerability: mustDowngrade ? "信息不足" : result.answerability,
-    riskLevel: mustDowngrade ? "medium" : result.answerability === "有风险" ? "high" : result.riskLevel,
-    evidence,
-    missingInfo: mustDowngrade
-      ? ["没有找到能够逐字验证该回答的原文证据。"]
-      : result.missingInfo,
-    recommendation: mustDowngrade
-      ? "请在原文中增加对该问题的直接回答与可核验证据。"
-      : result.recommendation,
-  };
+  }, paragraphs);
 }
 
 async function handlePost(request: NextRequest): Promise<Response> {
@@ -178,7 +160,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         rateLimitMode: authorization.mode,
       });
       const parsed = modelDiagnosticSchema.parse(JSON.parse(cleanModelJson(raw)));
-      const result = validateEvidence({ ...parsed, question, source: "model" }, paragraphs);
+      const result = validateDiagnosticEvidence({ ...parsed, question, source: "model" }, paragraphs);
       markGeoRequestOutcome({ source: "model" });
       return NextResponse.json(result, { headers });
     } catch (error) {

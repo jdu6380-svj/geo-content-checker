@@ -1,10 +1,10 @@
-import type { DiagnosticResult, EvaluateScoringResponse } from "@/lib/schemas/geo";
-import type { PredictQuestionsResponse } from "@/lib/schemas/geo";
+import type { DiagnosticResult, EvaluateScoringResponse } from "../schemas/geo.ts";
+import type { PredictQuestionsResponse } from "../schemas/geo.ts";
 import {
   ANALYSIS_CONTRACT_VERSION,
   ANALYSIS_VERSION,
   REPORT_SCHEMA_VERSION,
-} from "@/lib/constants/analysis-contract";
+} from "../constants/analysis-contract.ts";
 
 export type DiagnosticStatus = "queued" | "loading" | "success" | "error";
 
@@ -63,8 +63,22 @@ function isCacheEnvelope(value: unknown): value is CacheEnvelope {
     (envelope.report?.questionSource === "model" || envelope.report?.questionSource === "fallback") &&
     Array.isArray(envelope.report?.questionOrder) &&
     Boolean(envelope.report?.scoring) &&
-    Boolean(envelope.report?.diagnostics)
+    hasCompatibleDiagnostics(envelope.report?.diagnostics)
   );
+}
+
+function hasCompatibleDiagnostics(value: unknown): value is DiagnosticsState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+
+  return Object.values(value).every((item) => {
+    if (!item || typeof item !== "object") return false;
+    const data = (item as Partial<DiagnosticItem>).data;
+    return data === undefined || (
+      data.evidenceStatus === "valid" ||
+      data.evidenceStatus === "missing" ||
+      data.evidenceStatus === "invalid"
+    );
+  });
 }
 
 function clearCache(): void {
@@ -99,6 +113,23 @@ export function readCachedReport(): CacheEnvelope | null {
   }
 }
 
+function stripCachedEvidence(diagnostics: DiagnosticsState): DiagnosticsState {
+  return Object.fromEntries(
+    Object.entries(diagnostics).map(([question, item]) => [
+      question,
+      item.data
+        ? {
+            ...item,
+            data: {
+              ...item.data,
+              evidence: [],
+            },
+          }
+        : item,
+    ]),
+  );
+}
+
 function summarizeDiagnostics(diagnostics: DiagnosticsState): DiagnosticsState {
   return Object.fromEntries(
     Object.entries(diagnostics).map(([question, item]) => [
@@ -122,6 +153,7 @@ export function saveCachedReport(report: CachedReport, analysisHash: string): vo
   const cacheSafeReport: CachedReport = {
     ...report,
     scoring: { ...report.scoring, numbered_paragraphs: [] },
+    diagnostics: stripCachedEvidence(report.diagnostics),
   };
   let envelope: CacheEnvelope = {
     analysisVersion: ANALYSIS_VERSION,

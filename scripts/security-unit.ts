@@ -8,10 +8,15 @@ import {
   serializeDraftSession,
 } from "../lib/client/analysis-persistence.ts";
 import {
+  readCachedReport,
+  saveCachedReport,
+} from "../lib/client/report-state.ts";
+import {
   ANALYSIS_CONTRACT_VERSION,
   ANALYSIS_VERSION,
   REPORT_SCHEMA_VERSION,
 } from "../lib/constants/analysis-contract.ts";
+import { validateDiagnosticEvidence } from "../lib/geo/evidence.ts";
 import { MAX_ARTICLE_CHARACTERS } from "../lib/constants/input-limits.ts";
 import { formatPatchMarkdown } from "../lib/markdown/patch-markdown.ts";
 import { betaEventSchema } from "../lib/schemas/beta-event.ts";
@@ -73,6 +78,125 @@ assert.equal(
   parseDraftSession(JSON.stringify({ ...draftEnvelope, analysisContractVersion: 999 })),
   null,
 );
+
+const evidenceParagraphs = [
+  { id: "Para-1", text: "第一段提供了可以逐字验证的事实依据。" },
+  { id: "Para-2", text: "第二段说明适用范围和限制条件。" },
+];
+const validDiagnostic = validateDiagnosticEvidence({
+  question: "文章提供了哪些事实依据？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [{ paragraphId: "Para-1", quote: "可以逐字验证的事实依据" }],
+  missingInfo: [],
+  recommendation: "保留当前事实依据。",
+  source: "model",
+}, evidenceParagraphs);
+assert.equal(validDiagnostic.evidenceStatus, "valid");
+assert.equal(validDiagnostic.answerability, "可以完全回答");
+assert.equal(validDiagnostic.evidence.length, 1);
+
+const missingDiagnostic = validateDiagnosticEvidence({
+  question: "文章是否提供来源？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [],
+  missingInfo: [],
+  recommendation: "保留当前内容。",
+  source: "fallback",
+}, evidenceParagraphs);
+assert.equal(missingDiagnostic.evidenceStatus, "missing");
+assert.equal(missingDiagnostic.answerability, "信息不足");
+assert.equal(missingDiagnostic.riskLevel, "medium");
+assert.equal(missingDiagnostic.source, "fallback");
+
+const invalidDiagnostic = validateDiagnosticEvidence({
+  question: "文章是否说明限制？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [{ paragraphId: "Para-9", quote: "不存在的引用" }],
+  missingInfo: [],
+  recommendation: "保留当前内容。",
+  source: "model",
+}, evidenceParagraphs);
+assert.equal(invalidDiagnostic.evidenceStatus, "invalid");
+assert.equal(invalidDiagnostic.answerability, "信息不足");
+assert.equal(invalidDiagnostic.evidence.length, 0);
+
+const partiallyInvalidDiagnostic = validateDiagnosticEvidence({
+  question: "文章说明了什么？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [
+    { paragraphId: "Para-2", quote: "适用范围和限制条件" },
+    { paragraphId: "Para-2", quote: "被改写过的非连续引用" },
+  ],
+  missingInfo: [],
+  recommendation: "保留当前内容。",
+  source: "model",
+}, evidenceParagraphs);
+assert.equal(partiallyInvalidDiagnostic.evidenceStatus, "invalid");
+assert.equal(partiallyInvalidDiagnostic.answerability, "信息不足");
+assert.deepEqual(partiallyInvalidDiagnostic.evidence, [
+  { paragraphId: "Para-2", quote: "适用范围和限制条件" },
+]);
+
+const localStorageValues = new Map<string, string>();
+Object.defineProperty(globalThis, "window", {
+  configurable: true,
+  value: {
+    localStorage: {
+      getItem(key: string) {
+        return localStorageValues.get(key) ?? null;
+      },
+      setItem(key: string, value: string) {
+        localStorageValues.set(key, value);
+      },
+      removeItem(key: string) {
+        localStorageValues.delete(key);
+      },
+    },
+  },
+});
+
+saveCachedReport({
+  title: "缓存测试",
+  publishedAt: "",
+  scoring: {
+    totalScore: 60,
+    dimensions: {
+      questionCoverage: { score: 20, max: 35, reason: "问题覆盖一般。" },
+      factCompleteness: { score: 15, max: 30, reason: "事实仍需补充。" },
+      structureClarity: { score: 15, max: 20, reason: "结构较清楚。" },
+      freshness: { score: 10, max: 15, reason: "提供了日期。" },
+    },
+    numbered_paragraphs: evidenceParagraphs,
+    source: "model",
+  },
+  questionSource: "model",
+  questionOrder: [validDiagnostic.question],
+  diagnostics: {
+    [validDiagnostic.question]: {
+      question: validDiagnostic.question,
+      status: "success",
+      errorCount: 0,
+      data: validDiagnostic,
+    },
+  },
+}, normalizedHash);
+const cachedReport = readCachedReport();
+assert.ok(cachedReport);
+assert.equal(cachedReport.report.scoring.numbered_paragraphs.length, 0);
+assert.equal(cachedReport.report.diagnostics[validDiagnostic.question].data?.evidenceStatus, "valid");
+assert.equal(cachedReport.report.diagnostics[validDiagnostic.question].data?.evidence.length, 0);
+
+const reportCacheKey = localStorageValues.keys().next().value;
+if (!reportCacheKey) throw new Error("report cache key was not written");
+const incompatibleCache = structuredClone(cachedReport);
+delete (incompatibleCache.report.diagnostics[validDiagnostic.question].data as { evidenceStatus?: string })
+  .evidenceStatus;
+localStorageValues.set(reportCacheKey, JSON.stringify(incompatibleCache));
+assert.equal(readCachedReport(), null);
 
 assert.equal(betaEventSchema.safeParse({ event: "visit" }).success, true);
 assert.equal(

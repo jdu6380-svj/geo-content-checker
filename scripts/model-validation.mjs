@@ -108,6 +108,7 @@ let totalModelRequests = 0;
 let modelCalls = 0;
 let evidenceItems = [];
 let evidenceErrors = 0;
+let invalidEvidenceStatuses = 0;
 
 for (let articleIndex = 0; articleIndex < corpus.length; articleIndex += 1) {
   const article = corpus[articleIndex];
@@ -153,6 +154,20 @@ for (let articleIndex = 0; articleIndex < corpus.length; articleIndex += 1) {
       totalModelRequests += 1;
       requireModelSource(diagnostic, "/api/qa-diagnostic");
       modelCalls += 1;
+      assert.ok(
+        ["valid", "missing", "invalid"].includes(diagnostic.evidenceStatus),
+        `diagnostic returned invalid evidenceStatus: ${diagnostic.evidenceStatus}`,
+      );
+      if (diagnostic.evidenceStatus === "valid") {
+        assert.ok(diagnostic.evidence?.length > 0, "valid evidenceStatus requires evidence");
+      }
+      if (diagnostic.evidenceStatus === "missing") {
+        assert.equal(diagnostic.evidence?.length || 0, 0, "missing evidenceStatus cannot include evidence");
+      }
+      if (diagnostic.evidenceStatus === "invalid") {
+        invalidEvidenceStatuses += 1;
+        evidenceErrors += 1;
+      }
       diagnostics.push(diagnostic);
       for (const evidence of diagnostic.evidence || []) {
         const paragraph = paragraphs.find((item) => item.id === evidence.paragraphId);
@@ -164,6 +179,7 @@ for (let articleIndex = 0; articleIndex < corpus.length; articleIndex += 1) {
           question,
           paragraphId: evidence.paragraphId,
           quote: evidence.quote,
+          evidenceStatus: diagnostic.evidenceStatus,
           valid,
           semanticReview: "pending",
         });
@@ -258,6 +274,7 @@ const summary = {
   answerabilityConsistency: Number(answerabilityConsistency.toFixed(4)),
   evidenceItems: evidenceItems.length,
   fabricatedEvidenceErrors: evidenceErrors,
+  invalidEvidenceStatuses,
   semanticReviewsPending,
   thresholds: {
     scoreRangePass: Math.max(...scoreRanges) <= 10,

@@ -95,7 +95,10 @@ export function ReportWorkspace({
   onSubmitFollowUp,
   onScrollToSection,
 }: ReportWorkspaceProps) {
-  const evidenceCount = scoring.status === "success" ? scoring.data.numbered_paragraphs.length : 0;
+  const evidenceCount = Object.values(diagnostics).reduce(
+    (count, item) => count + (item.data?.evidence.length ?? 0),
+    0,
+  );
 
   return (
     <section
@@ -231,7 +234,7 @@ export function ReportWorkspace({
 
             <div className="report-action-stage grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
               <PatchWorkshop title={title} paragraphs={paragraphs} diagnostics={diagnostics} />
-              <ReportEvidencePanel scoring={scoring} restoredFromCache={restoredFromCache} />
+              <ReportEvidencePanel diagnostics={diagnostics} restoredFromCache={restoredFromCache} />
             </div>
           </div>
         </div>

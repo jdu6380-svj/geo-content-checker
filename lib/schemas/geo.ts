@@ -57,6 +57,7 @@ export const predictQuestionsResponseSchema = modelQuestionsSchema.extend({
 
 export const answerabilitySchema = z.enum(["可以完全回答", "信息不足", "有风险"]);
 export const riskLevelSchema = z.enum(["low", "medium", "high"]);
+export const evidenceStatusSchema = z.enum(["valid", "missing", "invalid"]);
 
 export const evidenceSchema = z.object({
   paragraphId: z.string().regex(/^Para-\d+$/),
@@ -78,6 +79,7 @@ export const modelDiagnosticSchema = z.object({
 
 export const qaDiagnosticResponseSchema = modelDiagnosticSchema.extend({
   source: sourceSchema,
+  evidenceStatus: evidenceStatusSchema,
 });
 
 export const patchModeSchema = z.enum(["advice", "content_draft"]);
@@ -158,6 +160,7 @@ export type EvaluateScoringRequest = z.infer<typeof evaluateScoringRequestSchema
 export type EvaluateScoringResponse = z.infer<typeof evaluateScoringResponseSchema>;
 export type PredictQuestionsResponse = z.infer<typeof predictQuestionsResponseSchema>;
 export type DiagnosticResult = z.infer<typeof qaDiagnosticResponseSchema>;
+export type EvidenceStatus = z.infer<typeof evidenceStatusSchema>;
 export type PatchMode = z.infer<typeof patchModeSchema>;
 export type PatchAction = z.infer<typeof patchActionSchema>;
 export type ModelAdviceAction = z.infer<typeof modelAdviceActionsSchema>["actions"][number];

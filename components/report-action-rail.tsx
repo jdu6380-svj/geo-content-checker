@@ -43,7 +43,7 @@ export function ReportActionRail({
       id: "evidence-section",
       icon: FileText,
       label: "证据锚点",
-      meta: evidenceCount ? `${evidenceCount} 个原文段落` : restoredFromCache ? "缓存报告未保留" : "等待评分结果",
+      meta: evidenceCount ? `${evidenceCount} 条有效引用` : restoredFromCache ? "缓存未保留引用" : "等待诊断结果",
       ready: evidenceCount > 0,
     },
   ];

@@ -2,6 +2,7 @@
 
 import { AlertTriangle, FileSearch, RefreshCw } from "lucide-react";
 
+import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import type { DiagnosticItem } from "@/lib/client/report-state";
 
 type DiagnosticDetailPanelProps = {
@@ -95,6 +96,7 @@ export function DiagnosticDetailPanel({
             <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${risk.className}`}>
               {risk.label}
             </span>
+            <EvidenceStatusBadge status={item.data.evidenceStatus} />
           </div>
         </div>
       </div>
@@ -102,6 +104,11 @@ export function DiagnosticDetailPanel({
       <div className="grid">
         <section className="px-5 py-5">
           <p className="section-kicker">原文证据</p>
+          {item.data.evidenceStatus === "invalid" ? (
+            <p className="mt-3 border-l-2 border-[#c85745] bg-[#fff8f6] px-3 py-2 text-xs leading-5 text-[#963d2e]">
+              模型返回了无法逐字定位的引用；无效内容已移除。
+            </p>
+          ) : null}
           {item.data.evidence.length ? (
             <div className="mt-4 grid gap-4">
               {item.data.evidence.map((evidence) => (

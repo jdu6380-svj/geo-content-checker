@@ -28,6 +28,7 @@ const patchDiagnostics = [
     answerability: "信息不足",
     riskLevel: "medium",
     evidence: [{ paragraphId: "Para-1", quote: paragraphs[0].text }],
+    evidenceStatus: "valid",
     missingInfo: ["发布日期"],
     recommendation: "补充发布日期和适用边界。",
     source: "fallback",
@@ -393,6 +394,14 @@ await check("consumes one diagnostic allowance", async () => {
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(result.response.headers.get("x-geo-operation-remaining"), "9");
   assertExpectedSource(result.body?.source);
+  assert.ok(["valid", "missing", "invalid"].includes(result.body?.evidenceStatus));
+  assert.ok(Array.isArray(result.body?.evidence));
+  if (result.body.evidenceStatus === "valid") assert.ok(result.body.evidence.length > 0);
+  if (result.body.evidenceStatus === "missing") assert.equal(result.body.evidence.length, 0);
+  for (const item of result.body.evidence) {
+    const paragraph = paragraphs.find((value) => value.id === item.paragraphId);
+    assert.equal(paragraph?.text.includes(item.quote), true);
+  }
 });
 
 await check("allows patch generation once", async () => {

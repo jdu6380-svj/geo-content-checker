@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { ChevronRight } from "lucide-react";
 
+import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import type { DiagnosticItem } from "@/lib/client/report-state";
 
 type DiagnosticAccordionItemProps = {
@@ -103,9 +104,12 @@ export function DiagnosticAccordionItem({
                 </span>
               ) : null}
               {item.data ? (
-                <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
-                  {item.data.answerability}
-                </span>
+                <>
+                  <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
+                    {item.data.answerability}
+                  </span>
+                  <EvidenceStatusBadge status={item.data.evidenceStatus} />
+                </>
               ) : null}
             </span>
           </span>
@@ -154,6 +158,11 @@ export function DiagnosticAccordionItem({
             <div className="grid bg-[#f7f9f8] text-sm min-[760px]:grid-cols-[1.1fr_.9fr]">
               <div className="px-4 py-5 sm:px-5">
                 <h3 className="text-sm font-bold">原文证据</h3>
+                {item.data.evidenceStatus === "invalid" ? (
+                  <p className="mt-3 border-l-2 border-[#c85745] bg-[#fff8f6] px-3 py-2 text-xs leading-5 text-[#963d2e]">
+                    无法定位的引用已被移除。
+                  </p>
+                ) : null}
                 {item.data.evidence.length ? (
                   <div className="mt-3 grid gap-3">
                     {item.data.evidence.map((evidence) => (
