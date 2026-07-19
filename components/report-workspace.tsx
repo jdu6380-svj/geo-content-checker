@@ -50,6 +50,8 @@ type ReportWorkspaceProps = {
   canSubmitFollowUp: boolean;
   customQuestionCount: number;
   answeredCustomQuestionCount: number;
+  feedbackByQuestion: Record<string, boolean | undefined>;
+  feedbackEnabled: boolean;
   canRetryDiagnostic: (question: string) => boolean;
   onBackToEditor: () => void;
   onRestartAnalysis: () => void;
@@ -59,6 +61,7 @@ type ReportWorkspaceProps = {
   onToggleQuestion: (question: string) => void;
   onFollowUpQuestionChange: (value: string) => void;
   onSubmitFollowUp: (event: FormEvent<HTMLFormElement>) => void;
+  onDiagnosisFeedback: (question: string, helpful: boolean) => void;
   onScrollToSection: (sectionId: string) => void;
 };
 
@@ -86,6 +89,8 @@ export function ReportWorkspace({
   canSubmitFollowUp,
   customQuestionCount,
   answeredCustomQuestionCount,
+  feedbackByQuestion,
+  feedbackEnabled,
   canRetryDiagnostic,
   onBackToEditor,
   onRestartAnalysis,
@@ -95,18 +100,33 @@ export function ReportWorkspace({
   onToggleQuestion,
   onFollowUpQuestionChange,
   onSubmitFollowUp,
+  onDiagnosisFeedback,
   onScrollToSection,
 }: ReportWorkspaceProps) {
   const evidenceCount = Object.values(diagnostics).reduce(
     (count, item) => count + (item.data?.evidence.length ?? 0),
     0,
   );
+  const diagnosticsPending = Object.values(diagnostics).some(
+    (item) => item.status === "queued" || item.status === "loading",
+  );
+  const loadingMessage = session.status === "loading"
+    ? "正在建立分析会话并整理文章结构。"
+    : scoring.status === "loading" && questions.status === "loading"
+      ? "正在评估文章结构并识别读者问题。"
+      : scoring.status === "loading"
+        ? "正在评估文章结构与信息完整度。"
+        : questions.status === "loading"
+          ? "正在识别读者可能提出的问题。"
+          : diagnosticsPending
+            ? "正在逐题验证原文证据并生成诊断。"
+            : null;
 
   return (
     <section
       id="report-overview"
       className="report-workspace section-anchor surface-enter mx-auto max-w-[1480px] px-4 py-4 sm:px-6 sm:py-5 lg:px-8"
-      aria-busy={session.status === "loading" || scoring.status === "loading" || questions.status === "loading"}
+      aria-busy={Boolean(loadingMessage)}
     >
       <div className="report-command-bar surface-flat flex flex-wrap items-center gap-2 px-3 py-2">
         <div className="inline-flex h-9 shrink-0 items-center gap-2 px-2 text-sm font-semibold text-[#252a31]">
@@ -173,13 +193,13 @@ export function ReportWorkspace({
       ) : null}
 
       <div hidden={session.status === "error"}>
-        {session.status === "loading" ? (
+        {loadingMessage ? (
           <div role="status" aria-live="polite" className="mt-4 flex items-center gap-3 rounded-lg border border-[#d7e8e5] bg-[#eef8f6] px-4 py-3 text-sm text-[#4e615e]">
             <span
               aria-hidden="true"
               className="size-4 shrink-0 animate-spin rounded-full border-2 border-[#b9d9d4] border-t-[#0f766e] motion-reduce:animate-none"
             />
-            <span>正在建立分析会话并整理文章结构。</span>
+            <span>{loadingMessage}</span>
           </div>
         ) : null}
 
@@ -217,11 +237,14 @@ export function ReportWorkspace({
                 canSubmitFollowUp={canSubmitFollowUp}
                 customQuestionCount={customQuestionCount}
                 answeredCustomQuestionCount={answeredCustomQuestionCount}
+                feedbackByQuestion={feedbackByQuestion}
+                feedbackEnabled={feedbackEnabled}
                 onRetryQuestions={onRetryQuestions}
                 onRetryDiagnostic={onRetryDiagnostic}
                 onToggleQuestion={onToggleQuestion}
                 onFollowUpQuestionChange={onFollowUpQuestionChange}
                 onSubmitFollowUp={onSubmitFollowUp}
+                onDiagnosisFeedback={onDiagnosisFeedback}
               />
 
               <ReportActionRail

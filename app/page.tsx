@@ -235,6 +235,7 @@ export default function Home() {
   const [storageReady, setStorageReady] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [feedbackByQuestion, setFeedbackByQuestion] = useState<Record<string, boolean | undefined>>({});
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const latestQuestionRef = useRef<HTMLDivElement>(null);
@@ -286,6 +287,7 @@ export default function Home() {
     });
     setQuestionOrder(cached.report.questionOrder);
     setDiagnostics(cached.report.diagnostics);
+    setFeedbackByQuestion({});
     setAnalysisStarted(true);
     setRestoredFromCache(true);
   }, []);
@@ -468,6 +470,7 @@ export default function Home() {
     setQuestions({ status: "idle" });
     setQuestionOrder([]);
     setDiagnostics({});
+    setFeedbackByQuestion({});
     setParagraphs([]);
     setFollowUpQuestion("");
     setFollowUpError("");
@@ -634,6 +637,7 @@ export default function Home() {
     setQuestions({ status: "loading" });
     setQuestionOrder([]);
     setDiagnostics({});
+    setFeedbackByQuestion({});
     setFollowUpQuestion("");
     setFollowUpError("");
     setLatestQuestion(null);
@@ -769,6 +773,21 @@ export default function Home() {
     );
   }
 
+  function submitDiagnosisFeedback(question: string, helpful: boolean) {
+    if (restoredFromCache || !activeSessionRunId) return;
+    if (feedbackByQuestion[question] !== undefined) return;
+    const diagnosticIndex = questionOrder.indexOf(question);
+    if (diagnosticIndex < 0) return;
+
+    setFeedbackByQuestion((current) => ({ ...current, [question]: helpful }));
+    void postGeoBetaEvent({
+      event: "diagnosis_feedback",
+      runId: activeSessionRunId,
+      diagnosticIndex,
+      helpful,
+    });
+  }
+
   return (
     <main className="app-shell">
       <AppHeader
@@ -807,6 +826,8 @@ export default function Home() {
             canSubmitFollowUp={canSubmitFollowUp}
             customQuestionCount={customQuestions.length}
             answeredCustomQuestionCount={answeredCustomQuestions}
+            feedbackByQuestion={feedbackByQuestion}
+            feedbackEnabled={Boolean(activeSessionRunId) && !restoredFromCache}
             canRetryDiagnostic={(question) => {
               const item = diagnostics[question];
               return Boolean(item && item.errorCount < 2 && paragraphs.length > 0);
@@ -824,6 +845,7 @@ export default function Home() {
               setFollowUpError("");
             }}
             onSubmitFollowUp={submitFollowUp}
+            onDiagnosisFeedback={submitDiagnosisFeedback}
             onScrollToSection={scrollToSection}
           />
         ) : (

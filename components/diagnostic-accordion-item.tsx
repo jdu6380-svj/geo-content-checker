@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
+import { DiagnosisFeedback } from "@/components/diagnosis-feedback";
 import type { DiagnosticItem } from "@/lib/client/report-state";
 
 type DiagnosticAccordionItemProps = {
@@ -14,6 +15,9 @@ type DiagnosticAccordionItemProps = {
   onRetry: () => void;
   canRetry: boolean;
   fromCachedReport: boolean;
+  feedback?: boolean;
+  feedbackEnabled: boolean;
+  onFeedback: (helpful: boolean) => void;
 };
 
 type DiagnosticPresentation = Readonly<{
@@ -58,6 +62,9 @@ export function DiagnosticAccordionItem({
   onRetry,
   canRetry,
   fromCachedReport,
+  feedback,
+  feedbackEnabled,
+  onFeedback,
 }: DiagnosticAccordionItemProps) {
   const contentId = `diagnostic-${id}`;
   const isReady = item.status === "success" && Boolean(item.data);
@@ -202,6 +209,7 @@ export function DiagnosticAccordionItem({
                   <h3 className="font-bold text-[#416b8a]">修改建议</h3>
                   <p className="mt-2 leading-6 text-[#46545e]">{item.data.recommendation}</p>
                 </div>
+                <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
               </div>
             </div>
           ) : null}

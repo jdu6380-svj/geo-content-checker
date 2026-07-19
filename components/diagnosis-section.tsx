@@ -27,11 +27,14 @@ type DiagnosisSectionProps = {
   canSubmitFollowUp: boolean;
   customQuestionCount: number;
   answeredCustomQuestionCount: number;
+  feedbackByQuestion: Record<string, boolean | undefined>;
+  feedbackEnabled: boolean;
   onRetryQuestions: () => void;
   onRetryDiagnostic: (question: string) => void;
   onToggleQuestion: (question: string) => void;
   onFollowUpQuestionChange: (value: string) => void;
   onSubmitFollowUp: (event: FormEvent<HTMLFormElement>) => void;
+  onDiagnosisFeedback: (question: string, helpful: boolean) => void;
 };
 
 const STATUS_STYLE = {
@@ -94,11 +97,14 @@ export function DiagnosisSection({
   canSubmitFollowUp,
   customQuestionCount,
   answeredCustomQuestionCount,
+  feedbackByQuestion,
+  feedbackEnabled,
   onRetryQuestions,
   onRetryDiagnostic,
   onToggleQuestion,
   onFollowUpQuestionChange,
   onSubmitFollowUp,
+  onDiagnosisFeedback,
 }: DiagnosisSectionProps) {
   const diagnosticItems = questionOrder.map((question) => createDiagnosticItem(question, diagnostics));
   const fallbackQuestion = diagnosticItems.find((item) => item.status === "success")?.question ?? questionOrder[0] ?? null;
@@ -180,8 +186,13 @@ export function DiagnosisSection({
             item={activeItem}
             fromCachedReport={restoredFromCache}
             canRetry={activeQuestion ? canRetryDiagnostic(activeQuestion) : false}
+            feedback={activeQuestion ? feedbackByQuestion[activeQuestion] : undefined}
+            feedbackEnabled={feedbackEnabled && Boolean(activeQuestion)}
             onRetry={() => {
               if (activeQuestion) onRetryDiagnostic(activeQuestion);
+            }}
+            onFeedback={(helpful) => {
+              if (activeQuestion) onDiagnosisFeedback(activeQuestion, helpful);
             }}
           />
         </div>
@@ -197,6 +208,9 @@ export function DiagnosisSection({
                 onRetry={() => onRetryDiagnostic(item.question)}
                 canRetry={canRetryDiagnostic(item.question)}
                 fromCachedReport={restoredFromCache}
+                feedback={feedbackByQuestion[item.question]}
+                feedbackEnabled={feedbackEnabled}
+                onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
               />
             </div>
           ))}

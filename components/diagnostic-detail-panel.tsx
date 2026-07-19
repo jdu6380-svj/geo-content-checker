@@ -3,13 +3,17 @@
 import { AlertTriangle, FileSearch, RefreshCw } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
+import { DiagnosisFeedback } from "@/components/diagnosis-feedback";
 import type { DiagnosticItem } from "@/lib/client/report-state";
 
 type DiagnosticDetailPanelProps = {
   item: DiagnosticItem | null;
   fromCachedReport: boolean;
   canRetry: boolean;
+  feedback?: boolean;
+  feedbackEnabled: boolean;
   onRetry: () => void;
+  onFeedback: (helpful: boolean) => void;
 };
 
 const STATUS_STYLE = {
@@ -28,7 +32,10 @@ export function DiagnosticDetailPanel({
   item,
   fromCachedReport,
   canRetry,
+  feedback,
+  feedbackEnabled,
   onRetry,
+  onFeedback,
 }: DiagnosticDetailPanelProps) {
   if (!item) {
     return (
@@ -144,6 +151,7 @@ export function DiagnosticDetailPanel({
             <p className="section-kicker text-[#416b8a]">修改建议</p>
             <p className="mt-2 text-sm leading-7 text-[#46545e]">{item.data.recommendation}</p>
           </section>
+          <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
         </div>
       </div>
     </div>
