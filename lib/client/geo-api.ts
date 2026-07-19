@@ -18,7 +18,8 @@ export interface AnalysisSessionClientData {
     score: number;
     predict: number;
     diagnose: number;
-    patch: number;
+    patchAdvice: number;
+    patchContent: number;
   };
   rateLimitMode: string;
 }

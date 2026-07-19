@@ -230,7 +230,7 @@ export function ReportWorkspace({
             </div>
 
             <div className="report-action-stage grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-              <PatchWorkshop title={title} paragraphs={paragraphs} />
+              <PatchWorkshop title={title} paragraphs={paragraphs} diagnostics={diagnostics} />
               <ReportEvidencePanel scoring={scoring} restoredFromCache={restoredFromCache} />
             </div>
           </div>

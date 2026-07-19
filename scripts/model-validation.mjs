@@ -175,21 +175,27 @@ for (let articleIndex = 0; articleIndex < corpus.length; articleIndex += 1) {
     if (runIndex === 0) {
       patches = await call(
         "/api/generate-patches",
-        { title: article.title, numbered_paragraphs: paragraphs },
+        {
+          title: article.title,
+          numbered_paragraphs: paragraphs,
+          diagnostics,
+          mode: "content_draft",
+        },
         clientId,
         token,
       );
       totalModelRequests += 1;
       requireModelSource(patches, "/api/generate-patches");
       modelCalls += 1;
-      for (const item of [...(patches.faqs || []), ...(patches.factCards || [])]) {
+      for (const item of patches.actions || []) {
+        if (item.type !== "faq" && item.type !== "fact_card") continue;
         const evidence = item.evidence;
         const paragraph = paragraphs.find((value) => value.id === evidence?.paragraphId);
         const valid = Boolean(paragraph?.text.includes(evidence?.quote || ""));
         evidenceItems.push({
           articleIndex: articleIndex + 1,
           runIndex: runIndex + 1,
-          type: patches.faqs.includes(item) ? "faq" : "fact-card",
+          type: item.type === "faq" ? "faq" : "fact-card",
           label: item.question || item.label,
           paragraphId: evidence?.paragraphId,
           quote: evidence?.quote,

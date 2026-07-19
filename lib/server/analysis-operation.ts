@@ -162,7 +162,7 @@ function consumeInMemory(
   cleanupMemoryUsage(nowSeconds);
   const usage = memoryUsage.get(claims.runId) ?? {
     expiresAt: claims.expiresAt,
-    counts: { score: 0, predict: 0, diagnose: 0, patch: 0 },
+    counts: { score: 0, predict: 0, diagnose: 0, patchAdvice: 0, patchContent: 0 },
   };
   const limit = ANALYSIS_OPERATION_LIMITS[operation];
   const current = usage.counts[operation];
@@ -202,7 +202,7 @@ async function consumeWithRedis(
   const ttl = Math.max(1, claims.expiresAt - Math.floor(Date.now() / 1_000));
   const raw = await redis.eval(
     CONSUME_OPERATION_SCRIPT,
-    [`geo:analysis-session:v1:usage:${claims.runId}`],
+    [`geo:analysis-session:v2:usage:${claims.runId}`],
     [operation, String(limit), String(ttl)],
   );
   const result = parseRedisResult(raw);

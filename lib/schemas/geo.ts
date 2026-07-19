@@ -80,26 +80,75 @@ export const qaDiagnosticResponseSchema = modelDiagnosticSchema.extend({
   source: sourceSchema,
 });
 
-export const generatePatchesRequestSchema = predictQuestionsRequestSchema;
+export const patchModeSchema = z.enum(["advice", "content_draft"]);
 
-export const faqPatchSchema = z.object({
+export const generatePatchesRequestSchema = predictQuestionsRequestSchema.extend({
+  mode: patchModeSchema.default("advice"),
+  diagnostics: z.array(qaDiagnosticResponseSchema).min(1).max(10),
+});
+
+const patchActionMetadataSchema = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string().datetime(),
+});
+
+export const modelAuthorEvidenceActionSchema = z.object({
+  type: z.literal("author_evidence"),
+  field: z.string().trim().min(1).max(120),
+  reason: z.string().trim().min(1).max(300),
+  relatedQuestion: z.string().trim().min(1).max(200).optional(),
+});
+
+export const modelStructureChangeActionSchema = z.object({
+  type: z.literal("structure_change"),
+  title: z.string().trim().min(1).max(120),
+  instruction: z.string().trim().min(1).max(500),
+  targetParagraphIds: z.array(z.string().regex(/^Para-\d+$/)).min(1).max(5),
+});
+
+export const modelFaqActionSchema = z.object({
+  type: z.literal("faq"),
   question: z.string().trim().min(6).max(160),
   answer: z.string().trim().min(1).max(400),
   evidence: evidenceSchema,
 });
 
-export const factCardSchema = z.object({
+export const modelFactCardActionSchema = z.object({
+  type: z.literal("fact_card"),
   label: z.string().trim().min(2).max(60),
   value: z.string().trim().min(1).max(400),
   evidence: evidenceSchema,
 });
 
-export const modelPatchesSchema = z.object({
-  faqs: z.array(faqPatchSchema).min(3).max(5),
-  factCards: z.array(factCardSchema).min(3).max(5),
+export const modelAdviceActionsSchema = z.object({
+  actions: z
+    .array(z.discriminatedUnion("type", [modelAuthorEvidenceActionSchema, modelStructureChangeActionSchema]))
+    .min(1)
+    .max(8),
 });
 
-export const generatePatchesResponseSchema = modelPatchesSchema.extend({
+export const modelContentActionsSchema = z.object({
+  actions: z
+    .array(z.discriminatedUnion("type", [modelFaqActionSchema, modelFactCardActionSchema]))
+    .min(1)
+    .max(10),
+});
+
+export const authorEvidenceActionSchema = modelAuthorEvidenceActionSchema.merge(patchActionMetadataSchema);
+export const structureChangeActionSchema = modelStructureChangeActionSchema.merge(patchActionMetadataSchema);
+export const faqActionSchema = modelFaqActionSchema.merge(patchActionMetadataSchema);
+export const factCardActionSchema = modelFactCardActionSchema.merge(patchActionMetadataSchema);
+
+export const patchActionSchema = z.discriminatedUnion("type", [
+  authorEvidenceActionSchema,
+  structureChangeActionSchema,
+  faqActionSchema,
+  factCardActionSchema,
+]);
+
+export const generatePatchesResponseSchema = z.object({
+  mode: patchModeSchema,
+  actions: z.array(patchActionSchema).min(1).max(10),
   markdown: z.string().min(1).max(12_000),
   source: sourceSchema,
 });
@@ -109,4 +158,8 @@ export type EvaluateScoringRequest = z.infer<typeof evaluateScoringRequestSchema
 export type EvaluateScoringResponse = z.infer<typeof evaluateScoringResponseSchema>;
 export type PredictQuestionsResponse = z.infer<typeof predictQuestionsResponseSchema>;
 export type DiagnosticResult = z.infer<typeof qaDiagnosticResponseSchema>;
+export type PatchMode = z.infer<typeof patchModeSchema>;
+export type PatchAction = z.infer<typeof patchActionSchema>;
+export type ModelAdviceAction = z.infer<typeof modelAdviceActionsSchema>["actions"][number];
+export type ModelContentAction = z.infer<typeof modelContentActionsSchema>["actions"][number];
 export type GeneratePatchesResponse = z.infer<typeof generatePatchesResponseSchema>;

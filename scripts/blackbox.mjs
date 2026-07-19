@@ -22,6 +22,17 @@ const paragraphs = [
     text: "本文说明内容体检的方法、适用范围和限制条件，所有结论仍需人工核对。",
   },
 ];
+const patchDiagnostics = [
+  {
+    question: "文章说明了哪些适用范围和限制条件？",
+    answerability: "信息不足",
+    riskLevel: "medium",
+    evidence: [{ paragraphId: "Para-1", quote: paragraphs[0].text }],
+    missingInfo: ["发布日期"],
+    recommendation: "补充发布日期和适用边界。",
+    source: "fallback",
+  },
+];
 const article = {
   title: "GEO 黑盒验收文章",
   content: paragraphs[0].text,
@@ -388,10 +399,18 @@ await check("allows patch generation once", async () => {
   const result = await request("/api/generate-patches", {
     method: "POST",
     headers: headers({ token }),
-    body: JSON.stringify({ title: article.title, numbered_paragraphs: paragraphs }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "advice",
+    }),
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(result.response.headers.get("x-geo-operation-remaining"), "0");
+  assert.equal(result.body?.mode, "advice");
+  assert.ok(result.body?.actions?.length >= 1);
+  assert.ok(result.body.actions.every((action) => typeof action.id === "string" && typeof action.createdAt === "string"));
   assertExpectedSource(result.body?.source);
 });
 
@@ -401,7 +420,46 @@ await expectStatus(
   {
     method: "POST",
     headers: headers({ token }),
-    body: JSON.stringify({ title: article.title, numbered_paragraphs: paragraphs }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "advice",
+    }),
+  },
+  429,
+  "OPERATION_LIMIT_REACHED",
+);
+
+await check("allows one content draft separately", async () => {
+  const result = await request("/api/generate-patches", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "content_draft",
+    }),
+  });
+  assert.equal(result.response.status, 200, responseSummary(result));
+  assert.equal(result.body?.mode, "content_draft");
+  assert.ok(result.body?.actions?.length >= 1);
+  assertExpectedSource(result.body?.source);
+});
+
+await expectStatus(
+  "blocks second content draft",
+  "/api/generate-patches",
+  {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "content_draft",
+    }),
   },
   429,
   "OPERATION_LIMIT_REACHED",
@@ -437,7 +495,15 @@ await check("escapes raw HTML in Markdown patches", async () => {
   const result = await request("/api/generate-patches", {
     method: "POST",
     headers: headers({ clientId: markdownClientId, token: session.body.token }),
-    body: JSON.stringify({ title: "Markdown 安全测试", numbered_paragraphs: maliciousParagraphs }),
+    body: JSON.stringify({
+      title: "Markdown 安全测试",
+      numbered_paragraphs: maliciousParagraphs,
+      diagnostics: [{
+        ...patchDiagnostics[0],
+        evidence: [{ paragraphId: "Para-1", quote: maliciousParagraphs[0].text }],
+      }],
+      mode: "content_draft",
+    }),
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(typeof result.body?.markdown, "string");

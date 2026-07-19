@@ -135,22 +135,24 @@ const prompt = formatUntrustedPromptData({
 assert.doesNotMatch(prompt, /<script>/i);
 assert.match(prompt, /\\u003cscript\\u003e/i);
 
-const markdown = formatPatchMarkdown({
-  faqs: [
+const markdown = formatPatchMarkdown([
     {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      type: "faq",
       question: "# 不可信标题",
       answer: "正文 <script>alert('x')</script>",
-      evidence: { paragraphId: "Para-1" },
+      evidence: { paragraphId: "Para-1", quote: "正文 <script>alert('x')</script>" },
     },
-  ],
-  factCards: [
     {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      type: "fact_card",
       label: "<img src=x onerror=alert(1)>",
       value: "事实 <b>内容</b>",
-      evidence: { paragraphId: "Para-1" },
+      evidence: { paragraphId: "Para-1", quote: "事实 <b>内容</b>" },
     },
-  ],
-});
+]);
 assert.doesNotMatch(markdown, /<\/?(?:script|img|b)\b/i);
 assert.match(markdown, /&lt;script&gt;/i);
 assert.match(markdown, /\\# 不可信标题/);
