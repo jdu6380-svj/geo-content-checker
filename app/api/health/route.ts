@@ -47,9 +47,7 @@ async function handleGet(_request: NextRequest): Promise<Response> {
     feedbackConfigured:
       isHttpsUrl(process.env.NEXT_PUBLIC_FEEDBACK_URL) &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail),
-    sentryConfigured: isHttpsUrl(
-      process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN,
-    ),
+    sentryConfigured: isHttpsUrl(process.env.NEXT_PUBLIC_SENTRY_DSN),
   };
   const ready = Object.values(checks).every(Boolean);
   const body: HealthResponse = {

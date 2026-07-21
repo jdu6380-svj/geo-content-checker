@@ -1,9 +1,9 @@
 # 理据 GEO 产品现状与路线图
 
-> 更新时间：2026-07-20
+> 更新时间：2026-07-21
 > 当前候选版本：`v0.1.0-beta.1`
 > 当前分支：`feature/public-beta-hardening`
-> 当前阶段：核心契约与 Beta 体验优化，尚未部署 Preview 或 Production
+> 当前阶段：Phase A.0-A.4 实现完成，正在进行 Release Candidate 与 Preview 门禁验证
 
 ## 1. 产品定位
 
@@ -59,7 +59,7 @@ Analyze -> Diagnose -> Improve -> Verify -> Learn
 - 结构化日志和 Sentry 仅记录路由、请求 ID、状态、耗时、模型状态、Token、费用和限流模式。
 - `GET /api/health` 检查模型、Redis、安全密钥、反馈和 Sentry 配置。
 - 已创建 Draft PR，CI 已通过；Production、Merge 和标签仍锁定。
-- Vercel 与东京 `hnd1` Upstash Redis 已建立，当前 Deployment 数量为 `0`。
+- Vercel Git Integration 与东京 `hnd1` Upstash Redis 已建立。当前仅保留一条失败的 CLI Production Deployment 记录，没有可用的 Preview 或 Production Deployment。
 
 ## 4. 当前 API
 
@@ -81,10 +81,10 @@ Analyze -> Diagnose -> Improve -> Verify -> Learn
 | MVP 核心流程 | 已完成 |
 | Beta 安全加固 | 已完成 |
 | Draft PR 与 CI | 已完成 |
-| Upstash 与模型 Preview 配置 | 大部分完成 |
-| Sentry 与成本变量 | 待补齐 |
-| 核心优化 Phase A | 进行中 |
-| Preview 验收 | 未开始 |
+| Preview 环境变量 | 必需变量与目标分支作用域已配置，真实值等待 Preview Build 门禁验证 |
+| Sentry 与成本配置 | Sentry Preview 配置已完成、隐私 Smoke 待验证；成本配置留到 Phase B/商业准备 |
+| 核心优化 Phase A.0-A.4 | 实现完成，待 RC 回归确认 |
+| Preview 验收 | Git Integration 已完成，等待真实 Commit 自然触发 |
 | 两阶段模型验证 | 未开始 |
 | 受控真实用户 Beta | 未开始 |
 | Production | 锁定 |
@@ -127,8 +127,9 @@ Analyze -> Diagnose -> Improve -> Verify -> Learn
 ### Phase A.5：Preview 验收
 
 - 在 Node 22 下完成本地检查、构建、安全与 fallback 黑盒。
-- 按 Build、Health、首页、完整分析、模型黑盒和 Sentry Smoke 顺序验收。
-- 正常 Preview 通过后再执行隔离故障测试，删除故障部署后必须恢复验证。
+- 下一次真实产品、缺陷、安全、稳定性或 Release 文档 Commit 通过 Git Integration 自然触发 Preview；不创建空 Commit，不使用 CLI 部署。
+- 先验证 Source、Branch、SHA、Target、Environment 和非 Production URL，再按 Build、Health、浏览器 UX、完整分析、模型黑盒和 Sentry Smoke 顺序验收。
+- 当前 A.5 不创建、重试、删除或 Promote 故障 Deployment，不修改 Production。
 
 ### Phase B.1：两阶段模型技术验证
 
@@ -188,8 +189,10 @@ analysis_completed + patch_applied + repeat_analysis
 ## 9. Release Blockers
 
 - [ ] Phase A 全部通过。
+- [ ] Preview 的真实模型、Redis、三项安全密钥、反馈、支持邮箱和 Sentry 值通过 `release:check`。
+- [ ] `REDIS_QUOTA_FAIL_OPEN=false`，且使用应用读取的准确 Upstash 变量名。
 - [ ] Sentry Preview 配置和隐私检查通过。
-- [ ] 模型成本变量及供应商费用告警配置完成。
+- [ ] Phase B/Commercial Readiness 完成模型成本校准和供应商费用告警；此项不阻断 A.5 Preview。
 - [ ] Preview Health、完整流程和 `blackbox:model` 通过。
 - [ ] Redis、timeout、429、无效 JSON 和 fallback 故障验证通过。
 - [ ] B.1 模型稳定性、Evidence 和成本门禁通过。

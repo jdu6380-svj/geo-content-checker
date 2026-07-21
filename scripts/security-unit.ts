@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
 import {
@@ -223,6 +225,49 @@ assert.equal(isStrongSecuritySecret("short"), false);
 assert.equal(isStrongSecuritySecret("a".repeat(32)), true);
 assert.equal(areDistinctSecuritySecrets("a".repeat(32), "b".repeat(32)), true);
 assert.equal(areDistinctSecuritySecrets("a".repeat(32), "a".repeat(32)), false);
+
+const releaseConfigScript = fileURLToPath(new URL("./check-release-config.mjs", import.meta.url));
+const validReleaseEnvironment: NodeJS.ProcessEnv = {
+  NODE_ENV: "test",
+  VERCEL_ENV: "preview",
+  OPENAI_BASE_URL: "https://api.deepseek.example/v1",
+  OPENAI_API_KEY: "test-model-key",
+  OPENAI_MODEL: "test-model",
+  UPSTASH_REDIS_REST_URL: "https://redis.example",
+  UPSTASH_REDIS_REST_TOKEN: "test-redis-token",
+  REDIS_QUOTA_FAIL_OPEN: "false",
+  RATE_LIMIT_SALT: "a".repeat(32),
+  ANALYSIS_TOKEN_SECRET: "b".repeat(32),
+  BETA_EVENT_HMAC_SECRET: "c".repeat(32),
+  NEXT_PUBLIC_FEEDBACK_URL: "https://feedback.example/form",
+  NEXT_PUBLIC_SUPPORT_EMAIL: "support@example.com",
+  NEXT_PUBLIC_SENTRY_DSN: "https://public@sentry.example/1",
+  SENTRY_ORG: "test-org",
+  SENTRY_PROJECT: "test-project",
+  SENTRY_AUTH_TOKEN: "test-sentry-token",
+};
+
+function runReleaseConfig(overrides: Partial<NodeJS.ProcessEnv> = {}) {
+  return spawnSync(process.execPath, [releaseConfigScript], {
+    encoding: "utf8",
+    env: { ...validReleaseEnvironment, ...overrides },
+  });
+}
+
+const validReleaseConfig = runReleaseConfig();
+assert.equal(validReleaseConfig.status, 0, validReleaseConfig.stderr);
+
+const missingFeedbackConfig = runReleaseConfig({ NEXT_PUBLIC_FEEDBACK_URL: "" });
+assert.equal(missingFeedbackConfig.status, 1);
+assert.match(missingFeedbackConfig.stderr, /NEXT_PUBLIC_FEEDBACK_URL must be an HTTPS URL/);
+
+const invalidSupportConfig = runReleaseConfig({ NEXT_PUBLIC_SUPPORT_EMAIL: "invalid" });
+assert.equal(invalidSupportConfig.status, 1);
+assert.match(invalidSupportConfig.stderr, /NEXT_PUBLIC_SUPPORT_EMAIL must be a valid email address/);
+
+const failOpenReleaseConfig = runReleaseConfig({ REDIS_QUOTA_FAIL_OPEN: "true" });
+assert.equal(failOpenReleaseConfig.status, 1);
+assert.match(failOpenReleaseConfig.stderr, /REDIS_QUOTA_FAIL_OPEN must be exactly false/);
 
 await assert.rejects(
   readGeoJsonBody(

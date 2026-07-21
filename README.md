@@ -27,7 +27,7 @@ npm run dev
 npm run setup:env
 ```
 
-命令会创建权限为 `600` 的 `.env.local`，并自动生成 `RATE_LIMIT_SALT` 与 `ANALYSIS_TOKEN_SECRET`。如果文件已经存在，命令会拒绝覆盖。
+命令会创建权限为 `600` 的 `.env.local`，并自动生成 `RATE_LIMIT_SALT`、`ANALYSIS_TOKEN_SECRET` 与 `BETA_EVENT_HMAC_SECRET`。如果文件已经存在，命令只补充缺少的变量，不覆盖已有值。
 
 随后只在本机编辑 `.env.local`，补充以下凭据：
 
@@ -56,6 +56,8 @@ GEO_BASE_URL=https://your-preview.example.com npm run blackbox:model
 ```
 
 Preview 故障测试结束后，必须恢复 `REDIS_QUOTA_FAIL_OPEN=false`。
+
+`npm run release:check` 会阻断缺少真实模型、Redis、安全密钥、反馈入口、支持邮箱和 Sentry 配置的 Release 构建，并要求 `REDIS_QUOTA_FAIL_OPEN=false`。完整的 Preview 变量清单、Health 对应关系和 Git Integration 验收顺序见 [`docs/public-beta-runbook.md`](docs/public-beta-runbook.md)。
 
 ## Sprint 验收流程
 

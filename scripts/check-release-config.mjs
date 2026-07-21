@@ -32,11 +32,18 @@ function requireSecret(name) {
   }
 }
 
+function requireExactValue(name, expected) {
+  if (read(name) !== expected) {
+    errors.push(`${name} must be exactly ${expected}`);
+  }
+}
+
 requireHttpsUrl("OPENAI_BASE_URL");
 requireValue("OPENAI_API_KEY");
 requireValue("OPENAI_MODEL");
 requireHttpsUrl("UPSTASH_REDIS_REST_URL");
 requireValue("UPSTASH_REDIS_REST_TOKEN");
+requireExactValue("REDIS_QUOTA_FAIL_OPEN", "false");
 requireSecret("RATE_LIMIT_SALT");
 requireSecret("ANALYSIS_TOKEN_SECRET");
 requireSecret("BETA_EVENT_HMAC_SECRET");
@@ -44,13 +51,11 @@ requireHttpsUrl("NEXT_PUBLIC_SENTRY_DSN");
 requireValue("SENTRY_ORG");
 requireValue("SENTRY_PROJECT");
 requireValue("SENTRY_AUTH_TOKEN");
+requireHttpsUrl("NEXT_PUBLIC_FEEDBACK_URL");
 
-if (releaseEnvironment === "production" || process.env.REQUIRE_RELEASE_CONFIG) {
-  requireHttpsUrl("NEXT_PUBLIC_FEEDBACK_URL");
-  const supportEmail = read("NEXT_PUBLIC_SUPPORT_EMAIL");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail)) {
-    errors.push("NEXT_PUBLIC_SUPPORT_EMAIL must be a valid email address");
-  }
+const supportEmail = read("NEXT_PUBLIC_SUPPORT_EMAIL");
+if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail)) {
+  errors.push("NEXT_PUBLIC_SUPPORT_EMAIL must be a valid email address");
 }
 
 if (

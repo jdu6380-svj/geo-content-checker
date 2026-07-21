@@ -17,15 +17,42 @@
 
 Run `npm run release:check` before Preview or Production deployment. Vercel builds also run the same check automatically.
 
+### Preview Release Configuration
+
+The following names and values must exist in the Vercel `Preview` scope. Variable names alone are not sufficient; `release:check` validates non-empty values and the constraints shown below without printing credentials.
+
+| Area | Required variables | Release constraint |
+| --- | --- | --- |
+| Model | `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` | Base URL must use HTTPS; key and model must be non-empty. |
+| Redis | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Use these exact application variable names even if an integration also creates vendor-prefixed aliases. The URL must use HTTPS. |
+| Quota mode | `REDIS_QUOTA_FAIL_OPEN` | Must be exactly `false`. |
+| Security | `RATE_LIMIT_SALT`, `ANALYSIS_TOKEN_SECRET`, `BETA_EVENT_HMAC_SECRET` | Each must be at least 32 bytes and all three must be distinct. |
+| Feedback | `NEXT_PUBLIC_FEEDBACK_URL`, `NEXT_PUBLIC_SUPPORT_EMAIL` | Feedback URL must use HTTPS; support email must be valid. |
+| Sentry runtime | `NEXT_PUBLIC_SENTRY_DSN` | Required HTTPS client DSN. `SENTRY_DSN` is an optional server alias and does not satisfy the Health gate by itself. |
+| Sentry build | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | All must be non-empty so release builds can upload and associate artifacts. |
+
+`GET /api/health` returns `200 / ok` only when its five runtime groups pass: model, Redis, three distinct security secrets, feedback/support, and `NEXT_PUBLIC_SENTRY_DSN`. `release:check` is stricter: it additionally requires Sentry build credentials and fail-closed Redis quota mode.
+
+The following settings belong to Phase B or the Commercial Readiness Check. They are not A.5 Preview blockers and are not part of the five Health booleans:
+
+- Validate `MODEL_INPUT_COST_USD_PER_MILLION_TOKENS` and `MODEL_OUTPUT_COST_USD_PER_MILLION_TOKENS` against current provider pricing during Phase B cost acceptance.
+- Approve `SENTRY_TRACES_SAMPLE_RATE` before broader Beta traffic or Production readiness.
+- Configure and verify the provider-side daily spend alert during Commercial Readiness.
+
 ## Preview Validation
 
-1. Configure all Preview environment variables and deploy.
-2. Confirm `GET /api/health` returns HTTP 200 with `status: "ok"`.
-3. Run `npm run check`, `npm run security:unit`, and `npm run build` locally.
-4. Run `GEO_BASE_URL=https://preview.example.com npm run blackbox:model`.
-5. Exercise scoring, predicted questions, diagnostics, follow-up questions, Patch generation, Markdown copy, quota errors, and fallback behavior.
-6. Trigger one controlled application error and verify Sentry receives the stack without body, Prompt, evidence, cookies, User-Agent, raw IP, client UUID, or authorization headers.
-7. Verify structured logs contain only route, request ID, status, duration, source, model status, rate-limit mode, model latency, Token counts, and optional estimated cost.
+1. Run `npm run check`, `npm run security:unit`, `npm run build`, `npm run blackbox:fallback`, and `git diff --check` under Node 22.
+2. Verify the Draft PR Diff against `origin/main`; do not continue if it contains credentials, artifacts, or scope expansion.
+3. Confirm every required variable above exists in Vercel `Preview` with the intended branch scope. Vercel Sensitive values are not exportable, so the Git Integration Preview build is the authoritative `release:check` value gate.
+4. Push a real product, defect, security, stability, or release-documentation commit to `feature/public-beta-hardening`. Do not create an empty or deployment-only commit.
+5. Let the existing Vercel Git Integration create the Preview. Do not use Vercel CLI deployment for A.5.
+6. Require the Preview build's automatic `release:check` to pass. Before opening the URL, verify Source is GitHub, Branch and Commit SHA match the push, Target and Environment are both `preview`, and no Production deployment was created.
+7. Confirm the Preview URL belongs to that deployment and neither equals nor redirects to a Production domain or alias.
+8. Confirm `GET /api/health` returns HTTP 200 with `status: "ok"` and all five checks are `true`.
+9. Complete browser UX smoke at `1440x900`, `1280x800`, and `390x844`, including Editor, real Loading, Report, score rail, Diagnosis, Patch, keyboard operation, and overflow.
+10. Complete one real Preview analysis, then run `GEO_BASE_URL=https://preview.example.com npm run blackbox:model`. Every model-capable route must return `source: "model"`; fallback, mocks, and fixtures do not satisfy this gate.
+11. Trigger one controlled application error and verify Sentry receives a `preview` event with the stack but without body, Prompt, evidence, cookies, User-Agent, raw IP, client UUID, authorization headers, or secrets.
+12. Verify structured logs contain only route, request ID, status, duration, source, model status, rate-limit mode, model latency, Token counts, and optional estimated cost.
 
 ## Model Acceptance
 
