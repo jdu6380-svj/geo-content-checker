@@ -54,6 +54,10 @@ The following settings belong to Phase B or the Commercial Readiness Check. They
 11. Trigger one controlled application error and verify Sentry receives a `preview` event with the stack but without body, Prompt, evidence, cookies, User-Agent, raw IP, client UUID, authorization headers, or secrets.
 12. Verify structured logs contain only route, request ID, status, duration, source, model status, rate-limit mode, model latency, Token counts, and optional estimated cost.
 
+Changing a Preview variable does not retroactively update an existing Deployment. For A.5, do not click Redeploy and do not use Vercel CLI deployment; wait for the real commit in step 4 to create a new Git Integration Preview.
+
+Local validation can be affected by a workstation running Node 24 or by a sandbox that blocks local-port connections. A local `blackbox:fallback` failure under those conditions is not the final release result. The final decision requires CI on Node 22, a Vercel Preview, the real provider API, and `blackbox:model` returning `source: "model"`.
+
 ## Model Acceptance
 
 Prepare a private JSON corpus with exactly 10 real Chinese articles using the shape in `docs/model-validation-corpus.example.json`.

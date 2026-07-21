@@ -49,7 +49,7 @@ npm run build
 
 项目通过公开 GitHub 仓库连接 Vercel，不依赖 Vercel CLI。推送前必须确认 `.env.local`、`.next`、`node_modules`、`.vercel` 和本地测试产物均处于忽略状态。
 
-在 Vercel 的 Preview 和 Production 环境中分别配置 `.env.example` 列出的全部变量。部署完成后执行：
+在 A.5 阶段，仅在 Vercel `Preview` 环境为 `feature/public-beta-hardening` 配置 `.env.example` 所需变量。Production 环境变量、Production 部署、Promote、Merge 和标签保持锁定；Preview 门禁全部通过后再单独评估 Production。新 Preview 必须由 Git Integration 产生，不使用 Vercel CLI 部署。部署完成后执行：
 
 ```bash
 GEO_BASE_URL=https://your-preview.example.com \
@@ -57,6 +57,8 @@ GEO_BASE_URL=https://your-preview.example.com \
 ```
 
 Vercel 会在应用前缓冲不完整的请求体，因此远程模型验收显式跳过畸形 `Content-Length` 传输用例；该用例仍必须由本地 `security:unit` 和 `blackbox:fallback` 通过。
+
+如果 Preview 变量在已有 Deployment 创建后更新，旧 Deployment 不会读取新值。A.5 不点击 Redeploy；等待下一次真实产品、缺陷、安全、稳定性或发布文档 Commit 触发新的 Git Integration Preview。
 
 Preview 故障测试结束后，必须恢复 `REDIS_QUOTA_FAIL_OPEN=false`。
 

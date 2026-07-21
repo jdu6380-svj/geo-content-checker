@@ -59,7 +59,7 @@ Analyze -> Diagnose -> Improve -> Verify -> Learn
 - 结构化日志和 Sentry 仅记录路由、请求 ID、状态、耗时、模型状态、Token、费用和限流模式。
 - `GET /api/health` 检查模型、Redis、安全密钥、反馈和 Sentry 配置。
 - 已创建 Draft PR，CI 已通过；Production、Merge 和标签仍锁定。
-- Vercel Git Integration 与东京 `hnd1` Upstash Redis 已建立。当前仅保留一条失败的 CLI Production Deployment 记录，没有可用的 Preview 或 Production Deployment。
+- Vercel Git Integration 与东京 `hnd1` Upstash Redis 已建立。当前已有由 `feature/public-beta-hardening` 触发的 Preview Deployment，Build 和 Health 已通过；历史失败的 CLI Production Deployment 保持不变，Production、Merge 和标签仍锁定。
 
 ## 4. 当前 API
 
@@ -81,10 +81,10 @@ Analyze -> Diagnose -> Improve -> Verify -> Learn
 | MVP 核心流程 | 已完成 |
 | Beta 安全加固 | 已完成 |
 | Draft PR 与 CI | 已完成 |
-| Preview 环境变量 | 必需变量与目标分支作用域已配置，真实值等待 Preview Build 门禁验证 |
+| Preview 环境变量 | 必需变量与 `feature/public-beta-hardening` 作用域已配置；最近更新不会回写既有 Deployment，等待新 Preview Build 验证真实值 |
 | Sentry 与成本配置 | Sentry Preview 配置已完成、隐私 Smoke 待验证；成本配置留到 Phase B/商业准备 |
 | 核心优化 Phase A.0-A.4 | 实现完成，待 RC 回归确认 |
-| Preview 验收 | Git Integration 已完成，等待真实 Commit 自然触发 |
+| Preview 验收 | 既有 Preview 的 Deployment、Build 和 Health 已通过；等待真实 Commit 创建新 Preview 后验证真实模型、Browser UX 和 Sentry Smoke |
 | 两阶段模型验证 | 未开始 |
 | 受控真实用户 Beta | 未开始 |
 | Production | 锁定 |
@@ -127,7 +127,8 @@ Analyze -> Diagnose -> Improve -> Verify -> Learn
 ### Phase A.5：Preview 验收
 
 - 在 Node 22 下完成本地检查、构建、安全与 fallback 黑盒。
-- 下一次真实产品、缺陷、安全、稳定性或 Release 文档 Commit 通过 Git Integration 自然触发 Preview；不创建空 Commit，不使用 CLI 部署。
+- 如果 Preview 环境变量在既有 Deployment 创建后更新，旧 Deployment 不会读取新值；A.5 不执行 Redeploy 或 CLI 部署，下一次真实产品、缺陷、安全、稳定性或 Release 文档 Commit 通过 Git Integration 自然触发新 Preview。
+- 本地验证可能受 Node 24 与沙箱禁止本地端口连接影响；fallback 黑盒的本地失败不能作为最终结论，最终门禁以 CI Node 22、Vercel Preview、真实供应商 API 和 `blackbox:model` 返回 `source: "model"` 为准。
 - 先验证 Source、Branch、SHA、Target、Environment 和非 Production URL，再按 Build、Health、浏览器 UX、完整分析、模型黑盒和 Sentry Smoke 顺序验收。
 - 当前 A.5 不创建、重试、删除或 Promote 故障 Deployment，不修改 Production。
 
