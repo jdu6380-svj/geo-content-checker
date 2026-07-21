@@ -5,10 +5,10 @@ import https from "node:https";
 import { gzipSync } from "node:zlib";
 
 import {
-  applyAutomationBypassHeader,
   automationBypassHeaders,
   isVercelDeploymentProtectionRedirect,
   resolveAutomationBypassSecret,
+  withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
 const baseUrl = (process.env.GEO_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
@@ -74,12 +74,13 @@ function headers(params = {}) {
   });
   if (params.token) result.set("X-GEO-Analysis-Token", params.token);
   if (params.gzip) result.set("X-GEO-Content-Encoding", "gzip");
-  return applyAutomationBypassHeader(result, automationBypassSecret);
+  return result;
 }
 
-async function request(path, init) {
+async function request(path, init = {}) {
+  const requestInit = withAutomationBypassRequestInit(init, automationBypassSecret);
   const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
+    ...requestInit,
     redirect: "manual",
     signal: AbortSignal.timeout(30_000),
   });

@@ -55,6 +55,12 @@ export function applyAutomationBypassHeader(headers, secret) {
   return headers;
 }
 
+export function withAutomationBypassRequestInit(init = {}, secret) {
+  const headers = new Headers(init.headers);
+  applyAutomationBypassHeader(headers, secret);
+  return { ...init, headers };
+}
+
 export function isVercelDeploymentProtectionRedirect(status, location) {
   if (status < 300 || status >= 400 || !location) return false;
   try {

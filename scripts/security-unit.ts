@@ -40,6 +40,7 @@ import {
   normalizePreviewUrl,
   resolveAutomationBypassSecret,
   validatePreviewDeploymentMetadata,
+  withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
 assert.equal(MAX_ARTICLE_CHARACTERS, 12_000);
@@ -278,6 +279,58 @@ assert.deepEqual(automationBypassHeaders(undefined), {});
 assert.deepEqual(automationBypassHeaders("preview-secret"), {
   "x-vercel-protection-bypass": "preview-secret",
 });
+
+const previewRequestInit = withAutomationBypassRequestInit(
+  {
+    method: "GET",
+    headers: { "x-existing-header": "preserved" },
+  },
+  resolveAutomationBypassSecret("https://geo-content-checker-example.vercel.app", {
+    VERCEL_AUTOMATION_BYPASS_SECRET: " preview-secret ",
+  }),
+);
+const previewRequestHeaders = new Headers(previewRequestInit.headers);
+assert.equal(previewRequestHeaders.get("x-vercel-protection-bypass"), "preview-secret");
+assert.equal(previewRequestHeaders.get("x-existing-header"), "preserved");
+
+const localRequestInit = withAutomationBypassRequestInit(
+  { method: "GET" },
+  resolveAutomationBypassSecret("http://localhost:3000", {
+    VERCEL_AUTOMATION_BYPASS_SECRET: "local-secret",
+  }),
+);
+assert.equal(
+  new Headers(localRequestInit.headers).get("x-vercel-protection-bypass"),
+  null,
+);
+
+const unconfiguredRequestInit = withAutomationBypassRequestInit({
+  method: "GET",
+  headers: { "x-existing-header": "preserved" },
+});
+const unconfiguredRequestHeaders = new Headers(unconfiguredRequestInit.headers);
+assert.equal(unconfiguredRequestHeaders.get("x-vercel-protection-bypass"), null);
+assert.equal(unconfiguredRequestHeaders.get("x-existing-header"), "preserved");
+
+const blackboxScript = fileURLToPath(new URL("./blackbox.mjs", import.meta.url));
+const nonVercelSecret = "must-not-appear-in-output";
+const nonVercelBlackbox = spawnSync(process.execPath, [blackboxScript], {
+  encoding: "utf8",
+  env: {
+    ...process.env,
+    GEO_BASE_URL: "https://example.com",
+    VERCEL_AUTOMATION_BYPASS_SECRET: nonVercelSecret,
+  },
+});
+const nonVercelBlackboxOutput =
+  `${nonVercelBlackbox.stdout}\n${nonVercelBlackbox.stderr}`;
+assert.equal(nonVercelBlackbox.status, 1);
+assert.match(
+  nonVercelBlackboxOutput,
+  /VERCEL_AUTOMATION_BYPASS_SECRET may only be used with HTTPS \*\.vercel\.app targets/,
+);
+assert.doesNotMatch(nonVercelBlackboxOutput, new RegExp(nonVercelSecret));
+
 assert.equal(
   isVercelDeploymentProtectionRedirect(
     302,

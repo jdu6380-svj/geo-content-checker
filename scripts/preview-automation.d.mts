@@ -36,6 +36,11 @@ export function applyAutomationBypassHeader<T extends Headers>(
   secret?: string,
 ): T;
 
+export function withAutomationBypassRequestInit(
+  init?: RequestInit,
+  secret?: string,
+): RequestInit;
+
 export function isVercelDeploymentProtectionRedirect(
   status: number,
   location: string | null | undefined,
