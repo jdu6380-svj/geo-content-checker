@@ -52,8 +52,11 @@ npm run build
 在 Vercel 的 Preview 和 Production 环境中分别配置 `.env.example` 列出的全部变量。部署完成后执行：
 
 ```bash
-GEO_BASE_URL=https://your-preview.example.com npm run blackbox:model
+GEO_BASE_URL=https://your-preview.example.com \
+  npm run blackbox:model -- --skip-declared-length-check
 ```
+
+Vercel 会在应用前缓冲不完整的请求体，因此远程模型验收显式跳过畸形 `Content-Length` 传输用例；该用例仍必须由本地 `security:unit` 和 `blackbox:fallback` 通过。
 
 Preview 故障测试结束后，必须恢复 `REDIS_QUOTA_FAIL_OPEN=false`。
 

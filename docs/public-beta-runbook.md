@@ -50,7 +50,7 @@ The following settings belong to Phase B or the Commercial Readiness Check. They
 7. Confirm the Preview URL belongs to that deployment and neither equals nor redirects to a Production domain or alias.
 8. Confirm `GET /api/health` returns HTTP 200 with `status: "ok"` and all five checks are `true`.
 9. Complete browser UX smoke at `1440x900`, `1280x800`, and `390x844`, including Editor, real Loading, Report, score rail, Diagnosis, Patch, keyboard operation, and overflow.
-10. Complete one real Preview analysis, then run `GEO_BASE_URL=https://preview.example.com npm run blackbox:model`. Every model-capable route must return `source: "model"`; fallback, mocks, and fixtures do not satisfy this gate.
+10. Complete one real Preview analysis, then run `GEO_BASE_URL=https://preview.example.com npm run blackbox:model -- --skip-declared-length-check`. Vercel buffers incomplete request bodies before they reach the application, so the malformed declared-length transport check remains mandatory in the local `security:unit` and `blackbox:fallback` gates instead. Every model-capable route must return `source: "model"`; fallback, mocks, and fixtures do not satisfy this gate.
 11. Trigger one controlled application error and verify Sentry receives a `preview` event with the stack but without body, Prompt, evidence, cookies, User-Agent, raw IP, client UUID, authorization headers, or secrets.
 12. Verify structured logs contain only route, request ID, status, duration, source, model status, rate-limit mode, model latency, Token counts, and optional estimated cost.
 

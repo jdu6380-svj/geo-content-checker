@@ -7,6 +7,7 @@ import { gzipSync } from "node:zlib";
 const baseUrl = (process.env.GEO_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 const expectedSourceArgument = process.argv.find((value) => value.startsWith("--expect-source="));
 const expectedSource = expectedSourceArgument?.split("=", 2)[1] || "either";
+const skipDeclaredLengthCheck = process.argv.includes("--skip-declared-length-check");
 if (!["either", "model", "fallback"].includes(expectedSource)) {
   throw new Error("--expect-source must be either, model, or fallback");
 }
@@ -42,6 +43,7 @@ const article = {
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 let passed = 0;
+let skipped = 0;
 
 function responseSummary(result) {
   return JSON.stringify({
@@ -139,6 +141,11 @@ async function check(name, test) {
   console.log(`PASS ${name}`);
 }
 
+function skip(name, reason) {
+  skipped += 1;
+  console.log(`SKIP ${name}: ${reason}`);
+}
+
 async function expectStatus(name, path, init, status, errorCode) {
   await check(name, async () => {
     const result = await request(path, init);
@@ -194,15 +201,22 @@ await expectStatus(
   "PAYLOAD_TOO_LARGE",
 );
 
-await check("rejects oversized declared Content-Length", async () => {
-  const result = await requestWithDeclaredLength(
-    "/api/evaluate-scoring",
-    129 * 1024,
-    JSON.stringify(article),
+if (skipDeclaredLengthCheck) {
+  skip(
+    "rejects oversized declared Content-Length",
+    "deployment edge buffers incomplete request bodies; covered by security:unit and blackbox:fallback",
   );
-  assert.equal(result.response.status, 413, responseSummary(result));
-  assert.equal(result.body?.error, "PAYLOAD_TOO_LARGE");
-});
+} else {
+  await check("rejects oversized declared Content-Length", async () => {
+    const result = await requestWithDeclaredLength(
+      "/api/evaluate-scoring",
+      129 * 1024,
+      JSON.stringify(article),
+    );
+    assert.equal(result.response.status, 413, responseSummary(result));
+    assert.equal(result.body?.error, "PAYLOAD_TOO_LARGE");
+  });
+}
 
 await expectStatus(
   "rejects damaged gzip",
@@ -632,4 +646,4 @@ await check("escapes raw HTML in Markdown patches", async () => {
   assert.doesNotMatch(result.body.markdown, /<\/?script\b/i);
 });
 
-console.log(`PASS ${passed} black-box checks`);
+console.log(`PASS ${passed} black-box checks${skipped ? `; SKIP ${skipped}` : ""}`);
