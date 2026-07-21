@@ -33,6 +33,14 @@ import {
   isStrongSecuritySecret,
 } from "../lib/server/security-config.ts";
 import { scrubSentryEvent } from "../lib/sentry-scrub.ts";
+import {
+  applyAutomationBypassHeader,
+  automationBypassHeaders,
+  isVercelDeploymentProtectionRedirect,
+  normalizePreviewUrl,
+  resolveAutomationBypassSecret,
+  validatePreviewDeploymentMetadata,
+} from "./preview-automation.mjs";
 
 assert.equal(MAX_ARTICLE_CHARACTERS, 12_000);
 
@@ -225,6 +233,115 @@ assert.equal(isStrongSecuritySecret("short"), false);
 assert.equal(isStrongSecuritySecret("a".repeat(32)), true);
 assert.equal(areDistinctSecuritySecrets("a".repeat(32), "b".repeat(32)), true);
 assert.equal(areDistinctSecuritySecrets("a".repeat(32), "a".repeat(32)), false);
+
+assert.equal(
+  normalizePreviewUrl("https://geo-content-checker-example.vercel.app/"),
+  "https://geo-content-checker-example.vercel.app",
+);
+for (const invalidPreviewUrl of [
+  "http://geo-content-checker-example.vercel.app",
+  "https://example.com",
+  "https://geo-content-checker-example.vercel.app/api/health",
+  "https://geo-content-checker-example.vercel.app/?token=private",
+]) {
+  assert.throws(() => normalizePreviewUrl(invalidPreviewUrl));
+}
+
+assert.equal(
+  resolveAutomationBypassSecret("https://geo-content-checker-example.vercel.app", {}),
+  undefined,
+);
+assert.equal(
+  resolveAutomationBypassSecret("http://127.0.0.1:3000", {
+    VERCEL_AUTOMATION_BYPASS_SECRET: " local-secret ",
+  }),
+  undefined,
+);
+assert.equal(
+  resolveAutomationBypassSecret("https://geo-content-checker-example.vercel.app", {
+    VERCEL_AUTOMATION_BYPASS_SECRET: " preview-secret ",
+  }),
+  "preview-secret",
+);
+assert.throws(
+  () =>
+    resolveAutomationBypassSecret("https://example.com", {
+      VERCEL_AUTOMATION_BYPASS_SECRET: "private-secret",
+    }),
+  (error) => error instanceof Error && !error.message.includes("private-secret"),
+);
+
+const bypassHeaders = new Headers({ "content-type": "application/json" });
+applyAutomationBypassHeader(bypassHeaders, "preview-secret");
+assert.equal(bypassHeaders.get("x-vercel-protection-bypass"), "preview-secret");
+assert.deepEqual(automationBypassHeaders(undefined), {});
+assert.deepEqual(automationBypassHeaders("preview-secret"), {
+  "x-vercel-protection-bypass": "preview-secret",
+});
+assert.equal(
+  isVercelDeploymentProtectionRedirect(
+    302,
+    "https://vercel.com/sso-api?url=https%3A%2F%2Fpreview.vercel.app",
+  ),
+  true,
+);
+assert.equal(
+  isVercelDeploymentProtectionRedirect(302, "https://example.com/login"),
+  false,
+);
+
+const previewCommitSha = "a".repeat(40);
+const previewDeployment = {
+  id: "dpl_preview",
+  projectId: "prj_preview",
+  url: "geo-content-checker-example.vercel.app",
+  target: null,
+  readyState: "READY",
+  source: "git",
+  meta: {
+    githubCommitRef: "feature/public-beta-hardening",
+    githubCommitSha: previewCommitSha,
+  },
+};
+assert.deepEqual(
+  validatePreviewDeploymentMetadata(previewDeployment, {
+    previewUrl: "https://geo-content-checker-example.vercel.app",
+    expectedSha: previewCommitSha,
+    expectedBranch: "feature/public-beta-hardening",
+    expectedProjectId: "prj_preview",
+  }),
+  {
+    deploymentId: "dpl_preview",
+    target: "preview",
+    branch: "feature/public-beta-hardening",
+    sha: previewCommitSha,
+    status: "READY",
+  },
+);
+for (const invalidDeployment of [
+  { ...previewDeployment, url: "different-preview.vercel.app" },
+  { ...previewDeployment, projectId: "prj_other" },
+  { ...previewDeployment, target: "production" },
+  { ...previewDeployment, readyState: "ERROR" },
+  { ...previewDeployment, source: "cli" },
+  {
+    ...previewDeployment,
+    meta: { ...previewDeployment.meta, githubCommitRef: "main" },
+  },
+  {
+    ...previewDeployment,
+    meta: { ...previewDeployment.meta, githubCommitSha: "b".repeat(40) },
+  },
+]) {
+  assert.throws(() =>
+    validatePreviewDeploymentMetadata(invalidDeployment, {
+      previewUrl: "https://geo-content-checker-example.vercel.app",
+      expectedSha: previewCommitSha,
+      expectedBranch: "feature/public-beta-hardening",
+      expectedProjectId: "prj_preview",
+    }),
+  );
+}
 
 const releaseConfigScript = fileURLToPath(new URL("./check-release-config.mjs", import.meta.url));
 const validReleaseEnvironment: NodeJS.ProcessEnv = {

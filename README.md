@@ -52,9 +52,20 @@ npm run build
 在 A.5 阶段，仅在 Vercel `Preview` 环境为 `feature/public-beta-hardening` 配置 `.env.example` 所需变量。Production 环境变量、Production 部署、Promote、Merge 和标签保持锁定；Preview 门禁全部通过后再单独评估 Production。新 Preview 必须由 Git Integration 产生，不使用 Vercel CLI 部署。部署完成后执行：
 
 ```bash
-GEO_BASE_URL=https://your-preview.example.com \
-  npm run blackbox:model -- --skip-declared-length-check
+# 安全测试运行器需预先注入 VERCEL_AUTOMATION_BYPASS_SECRET。
+GEO_BASE_URL=https://your-preview.vercel.app \
+npm run blackbox:model -- --skip-declared-length-check
 ```
+
+受 Deployment Protection 保护的 Preview 必须使用 Vercel 官方 `x-vercel-protection-bypass` 请求头。该 Secret 只属于自动化测试运行器，不加入 `.env.example`、Vercel 应用环境变量或仓库。
+
+仓库提供 GitHub Actions 工作流 `Preview Blackbox`。在当前 Draft PR 中，它只对 `feature/public-beta-hardening` 的 PR 更新运行，并按 Commit SHA 等待 Git Integration Preview；合并后也可使用手动入口。工作流固定使用 GitHub Environment `Preview`，并要求：
+
+- Environment Secrets：`VERCEL_AUTOMATION_BYPASS_SECRET`、`VERCEL_TOKEN`
+- Environment Variables：`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`
+- 手动入口输入：唯一 Preview Deployment URL 和完整 Commit SHA
+
+工作流会先通过 Vercel API 发现或校验对应 Preview，确认 Project、Git 来源、Preview Target、Branch、READY 状态和 Commit SHA，再运行原生 `blackbox:model`。它不会创建、重试、Promote 或修改任何 Deployment。
 
 Vercel 会在应用前缓冲不完整的请求体，因此远程模型验收显式跳过畸形 `Content-Length` 传输用例；该用例仍必须由本地 `security:unit` 和 `blackbox:fallback` 通过。
 

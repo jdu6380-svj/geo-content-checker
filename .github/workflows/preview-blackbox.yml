@@ -1,0 +1,100 @@
+name: Preview Blackbox
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: Unique Vercel Preview deployment URL
+        required: true
+        type: string
+      expected_sha:
+        description: Full Git commit SHA deployed to Preview
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-blackbox-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.head_ref == 'feature/public-beta-hardening' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: Preview
+    env:
+      EXPECTED_BRANCH: feature/public-beta-hardening
+      SOURCE_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+      PREVIEW_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.preview_url || '' }}
+      EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.expected_sha }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.expected_sha }}
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate workflow branch and secrets
+        shell: bash
+        run: |
+          if [ "$SOURCE_BRANCH" != "$EXPECTED_BRANCH" ]; then
+            echo "::error::Preview Blackbox must run from $EXPECTED_BRANCH."
+            exit 1
+          fi
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            echo "::error::GitHub Preview Environment secrets are incomplete."
+            exit 1
+          fi
+
+      - name: Read checkout SHA
+        id: checkout
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Preview deployment metadata
+        id: preflight
+        env:
+          CHECKOUT_SHA: ${{ steps.checkout.outputs.sha }}
+        run: node scripts/validate-preview-deployment.mjs
+
+      - name: Run protected Preview model blackbox
+        env:
+          GEO_BASE_URL: ${{ steps.preflight.outputs.preview_url }}
+        run: npm run blackbox:model -- --skip-declared-length-check
+
+      - name: Record validation target
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## Preview Blackbox PASS"
+            echo
+            echo "- Branch: \`$SOURCE_BRANCH\`"
+            echo "- Commit: \`$EXPECTED_SHA\`"
+            echo "- Deployment: \`${{ steps.preflight.outputs.deployment_id }}\`"
+            echo "- Preview: \`${{ steps.preflight.outputs.preview_url }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

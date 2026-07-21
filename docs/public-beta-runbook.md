@@ -39,6 +39,21 @@ The following settings belong to Phase B or the Commercial Readiness Check. They
 - Approve `SENTRY_TRACES_SAMPLE_RATE` before broader Beta traffic or Production readiness.
 - Configure and verify the provider-side daily spend alert during Commercial Readiness.
 
+### Preview Automation Runner
+
+Protected Preview black-box validation uses the GitHub Environment named `Preview`, not repository-level secrets and not Vercel application environment variables. During the Draft PR, the workflow runs only for updates to `feature/public-beta-hardening` and waits for the Git Integration Preview matching the PR head SHA. The manual workflow entry remains available after the workflow exists on the default branch.
+
+Configure the following values manually:
+
+| GitHub Environment setting | Name | Purpose |
+| --- | --- | --- |
+| Secret | `VERCEL_AUTOMATION_BYPASS_SECRET` | Sends Vercel's official `x-vercel-protection-bypass` header from the black-box runner. |
+| Secret | `VERCEL_TOKEN` | Performs a read-only Vercel Deployment metadata lookup before model requests. |
+| Variable | `VERCEL_ORG_ID` | Restricts the metadata lookup to the intended Vercel team. |
+| Variable | `VERCEL_PROJECT_ID` | Requires the Deployment to belong to the intended project. |
+
+Do not add these secrets to `.env.example`, Preview application variables, build output, shell history, screenshots, PR comments, or chat. The workflow never prints them or passes `VERCEL_TOKEN` to the application.
+
 ## Preview Validation
 
 1. Run `npm run check`, `npm run security:unit`, `npm run build`, `npm run blackbox:fallback`, and `git diff --check` under Node 22.
@@ -50,8 +65,8 @@ The following settings belong to Phase B or the Commercial Readiness Check. They
 7. Confirm the Preview URL belongs to that deployment and neither equals nor redirects to a Production domain or alias.
 8. Confirm `GET /api/health` returns HTTP 200 with `status: "ok"` and all five checks are `true`.
 9. Complete browser UX smoke at `1440x900`, `1280x800`, and `390x844`, including Editor, real Loading, Report, score rail, Diagnosis, Patch, keyboard operation, and overflow.
-10. Complete one real Preview analysis, then run `GEO_BASE_URL=https://preview.example.com npm run blackbox:model -- --skip-declared-length-check`. Vercel buffers incomplete request bodies before they reach the application, so the malformed declared-length transport check remains mandatory in the local `security:unit` and `blackbox:fallback` gates instead. Every model-capable route must return `source: "model"`; fallback, mocks, and fixtures do not satisfy this gate.
-11. Trigger one controlled application error and verify Sentry receives a `preview` event with the stack but without body, Prompt, evidence, cookies, User-Agent, raw IP, client UUID, authorization headers, or secrets.
+10. Require the `Preview Blackbox` workflow for the PR head SHA to pass. The workflow waits for the matching Git Integration Preview, or accepts an explicit URL and SHA through its future manual entry, then verifies URL, Project, Git source, Preview Target, Branch, READY state, and Deployment SHA before running `blackbox:model -- --skip-declared-length-check`. Vercel buffers incomplete request bodies before they reach the application, so the malformed declared-length transport check remains mandatory in the local `security:unit` and `blackbox:fallback` gates instead. Every model-capable route must return `source: "model"`; fallback, mocks, and fixtures do not satisfy this gate.
+11. Complete one real Preview analysis, then trigger a controlled `A5SmokeError` through the existing client-side Sentry global error capture. Do not add a business test route. Verify Sentry receives a `preview` event with the matching Release SHA and stack but without body, Prompt, evidence, cookies, User-Agent, raw IP, client UUID, authorization headers, or secrets.
 12. Verify structured logs contain only route, request ID, status, duration, source, model status, rate-limit mode, model latency, Token counts, and optional estimated cost.
 
 Changing a Preview variable does not retroactively update an existing Deployment. For A.5, do not click Redeploy and do not use Vercel CLI deployment; wait for the real commit in step 4 to create a new Git Integration Preview.

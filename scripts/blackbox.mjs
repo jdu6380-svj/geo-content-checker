@@ -4,7 +4,15 @@ import http from "node:http";
 import https from "node:https";
 import { gzipSync } from "node:zlib";
 
+import {
+  applyAutomationBypassHeader,
+  automationBypassHeaders,
+  isVercelDeploymentProtectionRedirect,
+  resolveAutomationBypassSecret,
+} from "./preview-automation.mjs";
+
 const baseUrl = (process.env.GEO_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+const automationBypassSecret = resolveAutomationBypassSecret(baseUrl);
 const expectedSourceArgument = process.argv.find((value) => value.startsWith("--expect-source="));
 const expectedSource = expectedSourceArgument?.split("=", 2)[1] || "either";
 const skipDeclaredLengthCheck = process.argv.includes("--skip-declared-length-check");
@@ -66,14 +74,25 @@ function headers(params = {}) {
   });
   if (params.token) result.set("X-GEO-Analysis-Token", params.token);
   if (params.gzip) result.set("X-GEO-Content-Encoding", "gzip");
-  return result;
+  return applyAutomationBypassHeader(result, automationBypassSecret);
 }
 
 async function request(path, init) {
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
+    redirect: "manual",
     signal: AbortSignal.timeout(30_000),
   });
+  if (
+    isVercelDeploymentProtectionRedirect(
+      response.status,
+      response.headers.get("location"),
+    )
+  ) {
+    throw new Error(
+      "Vercel Deployment Protection blocked the request. Configure VERCEL_AUTOMATION_BYPASS_SECRET in the Preview test runner.",
+    );
+  }
   assert.match(
     response.headers.get("x-request-id") || "",
     requestIdPattern,
@@ -104,6 +123,7 @@ async function requestWithDeclaredLength(path, declaredLength, body) {
           "X-GEO-Client-ID": oversizedClientId,
           "X-Forwarded-For": testIp,
           Connection: "close",
+          ...automationBypassHeaders(automationBypassSecret),
         },
       },
       (response) => {
@@ -155,6 +175,9 @@ async function expectStatus(name, path, init, status, errorCode) {
 }
 
 console.log(`GEO black-box target: ${baseUrl} (expected source: ${expectedSource})`);
+console.log(
+  `Vercel Preview automation bypass: ${automationBypassSecret ? "enabled" : "disabled"}`,
+);
 
 await check("reports sanitized service readiness", async () => {
   const result = await request("/api/health", { method: "GET" });
