@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { callOpenAICompatibleModel, ModelCallError } from "@/lib/ai/openai-compatible";
-import { cleanModelJson } from "@/lib/ai/json";
+import { normalizePatchModelOutput } from "@/lib/ai/patch-output";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
 import { formatPatchMarkdown } from "@/lib/markdown/patch-markdown";
 import {
@@ -258,7 +258,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         maxTokens: mode === "advice" ? 1_800 : 2_000,
         rateLimitMode: authorization.mode,
       });
-      const json: unknown = JSON.parse(cleanModelJson(raw));
+      const json = normalizePatchModelOutput(raw, mode);
       const parsed = mode === "advice"
         ? modelAdviceActionsSchema.safeParse(json)
         : modelContentActionsSchema.safeParse(json);

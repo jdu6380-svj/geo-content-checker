@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
 import { normalizeDiagnosticModelOutput } from "../lib/ai/diagnostic-output.ts";
+import { normalizePatchModelOutput } from "../lib/ai/patch-output.ts";
 import {
   createAnalysisHash,
   DRAFT_CONTENT_MAX_BYTES,
@@ -212,6 +213,110 @@ assert.equal(arbitraryNormalizedDiagnostic.riskLevel, undefined);
 assert.equal(arbitraryNormalizedDiagnostic.evidence, undefined);
 assert.equal(arbitraryNormalizedDiagnostic.missingInfo, undefined);
 assert.equal(arbitraryNormalizedDiagnostic.recommendation, undefined);
+
+const rawAdviceOutput = JSON.stringify({
+  result: {
+    actions: [
+      {
+        type: "authorEvidence",
+        field: "发布日期",
+        reason: "补充日期以说明时效范围。",
+        related_question: null,
+      },
+      {
+        action_type: "structureChange",
+        title: "突出限制条件",
+        instruction: "将限制条件移动到操作步骤之后。",
+        target_paragraph_id: "Para-2",
+      },
+    ],
+  },
+});
+const normalizedAdviceOutput = normalizePatchModelOutput(rawAdviceOutput, "advice");
+assert.deepEqual(normalizedAdviceOutput, {
+  actions: [
+    {
+      type: "author_evidence",
+      field: "发布日期",
+      reason: "补充日期以说明时效范围。",
+    },
+    {
+      type: "structure_change",
+      title: "突出限制条件",
+      instruction: "将限制条件移动到操作步骤之后。",
+      targetParagraphIds: ["Para-2"],
+    },
+  ],
+});
+assert.deepEqual(
+  normalizePatchModelOutput(rawAdviceOutput, "advice"),
+  normalizedAdviceOutput,
+);
+
+const normalizedContentOutput = normalizePatchModelOutput(
+  `\`\`\`json
+  {"patches":[{"type":"factCard","label":"适用范围","value":"仅限测试账号","evidence":{"paragraph_id":"Para-2","quote":"仅限测试账号"}}]}
+  \`\`\``,
+  "content_draft",
+);
+assert.deepEqual(normalizedContentOutput, {
+  actions: [{
+    type: "fact_card",
+    label: "适用范围",
+    value: "仅限测试账号",
+    evidence: { paragraphId: "Para-2", quote: "仅限测试账号" },
+  }],
+});
+
+const missingPatchFieldOutput = normalizePatchModelOutput(
+  JSON.stringify({
+    actions: [{
+      type: "factCard",
+      label: "适用范围",
+      evidence: { paragraph_id: "Para-2", quote: "仅限测试账号" },
+    }],
+  }),
+  "content_draft",
+);
+assert.equal(
+  (missingPatchFieldOutput.actions as Array<{ value?: unknown }>)[0]?.value,
+  undefined,
+);
+assert.equal(
+  Object.hasOwn(
+    (missingPatchFieldOutput.actions as Array<Record<string, unknown>>)[0] ?? {},
+    "answer",
+  ),
+  false,
+);
+
+const oversizedAdviceActions = Array.from({ length: 10 }, (_, index) => ({
+  type: "structure_change",
+  title: `结构建议 ${index + 1}`,
+  instruction: "调整现有段落顺序。",
+  targetParagraphIds: "Para-1",
+}));
+const limitedAdviceOutput = normalizePatchModelOutput(
+  JSON.stringify({ actions: oversizedAdviceActions }),
+  "advice",
+);
+if (!Array.isArray(limitedAdviceOutput.actions)) {
+  throw new Error("normalized advice actions must be an array");
+}
+assert.equal(limitedAdviceOutput.actions.length, 8);
+assert.equal((limitedAdviceOutput.actions[7] as { title?: string }).title, "结构建议 8");
+
+const invalidPatchOutput = normalizePatchModelOutput(
+  JSON.stringify({
+    actions: [{
+      type: "delete_content",
+      targetParagraphIds: "Para-1, Outside-2",
+      payload: "不得接受的任意动作",
+    }],
+  }),
+  "advice",
+);
+assert.deepEqual(invalidPatchOutput, { actions: [{ type: "delete_content" }] });
 
 const localStorageValues = new Map<string, string>();
 Object.defineProperty(globalThis, "window", {
