@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
+import { normalizeDiagnosticModelOutput } from "../lib/ai/diagnostic-output.ts";
 import {
   createAnalysisHash,
   DRAFT_CONTENT_MAX_BYTES,
@@ -151,6 +152,66 @@ assert.equal(partiallyInvalidDiagnostic.answerability, "信息不足");
 assert.deepEqual(partiallyInvalidDiagnostic.evidence, [
   { paragraphId: "Para-2", quote: "适用范围和限制条件" },
 ]);
+
+const diagnosticQuestion = "文章说明了哪些适用范围和限制条件？";
+assert.deepEqual(
+  normalizeDiagnosticModelOutput(
+    JSON.stringify({
+      answerability: "可以完全回答",
+      risk_level: "low",
+      evidence: [{ paragraph_id: "Para-2", quote: "适用范围和限制条件" }],
+      missing_info: [],
+      recommendation: "保留限制条件说明。",
+    }),
+    diagnosticQuestion,
+  ),
+  {
+    question: diagnosticQuestion,
+    answerability: "可以完全回答",
+    riskLevel: "low",
+    evidence: [{ paragraphId: "Para-2", quote: "适用范围和限制条件" }],
+    missingInfo: [],
+    recommendation: "保留限制条件说明。",
+  },
+);
+assert.deepEqual(
+  normalizeDiagnosticModelOutput(
+    `\`\`\`json
+    {"diagnostic":{"question":"模型改写的问题","answerability":"信息不足","riskLevel":"medium","evidence":[],"missingInfo":["缺少明确范围。"],"recommendation":"补充适用范围。"}}
+    \`\`\``,
+    diagnosticQuestion,
+  ),
+  {
+    question: diagnosticQuestion,
+    answerability: "信息不足",
+    riskLevel: "medium",
+    evidence: [],
+    missingInfo: ["缺少明确范围。"],
+    recommendation: "补充适用范围。",
+  },
+);
+const invalidNormalizedDiagnostic = normalizeDiagnosticModelOutput(
+  JSON.stringify({
+    answerability: "大概可以回答",
+    riskLevel: "unknown",
+    evidence: [],
+    missingInfo: [],
+    recommendation: "任意输出不得通过。",
+  }),
+  diagnosticQuestion,
+);
+assert.equal(invalidNormalizedDiagnostic.answerability, "大概可以回答");
+assert.equal(invalidNormalizedDiagnostic.riskLevel, "unknown");
+
+const arbitraryNormalizedDiagnostic = normalizeDiagnosticModelOutput(
+  JSON.stringify({ answer: "缺少诊断 Contract 的任意模型输出" }),
+  diagnosticQuestion,
+);
+assert.equal(arbitraryNormalizedDiagnostic.answerability, undefined);
+assert.equal(arbitraryNormalizedDiagnostic.riskLevel, undefined);
+assert.equal(arbitraryNormalizedDiagnostic.evidence, undefined);
+assert.equal(arbitraryNormalizedDiagnostic.missingInfo, undefined);
+assert.equal(arbitraryNormalizedDiagnostic.recommendation, undefined);
 
 const localStorageValues = new Map<string, string>();
 Object.defineProperty(globalThis, "window", {
