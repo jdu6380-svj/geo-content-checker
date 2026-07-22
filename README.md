@@ -31,7 +31,7 @@ npm run setup:env
 
 随后只在本机编辑 `.env.local`，补充以下凭据：
 
-- DeepSeek：`OPENAI_API_KEY`，默认接口为 `https://api.deepseek.com/v1`，模型为 `deepseek-chat`。
+- DeepSeek：`OPENAI_API_KEY`，默认接口为 `https://api.deepseek.com`，模型为 `deepseek-v4-flash`。
 - Upstash：`UPSTASH_REDIS_REST_URL` 与 `UPSTASH_REDIS_REST_TOKEN`。
 - 公开环境保持 `REDIS_QUOTA_FAIL_OPEN=false`。
 

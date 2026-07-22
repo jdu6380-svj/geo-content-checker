@@ -33,6 +33,8 @@ The following names and values must exist in the Vercel `Preview` scope. Variabl
 
 `GET /api/health` returns `200 / ok` only when its five runtime groups pass: model, Redis, three distinct security secrets, feedback/support, and `NEXT_PUBLIC_SENTRY_DSN`. `release:check` is stricter: it additionally requires Sentry build credentials and fail-closed Redis quota mode.
 
+The A.5 Preview on `feature/public-beta-hardening` uses the official DeepSeek OpenAI-compatible endpoint: `OPENAI_BASE_URL=https://api.deepseek.com` and `OPENAI_MODEL=deepseek-v4-flash`. Store `OPENAI_API_KEY` as a Sensitive variable scoped to the same Preview branch. Do not change Production or reuse an unscoped provider credential. Updating these variables does not affect an existing Deployment; wait for the next approved release-documentation or product fix Commit to create a fresh Git Integration Preview.
+
 The following settings belong to Phase B or the Commercial Readiness Check. They are not A.5 Preview blockers and are not part of the five Health booleans:
 
 - Validate `MODEL_INPUT_COST_USD_PER_MILLION_TOKENS` and `MODEL_OUTPUT_COST_USD_PER_MILLION_TOKENS` against current provider pricing during Phase B cost acceptance.
