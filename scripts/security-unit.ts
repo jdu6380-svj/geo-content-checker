@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import {
+  buildContentDraftPrompts,
+  CONTENT_DRAFT_MAX_TOKENS,
+} from "../lib/ai/content-draft-prompt.ts";
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
 import { normalizeDiagnosticModelOutput } from "../lib/ai/diagnostic-output.ts";
 import { normalizePatchModelOutput } from "../lib/ai/patch-output.ts";
@@ -213,6 +217,27 @@ assert.equal(arbitraryNormalizedDiagnostic.riskLevel, undefined);
 assert.equal(arbitraryNormalizedDiagnostic.evidence, undefined);
 assert.equal(arbitraryNormalizedDiagnostic.missingInfo, undefined);
 assert.equal(arbitraryNormalizedDiagnostic.recommendation, undefined);
+
+const contentDraftPromptInput = {
+  title: "雨水花园维护说明",
+  paragraphs: [{ id: "Para-1", text: "强降雨后应检查入口和溢流口。" }],
+};
+const contentDraftPrompts = buildContentDraftPrompts(
+  contentDraftPromptInput.title,
+  contentDraftPromptInput.paragraphs,
+);
+assert.deepEqual(
+  contentDraftPrompts,
+  buildContentDraftPrompts(contentDraftPromptInput.title, contentDraftPromptInput.paragraphs),
+);
+assert.equal(
+  contentDraftPrompts.user,
+  formatUntrustedPromptData(contentDraftPromptInput),
+);
+assert.equal(contentDraftPrompts.user.includes("diagnostics"), false);
+assert.equal(contentDraftPrompts.system.includes("2 到 6 个动作"), true);
+assert.equal(contentDraftPrompts.system.includes("不超过 200 个字符"), true);
+assert.equal(CONTENT_DRAFT_MAX_TOKENS, 1_200);
 
 const rawAdviceOutput = JSON.stringify({
   result: {
