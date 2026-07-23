@@ -278,6 +278,96 @@ assert.deepEqual(
   normalizedAdviceOutput,
 );
 
+const singularAdviceOutput = JSON.stringify({
+  output: {
+    action: {
+      actionType: " structure-change ",
+      title: "突出限制条件",
+      instruction: "将限制条件移动到操作步骤之后。",
+      target_paragraph_ids: " Para-1 、 Para-2 ",
+    },
+  },
+});
+const normalizedSingularAdviceOutput = normalizePatchModelOutput(singularAdviceOutput, "advice");
+assert.deepEqual(normalizedSingularAdviceOutput, {
+  actions: [{
+    type: "structure_change",
+    title: "突出限制条件",
+    instruction: "将限制条件移动到操作步骤之后。",
+    targetParagraphIds: ["Para-1", "Para-2"],
+  }],
+});
+assert.deepEqual(
+  normalizePatchModelOutput(singularAdviceOutput, "advice"),
+  normalizedSingularAdviceOutput,
+);
+
+const topLevelAdviceOutput = `\`\`\`json
+[
+  {
+    "type": "authorEvidence",
+    "field": "发布日期",
+    "reason": "补充日期以说明时效范围。",
+    "related_question": "   "
+  },
+  {
+    "type": "structureChange",
+    "title": "突出限制条件",
+    "instruction": "将限制条件移动到操作步骤之后。",
+    "targetParagraphIds": [" Para-1 ", "Para-2"]
+  }
+]
+\`\`\``;
+assert.deepEqual(normalizePatchModelOutput(topLevelAdviceOutput, "advice"), {
+  actions: [
+    {
+      type: "author_evidence",
+      field: "发布日期",
+      reason: "补充日期以说明时效范围。",
+    },
+    {
+      type: "structure_change",
+      title: "突出限制条件",
+      instruction: "将限制条件移动到操作步骤之后。",
+      targetParagraphIds: ["Para-1", "Para-2"],
+    },
+  ],
+});
+
+const missingAdviceFieldOutput = normalizePatchModelOutput(
+  JSON.stringify({
+    action: {
+      type: "authorEvidence",
+      field: "发布日期",
+    },
+  }),
+  "advice",
+);
+assert.equal(
+  (missingAdviceFieldOutput.actions as Array<Record<string, unknown>>)[0]?.reason,
+  undefined,
+);
+
+const invalidAdviceParagraphOutput = normalizePatchModelOutput(
+  JSON.stringify({
+    actions: [{
+      type: "structureChange",
+      title: "突出限制条件",
+      instruction: "将限制条件移动到操作步骤之后。",
+      targetParagraphIds: ["Para-1", "Outside-2"],
+    }],
+  }),
+  "advice",
+);
+assert.deepEqual(invalidAdviceParagraphOutput, {
+  actions: [{
+    type: "structure_change",
+    title: "突出限制条件",
+    instruction: "将限制条件移动到操作步骤之后。",
+    targetParagraphIds: ["Para-1", "Outside-2"],
+  }],
+});
+
 const normalizedContentOutput = normalizePatchModelOutput(
   `\`\`\`json
   {"patches":[{"type":"factCard","label":"适用范围","value":"仅限测试账号","evidence":{"paragraph_id":"Para-2","quote":"仅限测试账号"}}]}
