@@ -109,25 +109,25 @@ function normalizeAdviceAction(value: unknown): unknown {
   return { type };
 }
 
-type AdviceActionsResult = { found: boolean; value?: unknown };
+type ActionsResult = { found: boolean; value?: unknown };
 
-function normalizeAdviceActionCollection(value: unknown): unknown {
+function normalizeActionCollection(value: unknown): unknown {
   return isJsonRecord(value) ? [value] : value;
 }
 
-function findAdviceActions(value: unknown): AdviceActionsResult {
+function findActions(value: unknown): ActionsResult {
   if (Array.isArray(value)) return { found: true, value };
   if (!isJsonRecord(value)) return { found: false };
 
   for (const key of ["actions", "patches", "action", "patch"]) {
     if (Object.hasOwn(value, key)) {
-      return { found: true, value: normalizeAdviceActionCollection(value[key]) };
+      return { found: true, value: normalizeActionCollection(value[key]) };
     }
   }
 
   for (const key of ["result", "data", "output"]) {
     if (!Object.hasOwn(value, key)) continue;
-    const nested = findAdviceActions(value[key]);
+    const nested = findActions(value[key]);
     if (nested.found) return nested;
   }
 
@@ -138,7 +138,7 @@ function findAdviceActions(value: unknown): AdviceActionsResult {
   return { found: false };
 }
 
-function parseAdviceModelJson(raw: string): unknown {
+function parsePatchModelJson(raw: string): unknown {
   const cleaned = cleanModelJson(raw);
   try {
     return JSON.parse(cleaned);
@@ -155,7 +155,7 @@ function parseAdviceModelJson(raw: string): unknown {
 }
 
 function normalizeAdviceModelOutput(parsed: unknown) {
-  const result = findAdviceActions(parsed);
+  const result = findActions(parsed);
   const actions = result.found ? result.value : undefined;
 
   if (!Array.isArray(actions)) return { actions };
@@ -187,23 +187,14 @@ function normalizeContentAction(value: unknown): unknown {
   return { type };
 }
 
-function actionContainer(root: JsonRecord): JsonRecord {
-  if (Object.hasOwn(root, "actions") || Object.hasOwn(root, "patches")) return root;
-  for (const key of ["result", "data"]) {
-    if (isJsonRecord(root[key])) return root[key];
-  }
-  return root;
-}
-
 export function normalizePatchModelOutput(raw: string, mode: PatchOutputMode) {
+  const parsed = parsePatchModelJson(raw);
   if (mode === "advice") {
-    return normalizeAdviceModelOutput(parseAdviceModelJson(raw));
+    return normalizeAdviceModelOutput(parsed);
   }
 
-  const parsed: unknown = JSON.parse(cleanModelJson(raw));
-  const root = isJsonRecord(parsed) ? parsed : {};
-  const container = actionContainer(root);
-  const actions = aliasedField(container, "actions", ["patches"]);
+  const result = findActions(parsed);
+  const actions = result.found ? result.value : undefined;
 
   if (!Array.isArray(actions)) return { actions };
 

@@ -15,6 +15,7 @@ import {
 } from "@/lib/server/analysis-operation";
 import {
   markGeoRequestOutcome,
+  markGeoValidationTelemetry,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
@@ -76,9 +77,34 @@ async function handlePost(request: NextRequest): Promise<Response> {
         maxTokens: 800,
         rateLimitMode: authorization.mode,
       });
-      const parsed = modelQuestionsSchema.parse(JSON.parse(cleanModelJson(raw)));
+      let modelJson: unknown;
+      try {
+        modelJson = JSON.parse(cleanModelJson(raw));
+      } catch (error) {
+        markGeoValidationTelemetry({
+          stage: "json_parse",
+          issueCount: 1,
+          fieldPaths: [[]],
+        });
+        throw error;
+      }
+      const parsedResult = modelQuestionsSchema.safeParse(modelJson);
+      if (!parsedResult.success) {
+        markGeoValidationTelemetry({
+          stage: "schema_validation",
+          issueCount: parsedResult.error.issues.length,
+          fieldPaths: parsedResult.error.issues.map((issue) => issue.path),
+        });
+        throw parsedResult.error;
+      }
+      const parsed = parsedResult.data;
       const questions = normalizeQuestions(parsed.questions);
       if (!questions) {
+        markGeoValidationTelemetry({
+          stage: "semantic_validation",
+          issueCount: 1,
+          fieldPaths: [["questions"]],
+        });
         markGeoRequestOutcome({ source: "fallback", modelStatus: "invalid-output" });
         return NextResponse.json(fallback, { headers });
       }

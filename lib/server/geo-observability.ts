@@ -15,6 +15,42 @@ export type GeoModelStatus =
   | "rate-limited"
   | "timeout";
 
+export const GEO_VALIDATION_STAGES = [
+  "json_parse",
+  "schema_validation",
+  "semantic_validation",
+  "reference_validation",
+  "evidence_validation",
+] as const;
+
+export type GeoValidationStage = (typeof GEO_VALIDATION_STAGES)[number];
+
+const GEO_VALIDATION_ACTION_TYPES = [
+  "author_evidence",
+  "structure_change",
+  "faq",
+  "fact_card",
+] as const;
+
+type GeoValidationActionType =
+  | (typeof GEO_VALIDATION_ACTION_TYPES)[number]
+  | "unknown"
+  | "non-string";
+
+export interface GeoValidationTelemetryInput {
+  stage: GeoValidationStage;
+  issueCount: number;
+  fieldPaths?: readonly (readonly (string | number)[])[];
+  actionTypes?: readonly unknown[];
+}
+
+export interface GeoValidationTelemetry {
+  validationStage: GeoValidationStage;
+  validationIssueCount: number;
+  validationFieldPaths: string[];
+  validationActionTypes: GeoValidationActionType[];
+}
+
 interface GeoRequestContext {
   requestId: string;
   route: string;
@@ -26,11 +62,87 @@ interface GeoRequestContext {
   completionTokens?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
+  validationStage?: GeoValidationStage;
+  validationIssueCount?: number;
+  validationFieldPaths?: string[];
+  validationActionTypes?: GeoValidationActionType[];
 }
 
 type RouteHandler = (request: NextRequest) => Promise<Response>;
 
 const requestStorage = new AsyncLocalStorage<GeoRequestContext>();
+
+function sanitizeValidationPath(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  if (value.length === 0) return "$";
+
+  let path = "$";
+  for (const segment of value) {
+    if (typeof segment === "number" && Number.isSafeInteger(segment) && segment >= 0) {
+      path += `[${segment}]`;
+      continue;
+    }
+    if (
+      typeof segment === "string" &&
+      /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(segment)
+    ) {
+      path += `.${segment}`;
+      continue;
+    }
+    return null;
+  }
+  return path.length <= 240 ? path : null;
+}
+
+export function sanitizeGeoValidationTelemetry(
+  input: unknown,
+): GeoValidationTelemetry | null {
+  try {
+    if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+    const value = input as Record<string, unknown>;
+    if (
+      !GEO_VALIDATION_STAGES.includes(value.stage as GeoValidationStage) ||
+      typeof value.issueCount !== "number" ||
+      !Number.isSafeInteger(value.issueCount) ||
+      value.issueCount < 1
+    ) {
+      return null;
+    }
+
+    const validationFieldPaths: string[] = [];
+    if (Array.isArray(value.fieldPaths)) {
+      for (const candidate of value.fieldPaths) {
+        const path = sanitizeValidationPath(candidate);
+        if (path && !validationFieldPaths.includes(path)) validationFieldPaths.push(path);
+        if (validationFieldPaths.length === 20) break;
+      }
+    }
+
+    const validationActionTypes: GeoValidationActionType[] = [];
+    if (Array.isArray(value.actionTypes)) {
+      for (const candidate of value.actionTypes.slice(0, 10)) {
+        validationActionTypes.push(
+          typeof candidate !== "string"
+            ? "non-string"
+            : GEO_VALIDATION_ACTION_TYPES.includes(
+                  candidate as (typeof GEO_VALIDATION_ACTION_TYPES)[number],
+                )
+              ? (candidate as (typeof GEO_VALIDATION_ACTION_TYPES)[number])
+              : "unknown",
+        );
+      }
+    }
+
+    return {
+      validationStage: value.stage as GeoValidationStage,
+      validationIssueCount: value.issueCount,
+      validationFieldPaths,
+      validationActionTypes,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function writeRequestLog(context: GeoRequestContext, request: NextRequest, response: Response): void {
   const event = {
@@ -52,6 +164,14 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.estimatedCostUsd === undefined
       ? {}
       : { estimatedCostUsd: context.estimatedCostUsd }),
+    ...(context.validationStage === undefined
+      ? {}
+      : {
+          validationStage: context.validationStage,
+          validationIssueCount: context.validationIssueCount,
+          validationFieldPaths: context.validationFieldPaths,
+          validationActionTypes: context.validationActionTypes,
+        }),
   };
   const serialized = JSON.stringify(event);
 
@@ -82,6 +202,21 @@ export function markGeoRequestOutcome(params: {
   if (params.completionTokens !== undefined) context.completionTokens = params.completionTokens;
   if (params.totalTokens !== undefined) context.totalTokens = params.totalTokens;
   if (params.estimatedCostUsd !== undefined) context.estimatedCostUsd = params.estimatedCostUsd;
+}
+
+export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput): void {
+  try {
+    const context = requestStorage.getStore();
+    if (!context) return;
+    const telemetry = sanitizeGeoValidationTelemetry(params);
+    if (!telemetry) return;
+    context.validationStage = telemetry.validationStage;
+    context.validationIssueCount = telemetry.validationIssueCount;
+    context.validationFieldPaths = telemetry.validationFieldPaths;
+    context.validationActionTypes = telemetry.validationActionTypes;
+  } catch {
+    // Validation telemetry must never affect the request path.
+  }
 }
 
 export function withGeoRequestLogging(route: string, handler: RouteHandler): RouteHandler {

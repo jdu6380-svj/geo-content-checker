@@ -21,6 +21,7 @@
     "blackbox:model": "node scripts/blackbox.mjs --expect-source=model",
     "metrics:beta": "node scripts/beta-metrics-report.mjs",
     "model:validate": "node scripts/model-validation.mjs",
+    "b1:validate": "node --experimental-strip-types scripts/b1-technical-validation.ts",
     "release:check": "REQUIRE_RELEASE_CONFIG=true node --env-file-if-exists=.env.local scripts/check-release-config.mjs"
   },
   "dependencies": {

@@ -16,6 +16,7 @@ import {
 } from "@/lib/server/analysis-operation";
 import {
   markGeoRequestOutcome,
+  markGeoValidationTelemetry,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
@@ -115,7 +116,27 @@ async function evaluateWithModel(params: {
     maxTokens: 1_200,
     rateLimitMode: params.rateLimitMode,
   });
-  const parsed = modelScoringSchema.parse(JSON.parse(cleanJson(raw)));
+  let modelJson: unknown;
+  try {
+    modelJson = JSON.parse(cleanJson(raw));
+  } catch (error) {
+    markGeoValidationTelemetry({
+      stage: "json_parse",
+      issueCount: 1,
+      fieldPaths: [[]],
+    });
+    throw error;
+  }
+  const parsedResult = modelScoringSchema.safeParse(modelJson);
+  if (!parsedResult.success) {
+    markGeoValidationTelemetry({
+      stage: "schema_validation",
+      issueCount: parsedResult.error.issues.length,
+      fieldPaths: parsedResult.error.issues.map((issue) => issue.path),
+    });
+    throw parsedResult.error;
+  }
+  const parsed = parsedResult.data;
 
   const dimensions = {
     questionCoverage: {

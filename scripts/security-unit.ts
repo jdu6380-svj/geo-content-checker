@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -38,7 +46,37 @@ import {
   areDistinctSecuritySecrets,
   isStrongSecuritySecret,
 } from "../lib/server/security-config.ts";
+import {
+  markGeoValidationTelemetry,
+  sanitizeGeoValidationTelemetry,
+} from "../lib/server/geo-observability.ts";
 import { scrubSentryEvent } from "../lib/sentry-scrub.ts";
+import {
+  B1_MODEL_CALLS_PER_PIPELINE,
+  B1_PIPELINE_OPERATIONS,
+  B1_QUESTION_TYPES,
+  B1_TELEMETRY_SCHEMA_VERSION,
+  buildAnonymousB1Report,
+  buildB1CheckpointArtifact,
+  contentDraftFactsArePreserved,
+  contentDraftStructureIsPreserved,
+  diagnosticEvidenceIsLiteral,
+  evaluateThirdRoundRequirement,
+  parseB1CheckpointArtifact,
+  parseB1RuntimeLogMessage,
+  parseB1Arguments,
+  resolveB1CampaignDirectory,
+  selectDiagnosticQuestions,
+  selectStage2Articles,
+  serializeB1CheckpointArtifact,
+  startB1RuntimeLogCollector,
+  validateB1Corpus,
+  type B1CallRecord,
+  type B1Checkpoint,
+  type B1PipelineRecord,
+  type B1RuntimeLogConfig,
+  type B1StabilityObservation,
+} from "./b1-technical-validation.ts";
 import {
   applyAutomationBypassHeader,
   automationBypassHeaders,
@@ -383,6 +421,55 @@ assert.deepEqual(normalizedContentOutput, {
   }],
 });
 
+const singularWrappedContentOutput = JSON.stringify({
+  output: {
+    patch: {
+      type: "factCard",
+      label: "适用范围",
+      value: "仅限测试账号",
+      evidence: { paragraph_id: "Para-2", quote: "仅限测试账号" },
+    },
+  },
+});
+assert.deepEqual(normalizePatchModelOutput(singularWrappedContentOutput, "content_draft"), {
+  actions: [{
+    type: "fact_card",
+    label: "适用范围",
+    value: "仅限测试账号",
+    evidence: { paragraphId: "Para-2", quote: "仅限测试账号" },
+  }],
+});
+
+const topLevelContentOutput = `\`\`\`json
+[
+  {
+    "type": "faq",
+    "question": "测试账号适用于什么范围？",
+    "answer": "仅限测试账号。",
+    "evidence": {
+      "paragraph_id": "Para-2",
+      "quote": "仅限测试账号"
+    }
+  }
+]
+\`\`\``;
+const normalizedTopLevelContentOutput = normalizePatchModelOutput(
+  topLevelContentOutput,
+  "content_draft",
+);
+assert.deepEqual(normalizedTopLevelContentOutput, {
+  actions: [{
+    type: "faq",
+    question: "测试账号适用于什么范围？",
+    answer: "仅限测试账号。",
+    evidence: { paragraphId: "Para-2", quote: "仅限测试账号" },
+  }],
+});
+assert.deepEqual(
+  normalizePatchModelOutput(topLevelContentOutput, "content_draft"),
+  normalizedTopLevelContentOutput,
+);
+
 const missingPatchFieldOutput = normalizePatchModelOutput(
   JSON.stringify({
     actions: [{
@@ -404,6 +491,20 @@ assert.equal(
   ),
   false,
 );
+
+const unknownContentActionOutput = normalizePatchModelOutput(
+  JSON.stringify({
+    action: {
+      type: "replace_content",
+      question: "不得接受的任意动作",
+      answer: "不得接受的任意内容",
+    },
+  }),
+  "content_draft",
+);
+assert.deepEqual(unknownContentActionOutput, {
+  actions: [{ type: "replace_content" }],
+});
 
 const oversizedAdviceActions = Array.from({ length: 10 }, (_, index) => ({
   type: "structure_change",
@@ -623,6 +724,674 @@ assert.equal(
   isVercelDeploymentProtectionRedirect(302, "https://example.com/login"),
   false,
 );
+
+const b1FixturePath = fileURLToPath(
+  new URL("./fixtures/b1-validation-corpus.json", import.meta.url),
+);
+const b1FixtureRaw = readFileSync(b1FixturePath, "utf8");
+const b1Fixture = validateB1Corpus(JSON.parse(b1FixtureRaw));
+assert.equal(b1Fixture.length, 10);
+assert.deepEqual(B1_PIPELINE_OPERATIONS, [
+  "scoring",
+  "question_prediction",
+  "diagnose_1",
+  "diagnose_2",
+  "diagnose_3",
+  "advice",
+  "content_draft",
+]);
+assert.equal(B1_MODEL_CALLS_PER_PIPELINE, 7);
+assert.deepEqual(
+  b1Fixture.map((article) => article.id),
+  Array.from({ length: 10 }, (_, index) => `B1-A${String(index + 1).padStart(2, "0")}`),
+);
+
+const b1Stage2Articles = selectStage2Articles(b1Fixture);
+assert.equal(b1Stage2Articles.length, 9);
+assert.equal(b1Stage2Articles.filter((article) => article.quality === "high").length, 3);
+assert.equal(b1Stage2Articles.filter((article) => article.quality === "medium").length, 3);
+assert.equal(b1Stage2Articles.filter((article) => article.quality === "low").length, 3);
+assert.equal(b1Stage2Articles.some((article) => article.id === "B1-A06"), false);
+
+const fixtureQuestions = [
+  "这篇文章要解决的核心问题是什么？",
+  "文章建议采用哪些具体方法？",
+  "这些建议适用于哪些对象？",
+  "文章提供了哪些事实依据？",
+  "文章说明了哪些限制与时效？",
+];
+const b1QuestionTypeCounts = Object.fromEntries(
+  B1_QUESTION_TYPES.map((questionType) => [questionType, 0]),
+) as Record<(typeof B1_QUESTION_TYPES)[number], number>;
+for (let articleIndex = 0; articleIndex < b1Fixture.length; articleIndex += 1) {
+  const selected = selectDiagnosticQuestions(fixtureQuestions, articleIndex);
+  assert.equal(selected.length, 3);
+  for (const question of selected) b1QuestionTypeCounts[question.type] += 1;
+}
+assert.deepEqual(b1QuestionTypeCounts, {
+  core: 6,
+  method: 6,
+  audience: 6,
+  evidence: 6,
+  limits: 6,
+});
+
+assert.deepEqual(
+  parseB1Arguments([
+    `--corpus=${b1FixturePath}`,
+    "--stage=2",
+    "--round=2",
+    "--resume",
+  ]),
+  {
+    help: false,
+    resume: true,
+    corpusPath: b1FixturePath,
+    stage: 2,
+    round: 2,
+  },
+);
+assert.throws(() => parseB1Arguments([`--corpus=${b1FixturePath}`, "--stage=2"]));
+assert.throws(() =>
+  parseB1Arguments([`--corpus=${b1FixturePath}`, "--stage=1", "--round=2"]),
+);
+
+const b1CorpusHash = "a".repeat(64);
+const b1CampaignDirectory = resolveB1CampaignDirectory(
+  "/tmp/b1-test-workspace",
+  b1CorpusHash,
+  "https://geo-content-checker-example.vercel.app",
+);
+assert.match(
+  b1CampaignDirectory,
+  /^\/tmp\/b1-test-workspace\/outputs\/b1\/stage1\/aaaaaaaaaaaa-[0-9a-f]{8}$/,
+);
+
+const b1Paragraphs = [
+  { id: "Para-1", text: "第一段包含可逐字验证的事实。" },
+  { id: "Para-2", text: "第二段保留文章原有结构。" },
+];
+const validB1Draft = {
+  mode: "content_draft",
+  source: "model",
+  actions: [
+    {
+      type: "faq",
+      question: "文章包含什么事实？",
+      answer: "可逐字验证的事实",
+      evidence: { paragraphId: "Para-1", quote: "可逐字验证的事实" },
+    },
+    {
+      type: "fact_card",
+      label: "结构",
+      value: "文章原有结构",
+      evidence: { paragraphId: "Para-2", quote: "文章原有结构" },
+    },
+  ],
+};
+assert.equal(contentDraftFactsArePreserved(validB1Draft, b1Paragraphs), true);
+assert.equal(contentDraftStructureIsPreserved(validB1Draft, b1Paragraphs), true);
+assert.equal(
+  contentDraftFactsArePreserved(
+    {
+      ...validB1Draft,
+      actions: [
+        {
+          type: "faq",
+          question: "文章包含什么事实？",
+          answer: "模型改写后的事实",
+          evidence: { paragraphId: "Para-1", quote: "可逐字验证的事实" },
+        },
+      ],
+    },
+    b1Paragraphs,
+  ),
+  false,
+);
+assert.equal(
+  contentDraftStructureIsPreserved(
+    {
+      ...validB1Draft,
+      actions: [
+        {
+          type: "structure_change",
+          targetParagraphIds: ["Para-1"],
+        },
+      ],
+    },
+    b1Paragraphs,
+  ),
+  false,
+);
+assert.equal(
+  diagnosticEvidenceIsLiteral(
+    [
+      {
+        evidence: [{ paragraphId: "Para-1", quote: "逐字验证的事实" }],
+      },
+    ],
+    b1Paragraphs,
+  ),
+  true,
+);
+assert.equal(
+  diagnosticEvidenceIsLiteral(
+    [
+      {
+        evidence: [{ paragraphId: "Para-1", quote: "不存在的改写" }],
+      },
+    ],
+    b1Paragraphs,
+  ),
+  false,
+);
+
+function stableB1Observation(
+  articleId: string,
+  round: 1 | 2,
+): B1StabilityObservation {
+  return {
+    articleId,
+    round,
+    callOutcomes: Array.from(
+      { length: B1_MODEL_CALLS_PER_PIPELINE },
+      () => "model" as const,
+    ),
+    callDurationsMs: Array.from(
+      { length: B1_MODEL_CALLS_PER_PIPELINE },
+      () => 1_000,
+    ),
+    totalScore: 80,
+    normalizedDimensions: {
+      questionCoverage: 80,
+      factCompleteness: 80,
+      structureClarity: 80,
+      freshness: 80,
+    },
+    diagnosticAnswerability: ["可以完全回答", "信息不足", "有风险"],
+  };
+}
+
+const stableB1Observations = b1Stage2Articles.flatMap((article) => [
+  stableB1Observation(article.id, 1),
+  stableB1Observation(article.id, 2),
+]);
+const stableThirdRoundDecision = evaluateThirdRoundRequirement(stableB1Observations);
+assert.equal(stableThirdRoundDecision.required, false);
+assert.deepEqual(stableThirdRoundDecision.reasons, []);
+assert.equal(stableThirdRoundDecision.metrics.answerabilityConsistency, 1);
+
+const unstableB1Observations: B1StabilityObservation[] = stableB1Observations.map((observation, index) =>
+  index === 1
+    ? {
+        ...observation,
+        callOutcomes: ["fallback" as const, ...observation.callOutcomes.slice(1)],
+        totalScore: 65,
+        diagnosticAnswerability: ["信息不足", "信息不足", "有风险"],
+      }
+    : observation,
+);
+const unstableThirdRoundDecision = evaluateThirdRoundRequirement(unstableB1Observations);
+assert.equal(unstableThirdRoundDecision.required, true);
+assert.ok(unstableThirdRoundDecision.reasons.includes("non-model outcome"));
+assert.ok(unstableThirdRoundDecision.reasons.includes("score range exceeded 10"));
+
+const anonymousB1Report = JSON.stringify(
+  buildAnonymousB1Report(b1Fixture, []),
+);
+assert.match(
+  anonymousB1Report,
+  new RegExp(`"telemetrySchemaVersion":"${B1_TELEMETRY_SCHEMA_VERSION}"`),
+);
+for (const article of b1Fixture) {
+  assert.doesNotMatch(anonymousB1Report, new RegExp(article.title));
+  assert.doesNotMatch(anonymousB1Report, new RegExp(article.content));
+}
+assert.match(anonymousB1Report, /"humanReview":"pending"/);
+assert.match(anonymousB1Report, /"structurePreservationRate":null/);
+
+const b1SensitiveSentinels = [
+  "B1_SENTINEL_ARTICLE_CONTENT",
+  "B1_SENTINEL_PROMPT",
+  "B1_SENTINEL_EVIDENCE_QUOTE",
+  "B1_SENTINEL_MODEL_PAYLOAD",
+  "B1_SENTINEL_FULL_RESPONSE",
+];
+const b1OperationRoutes = [
+  "/api/evaluate-scoring",
+  "/api/predict-questions",
+  "/api/qa-diagnostic",
+  "/api/qa-diagnostic",
+  "/api/qa-diagnostic",
+  "/api/generate-patches",
+  "/api/generate-patches",
+] as const;
+const sensitiveB1PipelineRecord = {
+  articleId: "B1-A01",
+  stage: 1,
+  round: 1,
+  questionTypes: ["core", "method", "audience"],
+  calls: B1_PIPELINE_OPERATIONS.map((operation, index) => ({
+    operation,
+    route: b1OperationRoutes[index],
+    outcome: "model",
+    status: 200,
+    source: "model",
+    modelStatus: "success",
+    modelLatencyMs: 900 + index,
+    durationMs: 1_000 + index,
+    requestId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    runtimeLogStatus: "matched",
+    validationStage: index === 5 ? "schema_validation" : null,
+    validationIssueCount: index === 5 ? 2 : null,
+    validationFieldPaths: index === 5 ? ["$.actions[0].type"] : [],
+    validationActionTypes: index === 5 ? ["faq", "unknown"] : [],
+    modelPayload: b1SensitiveSentinels[3],
+    fullResponse: b1SensitiveSentinels[4],
+    validationIssueMessage: b1SensitiveSentinels[1],
+  })),
+  totalScore: 80,
+  normalizedDimensions: {
+    questionCoverage: 80,
+    factCompleteness: 80,
+    structureClarity: 80,
+    freshness: 80,
+  },
+  diagnosticAnswerability: ["可以完全回答", "信息不足", "有风险"],
+  evidenceLiteralChecks: 4,
+  evidenceLiteralPasses: 4,
+  evidenceLiteralValid: true,
+  contentDraftFactsPreserved: true,
+  contentDraftStructurePreserved: true,
+  articleContent: b1SensitiveSentinels[0],
+  prompt: b1SensitiveSentinels[1],
+  evidence: { quote: b1SensitiveSentinels[2] },
+  outputs: {
+    response: b1SensitiveSentinels[4],
+  },
+} as unknown as B1PipelineRecord;
+const sensitiveB1Checkpoint: B1Checkpoint = {
+  stage: 1,
+  round: 1,
+  complete: false,
+  records: [sensitiveB1PipelineRecord],
+};
+const b1CheckpointArtifact = buildB1CheckpointArtifact(sensitiveB1Checkpoint);
+assert.equal(
+  b1CheckpointArtifact.telemetrySchemaVersion,
+  B1_TELEMETRY_SCHEMA_VERSION,
+);
+assert.deepEqual(Object.keys(b1CheckpointArtifact).sort(), [
+  "complete",
+  "records",
+  "round",
+  "stage",
+  "telemetrySchemaVersion",
+]);
+assert.deepEqual(Object.keys(b1CheckpointArtifact.records[0]).sort(), [
+  "aggregate",
+  "requests",
+  "sampleId",
+]);
+for (const request of b1CheckpointArtifact.records[0].requests) {
+  assert.deepEqual(Object.keys(request).sort(), [
+    "durationMs",
+    "errorClassification",
+    "httpStatus",
+    "modelLatencyMs",
+    "modelStatus",
+    "requestId",
+    "route",
+    "runtimeLogStatus",
+    "source",
+    "validationActionTypes",
+    "validationFieldPaths",
+    "validationIssueCount",
+    "validationStage",
+  ]);
+}
+const parsedB1Checkpoint = parseB1CheckpointArtifact(b1CheckpointArtifact, 1, 1);
+assert.equal(parsedB1Checkpoint.records.length, 1);
+const telemetryB1Report = buildAnonymousB1Report(
+  b1Fixture,
+  [sensitiveB1PipelineRecord],
+) as {
+  execution: { errorClassifications: Record<string, number> };
+  validationTelemetry: { observations: number; issueCount: number };
+};
+assert.equal(telemetryB1Report.validationTelemetry.observations, 1);
+assert.equal(telemetryB1Report.validationTelemetry.issueCount, 2);
+assert.equal(telemetryB1Report.execution.errorClassifications["invalid-output"], 0);
+assert.equal(telemetryB1Report.execution.errorClassifications.fallback, 0);
+const collectorUnavailablePipeline = {
+  ...sensitiveB1PipelineRecord,
+  calls: sensitiveB1PipelineRecord.calls.map((call, index) =>
+    index === 0
+      ? {
+          ...call,
+          modelStatus: null,
+          modelLatencyMs: null,
+          runtimeLogStatus: "collector-unavailable" as const,
+        }
+      : call,
+  ),
+};
+const collectorUnavailableArtifact = buildB1CheckpointArtifact({
+  ...sensitiveB1Checkpoint,
+  records: [collectorUnavailablePipeline],
+});
+assert.equal(
+  collectorUnavailableArtifact.records[0].requests[0].errorClassification,
+  null,
+);
+assert.equal(
+  collectorUnavailableArtifact.records[0].requests[0].runtimeLogStatus,
+  "collector-unavailable",
+);
+assert.throws(
+  () => parseB1CheckpointArtifact(b1CheckpointArtifact.records, 1, 1),
+  new RegExp(B1_TELEMETRY_SCHEMA_VERSION),
+);
+assert.throws(
+  () =>
+    parseB1CheckpointArtifact(
+      { ...b1CheckpointArtifact, telemetrySchemaVersion: "b1-v1" },
+      1,
+      1,
+    ),
+  new RegExp(B1_TELEMETRY_SCHEMA_VERSION),
+);
+const unversionedB1Checkpoint = Object.fromEntries(
+  Object.entries(b1CheckpointArtifact).filter(
+    ([key]) => key !== "telemetrySchemaVersion",
+  ),
+);
+assert.throws(
+  () => parseB1CheckpointArtifact(unversionedB1Checkpoint, 1, 1),
+  new RegExp(B1_TELEMETRY_SCHEMA_VERSION),
+);
+
+const b1ArtifactDirectory = mkdtempSync(join(tmpdir(), "b1-redaction-"));
+const b1ArtifactPath = join(b1ArtifactDirectory, "stage-1-round-1.json");
+try {
+  writeFileSync(
+    b1ArtifactPath,
+    serializeB1CheckpointArtifact(sensitiveB1Checkpoint),
+    "utf8",
+  );
+  const serializedB1Artifact = readFileSync(b1ArtifactPath, "utf8");
+  for (const sentinel of b1SensitiveSentinels) {
+    assert.doesNotMatch(serializedB1Artifact, new RegExp(sentinel));
+  }
+  assert.doesNotMatch(
+    serializedB1Artifact,
+    /"(?:articleContent|prompt|evidence|outputs|modelPayload|fullResponse)"/,
+  );
+} finally {
+  rmSync(b1ArtifactDirectory, { recursive: true, force: true });
+}
+
+const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
+  stage: "schema_validation",
+  issueCount: 3,
+  fieldPaths: [
+    ["actions", 0, "type"],
+    ["actions", 1, "evidence", "quote"],
+    ["invalid-segment", b1SensitiveSentinels[0]],
+  ],
+  actionTypes: ["faq", b1SensitiveSentinels[1], 42],
+  prompt: b1SensitiveSentinels[1],
+  evidence: b1SensitiveSentinels[2],
+  response: b1SensitiveSentinels[4],
+});
+assert.deepEqual(sanitizedValidationTelemetry, {
+  validationStage: "schema_validation",
+  validationIssueCount: 3,
+  validationFieldPaths: [
+    "$.actions[0].type",
+    "$.actions[1].evidence.quote",
+  ],
+  validationActionTypes: ["faq", "unknown", "non-string"],
+});
+assert.doesNotThrow(() =>
+  markGeoValidationTelemetry({
+    stage: "schema_validation",
+    issueCount: 1,
+    fieldPaths: [[b1SensitiveSentinels[0]]],
+    actionTypes: [b1SensitiveSentinels[4]],
+  }),
+);
+const serializedValidationTelemetry = JSON.stringify(sanitizedValidationTelemetry);
+for (const sentinel of b1SensitiveSentinels) {
+  assert.doesNotMatch(serializedValidationTelemetry, new RegExp(sentinel));
+}
+assert.doesNotMatch(
+  serializedValidationTelemetry,
+  /"(?:source|modelStatus|fallbackReason|prompt|evidence|response)"/,
+);
+
+const b1RuntimeLog = parseB1RuntimeLogMessage(
+  JSON.stringify({
+    event: "geo_api_request",
+    requestId: "00000000-0000-4000-8000-000000000001",
+    route: "/api/evaluate-scoring",
+    status: 200,
+    durationMs: 1_234,
+    source: "model",
+    modelStatus: "success",
+    modelLatencyMs: 987,
+    validationStage: "schema_validation",
+    validationIssueCount: 2,
+    validationFieldPaths: ["$.actions[0].type"],
+    validationActionTypes: ["faq", "unknown"],
+    promptTokens: 1_000,
+    completionTokens: 500,
+    prompt: b1SensitiveSentinels[1],
+    evidence: b1SensitiveSentinels[2],
+    response: b1SensitiveSentinels[4],
+  }),
+);
+assert.deepEqual(b1RuntimeLog, {
+  requestId: "00000000-0000-4000-8000-000000000001",
+  route: "/api/evaluate-scoring",
+  status: 200,
+  source: "model",
+  modelStatus: "success",
+  modelLatencyMs: 987,
+  durationMs: 1_234,
+  validationStage: "schema_validation",
+  validationIssueCount: 2,
+  validationFieldPaths: ["$.actions[0].type"],
+  validationActionTypes: ["faq", "unknown"],
+});
+const serializedB1RuntimeLog = JSON.stringify(b1RuntimeLog);
+for (const sentinel of b1SensitiveSentinels) {
+  assert.doesNotMatch(serializedB1RuntimeLog, new RegExp(sentinel));
+}
+
+const delayedRuntimeCalls: B1CallRecord[] = [
+  {
+    operation: "scoring",
+    route: "/api/evaluate-scoring",
+    outcome: "model",
+    status: 200,
+    source: "model",
+    modelStatus: null,
+    modelLatencyMs: null,
+    durationMs: 1_500,
+    requestId: "00000000-0000-4000-8000-000000000011",
+  },
+  {
+    operation: "question_prediction",
+    route: "/api/predict-questions",
+    outcome: "model",
+    status: 200,
+    source: "model",
+    modelStatus: null,
+    modelLatencyMs: null,
+    durationMs: 1_700,
+    requestId: "00000000-0000-4000-8000-000000000012",
+  },
+  {
+    operation: "scoring",
+    route: "/api/evaluate-scoring",
+    outcome: "model",
+    status: 200,
+    source: "model",
+    modelStatus: null,
+    modelLatencyMs: null,
+    durationMs: 1_900,
+    requestId: "00000000-0000-4000-8000-000000000013",
+  },
+];
+const delayedRuntimeRecords = [
+  parseB1RuntimeLogMessage(
+    JSON.stringify({
+      event: "geo_api_request",
+      requestId: delayedRuntimeCalls[0].requestId,
+      route: delayedRuntimeCalls[0].route,
+      status: 200,
+      source: "model",
+      modelStatus: "success",
+      modelLatencyMs: 1_200,
+      durationMs: 1_500,
+      prompt: b1SensitiveSentinels[1],
+      evidence: b1SensitiveSentinels[2],
+      response: b1SensitiveSentinels[4],
+    }),
+  ),
+  parseB1RuntimeLogMessage(
+    JSON.stringify({
+      event: "geo_api_request",
+      requestId: delayedRuntimeCalls[1].requestId,
+      route: delayedRuntimeCalls[1].route,
+      status: 200,
+      source: "model",
+      modelStatus: "success",
+      modelLatencyMs: 1_400,
+      durationMs: 1_700,
+      modelPayload: b1SensitiveSentinels[3],
+      fullResponse: b1SensitiveSentinels[4],
+    }),
+  ),
+  parseB1RuntimeLogMessage(
+    JSON.stringify({
+      event: "geo_api_request",
+      requestId: delayedRuntimeCalls[2].requestId,
+      route: "/api/predict-questions",
+      status: 200,
+      source: "model",
+      modelStatus: "success",
+      modelLatencyMs: 1_500,
+      durationMs: 1_900,
+    }),
+  ),
+];
+if (delayedRuntimeRecords.some((record) => record === null)) {
+  throw new Error("Delayed B.1 Runtime Log fixtures must be valid.");
+}
+const delayedRuntimeConfig: B1RuntimeLogConfig = {
+  deploymentId: "dpl_preview",
+  projectId: "prj_preview",
+  teamId: "team_preview",
+  token: "B1_SENTINEL_SECRET",
+};
+let delayedRuntimeClock = 100;
+let emitDelayedRuntimeRecord:
+  | ((record: NonNullable<(typeof delayedRuntimeRecords)[number]>) => void)
+  | undefined;
+let markDelayedRuntimeReady: (() => void) | undefined;
+const delayedRuntimeReady = new Promise<void>((resolvePromise) => {
+  markDelayedRuntimeReady = resolvePromise;
+});
+const delayedRuntimeCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    now: () => delayedRuntimeClock,
+    stream: async (_config, signal, handlers) => {
+      emitDelayedRuntimeRecord = handlers.record;
+      handlers.connected();
+      markDelayedRuntimeReady?.();
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+  },
+);
+await delayedRuntimeReady;
+for (const call of delayedRuntimeCalls) delayedRuntimeCollector.register(call);
+emitDelayedRuntimeRecord?.(delayedRuntimeRecords[0] as NonNullable<(typeof delayedRuntimeRecords)[number]>);
+delayedRuntimeClock = 200;
+emitDelayedRuntimeRecord?.(delayedRuntimeRecords[1] as NonNullable<(typeof delayedRuntimeRecords)[number]>);
+emitDelayedRuntimeRecord?.(delayedRuntimeRecords[2] as NonNullable<(typeof delayedRuntimeRecords)[number]>);
+const delayedRuntimeCollection = await delayedRuntimeCollector.finish(150);
+assert.deepEqual([...delayedRuntimeCollection.statuses.values()], [
+  "matched",
+  "delayed-ingestion",
+  "true-missing",
+]);
+assert.equal(delayedRuntimeCollection.records.size, 2);
+for (const record of delayedRuntimeCollection.records.values()) {
+  assert.deepEqual(Object.keys(record).sort(), [
+    "durationMs",
+    "modelLatencyMs",
+    "modelStatus",
+    "requestId",
+    "route",
+    "source",
+    "status",
+    "validationActionTypes",
+    "validationFieldPaths",
+    "validationIssueCount",
+    "validationStage",
+  ]);
+}
+const serializedDelayedRuntimeRecords = JSON.stringify([
+  ...delayedRuntimeCollection.records.values(),
+  ...delayedRuntimeCollection.statuses.values(),
+]);
+for (const sentinel of [...b1SensitiveSentinels, delayedRuntimeConfig.token]) {
+  assert.doesNotMatch(serializedDelayedRuntimeRecords, new RegExp(sentinel));
+}
+
+const unavailableRuntimeCollector = startB1RuntimeLogCollector(
+  Promise.reject(new Error(b1SensitiveSentinels[4])),
+  { maxDrainMs: 0 },
+);
+unavailableRuntimeCollector.register(delayedRuntimeCalls[0]);
+const unavailableRuntimeCollection = await unavailableRuntimeCollector.finish();
+assert.deepEqual(
+  [...unavailableRuntimeCollection.statuses.values()],
+  ["collector-unavailable"],
+);
+assert.equal(unavailableRuntimeCollection.records.size, 0);
+
+const b1RunnerScript = fileURLToPath(
+  new URL("./b1-technical-validation.ts", import.meta.url),
+);
+const b1SecretSentinel = "b1-secret-must-not-appear";
+const rejectedB1Runner = spawnSync(
+  process.execPath,
+  [
+    "--experimental-strip-types",
+    b1RunnerScript,
+    `--corpus=${b1FixturePath}`,
+    "--stage=1",
+  ],
+  {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GEO_BASE_URL: "https://example.com",
+      VERCEL_AUTOMATION_BYPASS_SECRET: b1SecretSentinel,
+    },
+  },
+);
+const rejectedB1RunnerOutput = `${rejectedB1Runner.stdout}\n${rejectedB1Runner.stderr}`;
+assert.equal(rejectedB1Runner.status, 1);
+assert.match(rejectedB1RunnerOutput, /preview_url must target a \*\.vercel\.app deployment/);
+assert.doesNotMatch(rejectedB1RunnerOutput, new RegExp(b1SecretSentinel));
 
 const previewCommitSha = "a".repeat(40);
 const previewDeployment = {

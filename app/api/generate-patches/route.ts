@@ -29,6 +29,7 @@ import {
 } from "@/lib/server/analysis-operation";
 import {
   markGeoRequestOutcome,
+  markGeoValidationTelemetry,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
@@ -42,6 +43,7 @@ type EvidenceSnippet = {
 };
 
 type UndecoratedPatchAction = ModelAdviceAction | ModelContentAction;
+type ValidationPath = Array<string | number>;
 
 const FAQ_QUESTIONS = [
   "这篇文章的核心信息是什么？",
@@ -55,6 +57,15 @@ const SNIPPET_PATTERNS = [
   /怎么做|做法|方法|步骤|第一步|第二步|第三步|第四步|首先|其次|最后/,
   /适合|不适合|适用|范围|限制|对象|场景|人群/,
 ] as const;
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validationActionTypes(value: unknown): unknown[] {
+  if (!isJsonRecord(value) || !Array.isArray(value.actions)) return [];
+  return value.actions.map((action) => isJsonRecord(action) ? action.type : undefined);
+}
 
 function decorateActions(actions: UndecoratedPatchAction[]): PatchAction[] {
   const createdAt = new Date().toISOString();
@@ -206,6 +217,50 @@ function validateContentActions(
   return valid.length === actions.length && valid.length ? valid : null;
 }
 
+function adviceValidationIssuePaths(
+  actions: ModelAdviceAction[],
+  diagnostics: DiagnosticResult[],
+  paragraphs: Paragraph[],
+): ValidationPath[] {
+  const questions = new Set(diagnostics.map((diagnostic) => diagnostic.question));
+  const paragraphIds = new Set(paragraphs.map((paragraph) => paragraph.id));
+  return actions.flatMap((action, actionIndex) => {
+    if (action.type === "author_evidence") {
+      return action.relatedQuestion && !questions.has(action.relatedQuestion)
+        ? [["actions", actionIndex, "relatedQuestion"]]
+        : [];
+    }
+    return action.targetParagraphIds.flatMap((paragraphId, paragraphIndex) =>
+      paragraphIds.has(paragraphId)
+        ? []
+        : [["actions", actionIndex, "targetParagraphIds", paragraphIndex]],
+    );
+  });
+}
+
+function contentValidationIssuePaths(
+  actions: ModelContentAction[],
+  paragraphs: Paragraph[],
+): ValidationPath[] {
+  const paragraphMap = new Map(paragraphs.map((paragraph) => [paragraph.id, paragraph.text]));
+  return actions.flatMap((action, actionIndex) => {
+    const paths: ValidationPath[] = [];
+    const paragraph = paragraphMap.get(action.evidence.paragraphId);
+    if (!paragraph) {
+      paths.push(["actions", actionIndex, "evidence", "paragraphId"]);
+    } else if (!paragraph.includes(action.evidence.quote)) {
+      paths.push(["actions", actionIndex, "evidence", "quote"]);
+    }
+    if (action.type === "faq" && action.answer !== action.evidence.quote) {
+      paths.push(["actions", actionIndex, "answer"]);
+    }
+    if (action.type === "fact_card" && action.value !== action.evidence.quote) {
+      paths.push(["actions", actionIndex, "value"]);
+    }
+    return paths;
+  });
+}
+
 function promptsForMode(
   mode: PatchMode,
   title: string,
@@ -259,12 +314,29 @@ async function handlePost(request: NextRequest): Promise<Response> {
         maxTokens: mode === "advice" ? 1_800 : CONTENT_DRAFT_MAX_TOKENS,
         rateLimitMode: authorization.mode,
       });
-      const json = normalizePatchModelOutput(raw, mode);
+      let json: unknown;
+      try {
+        json = normalizePatchModelOutput(raw, mode);
+      } catch (error) {
+        markGeoValidationTelemetry({
+          stage: "json_parse",
+          issueCount: 1,
+          fieldPaths: [[]],
+        });
+        throw error;
+      }
+      const actionTypes = validationActionTypes(json);
       const parsed = mode === "advice"
         ? modelAdviceActionsSchema.safeParse(json)
         : modelContentActionsSchema.safeParse(json);
 
       if (!parsed.success) {
+        markGeoValidationTelemetry({
+          stage: "schema_validation",
+          issueCount: parsed.error.issues.length,
+          fieldPaths: parsed.error.issues.map((issue) => issue.path),
+          actionTypes,
+        });
         markGeoRequestOutcome({ source: "fallback", modelStatus: "invalid-output" });
         return NextResponse.json(fallback, { headers });
       }
@@ -273,6 +345,22 @@ async function handlePost(request: NextRequest): Promise<Response> {
         ? validateAdviceActions(parsed.data.actions as ModelAdviceAction[], diagnostics, paragraphs)
         : validateContentActions(parsed.data.actions as ModelContentAction[], paragraphs);
       if (!actions) {
+        const issuePaths = mode === "advice"
+          ? adviceValidationIssuePaths(
+              parsed.data.actions as ModelAdviceAction[],
+              diagnostics,
+              paragraphs,
+            )
+          : contentValidationIssuePaths(
+              parsed.data.actions as ModelContentAction[],
+              paragraphs,
+            );
+        markGeoValidationTelemetry({
+          stage: mode === "advice" ? "reference_validation" : "evidence_validation",
+          issueCount: Math.max(1, issuePaths.length),
+          fieldPaths: issuePaths,
+          actionTypes,
+        });
         markGeoRequestOutcome({ source: "fallback", modelStatus: "invalid-output" });
         return NextResponse.json(fallback, { headers });
       }
