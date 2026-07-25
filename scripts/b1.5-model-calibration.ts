@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   createNumberedParagraphs,
+  requireB1RuntimeLogCollectorReady,
   startB1RuntimeLogCollector,
   validateB1Corpus,
   type B1CallRecord,
@@ -1323,9 +1324,7 @@ async function main(): Promise<void> {
   const runtimeLogCollector = startB1RuntimeLogCollector(Promise.resolve(runtimeConfig));
   try {
     await verifyB15Health(environment);
-    if ((await runtimeLogCollector.waitForLiveConnection()) !== "connected") {
-      throw new Error("B.1.5 Runtime Log collector preflight failed.");
-    }
+    await requireB1RuntimeLogCollectorReady(runtimeLogCollector);
   } catch (error) {
     runtimeLogCollector.close();
     throw error;

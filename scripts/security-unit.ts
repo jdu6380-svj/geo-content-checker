@@ -68,6 +68,7 @@ import {
   parseB1RuntimeLogHistoryBody,
   parseB1RuntimeLogMessage,
   parseB1Arguments,
+  requireB1RuntimeLogCollectorReady,
   resolveB1CampaignDirectory,
   selectDiagnosticQuestions,
   selectStage2Articles,
@@ -1676,6 +1677,10 @@ const unconnectedRuntimeCollector = startB1RuntimeLogCollector(
   },
 );
 assert.equal(await unconnectedRuntimeCollector.waitForLiveConnection(1), "timeout");
+await assert.rejects(
+  requireB1RuntimeLogCollectorReady(unconnectedRuntimeCollector, 1),
+  /B\.1 Runtime Log collector readiness failed: timeout/,
+);
 unconnectedRuntimeCollector.close();
 assert.equal(await unavailableRuntimeCollector.waitForLiveConnection(10), "unavailable");
 

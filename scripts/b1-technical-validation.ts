@@ -359,6 +359,16 @@ export interface B1RuntimeLogCollector {
   close(): void;
 }
 
+export async function requireB1RuntimeLogCollectorReady(
+  collector: B1RuntimeLogCollector,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const readiness = await collector.waitForLiveConnection(timeoutMs);
+  if (readiness !== "connected") {
+    throw new Error(`B.1 Runtime Log collector readiness failed: ${readiness}.`);
+  }
+}
+
 interface B1Arguments {
   help: boolean;
   corpusPath?: string;
@@ -2871,6 +2881,7 @@ async function main(): Promise<void> {
     `B.1 technical target: Stage ${stage} Round ${round}; Preview automation bypass enabled.`,
   );
   try {
+    await requireB1RuntimeLogCollectorReady(runtimeLogCollector);
     for (const article of stageArticles) {
       if (completedIds.has(article.id)) continue;
       console.log(`RUN ${article.id}`);
