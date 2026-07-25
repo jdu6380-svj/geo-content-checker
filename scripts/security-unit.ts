@@ -1422,11 +1422,12 @@ const delayedRuntimeConfig: B1RuntimeLogConfig = {
 const runtimeLogStreamUrl = buildB1RuntimeLogStreamUrl(delayedRuntimeConfig);
 assert.equal(
   runtimeLogStreamUrl.pathname,
-  `/v3/deployments/${delayedRuntimeConfig.deploymentId}/events`,
+  `/v1/projects/${delayedRuntimeConfig.projectId}/deployments/${delayedRuntimeConfig.deploymentId}/runtime-logs`,
 );
+assert.equal(runtimeLogStreamUrl.searchParams.get("format"), "lines");
 assert.equal(runtimeLogStreamUrl.searchParams.get("teamId"), delayedRuntimeConfig.teamId);
-assert.equal([...runtimeLogStreamUrl.searchParams.keys()].length, 1);
-assert.doesNotMatch(runtimeLogStreamUrl.href, /prj_preview|B1_SENTINEL_SECRET/);
+assert.equal([...runtimeLogStreamUrl.searchParams.keys()].length, 2);
+assert.doesNotMatch(runtimeLogStreamUrl.href, /B1_SENTINEL_SECRET/);
 let delayedRuntimeClock = 100;
 let emitDelayedRuntimeRecord:
   | ((record: NonNullable<(typeof delayedRuntimeRecords)[number]>) => void)
@@ -1439,6 +1440,7 @@ const delayedRuntimeCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
+    readinessStabilityMs: 0,
     historyTimeoutMs: 100,
     historyPollIntervalMs: 0,
     historyStablePollCount: 2,
@@ -1561,6 +1563,7 @@ const historicalBackfillCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
+    readinessStabilityMs: 0,
     now: () => 300,
     stream: async (_config, signal, handlers) => {
       handlers.connected();
@@ -1609,6 +1612,7 @@ const delayedHistoryCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
+    readinessStabilityMs: 0,
     historyTimeoutMs: 100,
     historyPollIntervalMs: 0,
     historyStablePollCount: 4,
@@ -1714,6 +1718,123 @@ await assert.rejects(
 unconnectedRuntimeCollector.close();
 assert.equal(await unavailableRuntimeCollector.waitForLiveConnection(10), "unavailable");
 
+let immediateCloseClock = 350;
+const immediateCloseCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    readinessStabilityMs: 25,
+    now: () => immediateCloseClock,
+    stream: async (_config, _signal, handlers) => {
+      handlers.connected();
+      immediateCloseClock = 351;
+    },
+  },
+);
+assert.equal(
+  await immediateCloseCollector.waitForLiveConnection(100),
+  "unavailable",
+);
+const immediateCloseCollection = await immediateCloseCollector.finish();
+assert.deepEqual(immediateCloseCollection.collectorState, {
+  liveConnectionAttempts: 1,
+  liveSuccessfulConnections: 1,
+  liveInterruptions: 1,
+  historicalBackfill: "not-needed",
+  collectorReadyAt: null,
+  collectorDisconnectedAt: 351,
+  disconnectReason: "stream-ended",
+  matchedCount: 0,
+  unmatchedCount: 0,
+});
+
+let markDelayedCloseConnected: (() => void) | undefined;
+const delayedCloseConnected = new Promise<void>((resolvePromise) => {
+  markDelayedCloseConnected = resolvePromise;
+});
+const delayedCloseCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    readinessStabilityMs: 30,
+    stream: async (_config, _signal, handlers) => {
+      handlers.connected();
+      markDelayedCloseConnected?.();
+      await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 5));
+    },
+  },
+);
+await delayedCloseConnected;
+assert.equal(
+  await delayedCloseCollector.waitForLiveConnection(100),
+  "unavailable",
+);
+const delayedCloseCollection = await delayedCloseCollector.finish();
+assert.equal(delayedCloseCollection.collectorState.collectorReadyAt, null);
+assert.equal(
+  delayedCloseCollection.collectorState.disconnectReason,
+  "stream-ended",
+);
+
+let markStableStreamConnected: (() => void) | undefined;
+const stableStreamConnected = new Promise<void>((resolvePromise) => {
+  markStableStreamConnected = resolvePromise;
+});
+const stableStreamCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    readinessStabilityMs: 5,
+    stream: async (_config, signal, handlers) => {
+      handlers.connected();
+      markStableStreamConnected?.();
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+  },
+);
+await stableStreamConnected;
+assert.equal(
+  await stableStreamCollector.waitForLiveConnection(100),
+  "connected",
+);
+stableStreamCollector.close();
+assert.equal(
+  await stableStreamCollector.waitForLiveConnection(10),
+  "unavailable",
+);
+
+let reconnectAttempts = 0;
+const reconnectFailureCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    reconnectDelayMs: 0,
+    stream: async () => {
+      reconnectAttempts += 1;
+      throw new TypeError(b1SensitiveSentinels[4]);
+    },
+    wait: async () => {
+      if (reconnectAttempts < 2) return;
+      throw new Error(b1SensitiveSentinels[3]);
+    },
+  },
+);
+assert.equal(
+  await reconnectFailureCollector.waitForLiveConnection(100),
+  "unavailable",
+);
+assert.equal(reconnectAttempts, 2);
+const reconnectFailureCollection = await reconnectFailureCollector.finish();
+assert.equal(
+  reconnectFailureCollection.collectorState.disconnectReason,
+  "wait-failed",
+);
+assert.doesNotMatch(
+  JSON.stringify(reconnectFailureCollection),
+  new RegExp(b1SensitiveSentinels[3]),
+);
+
 let interruptedRuntimeClock = 400;
 let markInterruptedRuntimeReady: (() => void) | undefined;
 let disconnectInterruptedRuntime: (() => void) | undefined;
@@ -1724,6 +1845,7 @@ const interruptedReadinessCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
+    readinessStabilityMs: 0,
     now: () => interruptedRuntimeClock,
     stream: async (_config, _signal, handlers) => {
       handlers.connected();
@@ -1769,6 +1891,7 @@ const historyFailureCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
+    readinessStabilityMs: 0,
     historyTimeoutMs: 1,
     historyPollIntervalMs: 0,
     historyStablePollCount: 2,

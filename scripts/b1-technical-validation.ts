@@ -330,6 +330,7 @@ export interface B1RuntimeLogConfig {
 interface B1RuntimeLogCollectorOptions {
   maxDrainMs?: number;
   reconnectDelayMs?: number;
+  readinessStabilityMs?: number;
   stream?: B1RuntimeLogStream;
   history?: B1RuntimeLogHistory;
   historyTimeoutMs?: number;
@@ -1775,11 +1776,12 @@ function runtimeLogDisconnectReason(
 }
 
 export function buildB1RuntimeLogStreamUrl(
-  config: Pick<B1RuntimeLogConfig, "deploymentId" | "teamId">,
+  config: Pick<B1RuntimeLogConfig, "deploymentId" | "projectId" | "teamId">,
 ): URL {
   const endpoint = new URL(
-    `https://api.vercel.com/v3/deployments/${encodeURIComponent(config.deploymentId)}/events`,
+    `https://api.vercel.com/v1/projects/${encodeURIComponent(config.projectId)}/deployments/${encodeURIComponent(config.deploymentId)}/runtime-logs`,
   );
+  endpoint.searchParams.set("format", "lines");
   endpoint.searchParams.set("teamId", config.teamId);
   return endpoint;
 }
@@ -1813,7 +1815,6 @@ async function consumeRuntimeLogStream(
     response = await fetch(endpoint, {
       headers: {
         Authorization: `Bearer ${config.token}`,
-        Accept: "application/stream+json",
         "User-Agent": "geo-content-checker-b1-validation",
       },
       redirect: "manual",
@@ -1878,6 +1879,10 @@ export function startB1RuntimeLogCollector(
 ): B1RuntimeLogCollector {
   const maxDrainMs = Math.max(0, options.maxDrainMs ?? 60_000);
   const reconnectDelayMs = Math.max(0, options.reconnectDelayMs ?? 250);
+  const readinessStabilityMs = Math.max(
+    0,
+    options.readinessStabilityMs ?? 2_000,
+  );
   const historyTimeoutMs = Math.max(0, options.historyTimeoutMs ?? 60_000);
   const historyPollIntervalMs = Math.max(0, options.historyPollIntervalMs ?? 5_000);
   const historyPollWindowMs = Math.max(1, options.historyPollWindowMs ?? 10_000);
@@ -1918,6 +1923,8 @@ export function startB1RuntimeLogCollector(
   let liveConnectionGeneration = 0;
   let liveConnectionStartedAt: number | null = null;
   let liveConnected = false;
+  let liveStable = false;
+  let readinessTimer: ReturnType<typeof setTimeout> | null = null;
   let collectorReadyAt: number | null = null;
   let collectorDisconnectedAt: number | null = null;
   let disconnectReason: B1RuntimeLogDisconnectReason | null = null;
@@ -1950,12 +1957,20 @@ export function startB1RuntimeLogCollector(
     for (const key of recordWaiters.keys()) settleRecordWaiters(key, result);
   };
 
+  const clearReadinessTimer = () => {
+    if (readinessTimer === null) return;
+    clearTimeout(readinessTimer);
+    readinessTimer = null;
+  };
+
   const markCollectorUnavailable = (
     reason: B1RuntimeLogDisconnectReason,
     disconnectedAt: number | null = null,
   ) => {
+    clearReadinessTimer();
     terminalUnavailable = true;
     liveConnected = false;
+    liveStable = false;
     disconnectReason = reason;
     if (disconnectedAt !== null) collectorDisconnectedAt = disconnectedAt;
     settleLiveConnectionWaiters("unavailable");
@@ -1976,6 +1991,7 @@ export function startB1RuntimeLogCollector(
       requestStartedAt,
       liveConnectionGeneration:
         liveConnected &&
+        liveStable &&
         liveConnectionStartedAt !== null &&
         liveConnectionStartedAt <= requestStartedAt
           ? liveConnectionGeneration
@@ -2011,9 +2027,27 @@ export function startB1RuntimeLogCollector(
             liveSuccessfulConnections += 1;
             connectionEstablished = true;
             liveConnectionStartedAt = now();
-            if (collectorReadyAt === null) collectorReadyAt = liveConnectionStartedAt;
             liveConnected = true;
-            settleLiveConnectionWaiters("connected");
+            liveStable = false;
+            const markStable = () => {
+              readinessTimer = null;
+              if (
+                stopped ||
+                terminalUnavailable ||
+                !liveConnected ||
+                activeController !== controller
+              ) {
+                return;
+              }
+              liveStable = true;
+              if (collectorReadyAt === null) collectorReadyAt = now();
+              settleLiveConnectionWaiters("connected");
+            };
+            if (readinessStabilityMs === 0) {
+              markStable();
+            } else {
+              readinessTimer = setTimeout(markStable, readinessStabilityMs);
+            }
           },
           record: (record) => {
             const key = runtimeLogKey(record.requestId, record.route);
@@ -2066,7 +2100,7 @@ export function startB1RuntimeLogCollector(
     },
     async waitForLiveConnection(timeoutMs = 15_000) {
       if (terminalUnavailable || stopped) return "unavailable";
-      if (liveConnected) return "connected";
+      if (liveConnected && liveStable) return "connected";
       const boundedTimeoutMs = Math.max(0, Math.floor(timeoutMs));
       return new Promise<"connected" | "unavailable" | "timeout">((resolvePromise) => {
         const resolveReadiness = (readiness: "connected" | "unavailable") => {
@@ -2090,7 +2124,7 @@ export function startB1RuntimeLogCollector(
       }
       if (!key) return "not-applicable";
       if (observations.has(key)) return "matched";
-      if (terminalUnavailable || stopped || !liveConnected) {
+      if (terminalUnavailable || stopped || !liveConnected || !liveStable) {
         return "collector-unavailable";
       }
 
@@ -2231,8 +2265,10 @@ export function startB1RuntimeLogCollector(
       }
 
       stopped = true;
+      clearReadinessTimer();
       activeController?.abort();
       liveConnected = false;
+      liveStable = false;
       settleAllRecordWaiters("collector-unavailable");
       await streamRunner;
 
@@ -2284,8 +2320,10 @@ export function startB1RuntimeLogCollector(
     },
     close() {
       stopped = true;
+      clearReadinessTimer();
       activeController?.abort();
       liveConnected = false;
+      liveStable = false;
       settleLiveConnectionWaiters("unavailable");
       settleAllRecordWaiters("collector-unavailable");
       void streamRunner;
