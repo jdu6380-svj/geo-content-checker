@@ -25,7 +25,7 @@ import {
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
-export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v6";
+export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v7";
 export const B15_REQUIRED_NODE_VERSION = "v22.23.1";
 export const B15_REQUIRED_CORPUS_SHA256 =
   "6d3115d362c762f9f6ba1235ca897230405f07834235173b940181d5765d72f3";
@@ -91,8 +91,13 @@ const ARTIFACT_RECORD_KEYS = [
   "timeout",
   "validationStage",
   "validationFieldPaths",
+  "contentPresent",
+  "contentLength",
   "finishReason",
+  "promptTokens",
   "completionTokens",
+  "reasoningTokens",
+  "totalTokens",
 ] as const;
 const FORBIDDEN_ARTIFACT_KEYS = new Set([
   "article",
@@ -216,11 +221,16 @@ export interface B15InternalCall {
   runtimeSource: B15Source | null;
   modelStatus: B15ModelStatus | null;
   modelLatencyMs: number | null;
+  contentPresent: boolean | null;
+  contentLength: number | null;
   validationStage: B15ValidationStage | null;
   validationFieldPaths: string[];
   validationFailureClassification: string | null;
   finishReason: B15FinishReason | null;
+  promptTokens: number | null;
   completionTokens: number | null;
+  reasoningTokens: number | null;
+  totalTokens: number | null;
 }
 
 interface B15Session {
@@ -280,8 +290,13 @@ export interface B15ArtifactRecord {
   timeout: boolean;
   validationStage: B15ValidationStage | null;
   validationFieldPaths: string[];
+  contentPresent: boolean | null;
+  contentLength: number | null;
   finishReason: B15FinishReason | null;
+  promptTokens: number | null;
   completionTokens: number | null;
+  reasoningTokens: number | null;
+  totalTokens: number | null;
 }
 
 export interface B15CalibrationArtifact {
@@ -561,11 +576,16 @@ function callFromTransport(
     runtimeSource: null,
     modelStatus: null,
     modelLatencyMs: null,
+    contentPresent: null,
+    contentLength: null,
     validationStage: null,
     validationFieldPaths: [],
     validationFailureClassification: null,
     finishReason: null,
+    promptTokens: null,
     completionTokens: null,
+    reasoningTokens: null,
+    totalTokens: null,
   };
 }
 
@@ -819,11 +839,16 @@ function mergeRuntimeLogs(
       runtimeSource: runtime.source === "none" ? null : runtime.source,
       modelStatus: runtime.modelStatus,
       modelLatencyMs: runtime.modelLatencyMs,
+      contentPresent: runtime.contentPresent ?? null,
+      contentLength: runtime.contentLength ?? null,
       validationStage: runtime.validationStage,
       validationFieldPaths: runtime.validationFieldPaths,
       validationFailureClassification: runtime.validationFailureClassification,
       finishReason: runtime.finishReason,
+      promptTokens: runtime.promptTokens ?? null,
       completionTokens: runtime.completionTokens,
+      reasoningTokens: runtime.reasoningTokens ?? null,
+      totalTokens: runtime.totalTokens ?? null,
     };
   });
 }
@@ -964,8 +989,13 @@ function artifactRecord(call: B15InternalCall): B15ArtifactRecord {
           /^\$(?:\.[A-Za-z_][A-Za-z0-9_]*|\[\d+\])*$/.test(path),
       )
       .slice(0, 20),
+    contentPresent: call.contentPresent,
+    contentLength: call.contentLength,
     finishReason: call.finishReason,
+    promptTokens: call.promptTokens,
     completionTokens: call.completionTokens,
+    reasoningTokens: call.reasoningTokens,
+    totalTokens: call.totalTokens,
   };
 }
 

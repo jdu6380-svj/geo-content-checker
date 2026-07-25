@@ -46,7 +46,7 @@ export const B1_MODEL_CALLS_PER_PIPELINE = B1_PIPELINE_OPERATIONS.length;
 export const B1_STAGE_1_ARTICLE_COUNT = 10;
 export const B1_STAGE_2_ARTICLE_COUNT = 9;
 export const B1_DEFAULT_STAGE_2_ROUNDS = 2;
-export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v3";
+export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v4";
 
 const B1_MODEL_STATUSES = [
   "not-requested",
@@ -215,8 +215,13 @@ export interface B1CallRecord {
   source: Exclude<B1ResponseSource, "none"> | null;
   modelStatus: B1ModelStatus | null;
   modelLatencyMs: number | null;
+  contentPresent?: boolean | null;
+  contentLength?: number | null;
   finishReason?: B1ModelFinishReason | null;
+  promptTokens?: number | null;
   completionTokens?: number | null;
+  reasoningTokens?: number | null;
+  totalTokens?: number | null;
   durationMs: number;
   requestId: string | null;
   runtimeLogStatus?: B1RuntimeLogStatus;
@@ -276,8 +281,13 @@ interface B1PersistedCallRecord {
   source: Exclude<B1ResponseSource, "none"> | null;
   modelStatus: B1ModelStatus | null;
   modelLatencyMs: number | null;
+  contentPresent: boolean | null;
+  contentLength: number | null;
   finishReason: B1ModelFinishReason | null;
+  promptTokens: number | null;
   completionTokens: number | null;
+  reasoningTokens: number | null;
+  totalTokens: number | null;
   durationMs: number;
   errorClassification: B1ErrorClassification | null;
   runtimeLogStatus: B1RuntimeLogStatus;
@@ -311,8 +321,13 @@ export interface B1RuntimeLogRecord {
   source: B1ResponseSource;
   modelStatus: B1ModelStatus;
   modelLatencyMs: number | null;
+  contentPresent?: boolean | null;
+  contentLength?: number | null;
   finishReason: B1ModelFinishReason | null;
+  promptTokens?: number | null;
   completionTokens: number | null;
+  reasoningTokens?: number | null;
+  totalTokens?: number | null;
   durationMs: number;
   validationStage: B1ValidationStage | null;
   validationIssueCount: number | null;
@@ -508,6 +523,10 @@ function normalizeTokenCount(value: unknown): number | null {
     value >= 0
     ? value
     : null;
+}
+
+function normalizeTelemetryBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function normalizeRuntimeLogStatus(value: unknown): B1RuntimeLogStatus | null {
@@ -1117,8 +1136,13 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
     source: normalizeSource(record.source),
     modelStatus: normalizeModelStatus(record.modelStatus),
     modelLatencyMs: normalizeDuration(record.modelLatencyMs),
+    contentPresent: normalizeTelemetryBoolean(record.contentPresent),
+    contentLength: normalizeTokenCount(record.contentLength),
     finishReason: normalizeModelFinishReason(record.finishReason),
+    promptTokens: normalizeTokenCount(record.promptTokens),
     completionTokens: normalizeTokenCount(record.completionTokens),
+    reasoningTokens: normalizeTokenCount(record.reasoningTokens),
+    totalTokens: normalizeTokenCount(record.totalTokens),
     durationMs: normalizeDuration(record.durationMs) ?? 0,
     runtimeLogStatus:
       normalizeRuntimeLogStatus(record.runtimeLogStatus) ??
@@ -1613,10 +1637,20 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
   const durationMs = normalizeDuration(value.durationMs);
   const modelLatencyMs =
     value.modelLatencyMs === undefined ? null : normalizeDuration(value.modelLatencyMs);
+  const contentPresent =
+    value.contentPresent === undefined ? null : normalizeTelemetryBoolean(value.contentPresent);
+  const contentLength =
+    value.contentLength === undefined ? null : normalizeTokenCount(value.contentLength);
   const finishReason =
     value.finishReason === undefined ? null : normalizeModelFinishReason(value.finishReason);
+  const promptTokens =
+    value.promptTokens === undefined ? null : normalizeTokenCount(value.promptTokens);
   const completionTokens =
     value.completionTokens === undefined ? null : normalizeTokenCount(value.completionTokens);
+  const reasoningTokens =
+    value.reasoningTokens === undefined ? null : normalizeTokenCount(value.reasoningTokens);
+  const totalTokens =
+    value.totalTokens === undefined ? null : normalizeTokenCount(value.totalTokens);
   if (
     requestId === null ||
     typeof value.route !== "string" ||
@@ -1626,8 +1660,13 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     !isOneOf(value.source, B1_RESPONSE_SOURCES) ||
     !isOneOf(value.modelStatus, B1_MODEL_STATUSES) ||
     (value.modelLatencyMs !== undefined && modelLatencyMs === null) ||
+    (value.contentPresent !== undefined && contentPresent === null) ||
+    (value.contentLength !== undefined && contentLength === null) ||
     (value.finishReason !== undefined && finishReason === null) ||
-    (value.completionTokens !== undefined && completionTokens === null)
+    (value.promptTokens !== undefined && promptTokens === null) ||
+    (value.completionTokens !== undefined && completionTokens === null) ||
+    (value.reasoningTokens !== undefined && reasoningTokens === null) ||
+    (value.totalTokens !== undefined && totalTokens === null)
   ) {
     return null;
   }
@@ -1667,8 +1706,13 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     source: value.source,
     modelStatus: value.modelStatus,
     modelLatencyMs,
+    contentPresent,
+    contentLength,
     finishReason,
+    promptTokens,
     completionTokens,
+    reasoningTokens,
+    totalTokens,
     durationMs,
     validationStage: hasValidValidationTelemetry ? validationStage : null,
     validationIssueCount: hasValidValidationTelemetry ? validationIssueCount : null,
@@ -2652,8 +2696,13 @@ function applyRuntimeLogRecords(
       source: runtime.source === "none" ? call.source : runtime.source,
       modelStatus: runtime.modelStatus,
       modelLatencyMs: runtime.modelLatencyMs,
+      contentPresent: runtime.contentPresent ?? null,
+      contentLength: runtime.contentLength ?? null,
       finishReason: runtime.finishReason,
+      promptTokens: runtime.promptTokens ?? null,
       completionTokens: runtime.completionTokens,
+      reasoningTokens: runtime.reasoningTokens ?? null,
+      totalTokens: runtime.totalTokens ?? null,
       durationMs: runtime.durationMs,
       requestId,
       runtimeLogStatus,
@@ -2964,8 +3013,13 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       "source",
       "modelStatus",
       "modelLatencyMs",
+      "contentPresent",
+      "contentLength",
       "finishReason",
+      "promptTokens",
       "completionTokens",
+      "reasoningTokens",
+      "totalTokens",
       "durationMs",
       "errorClassification",
       "runtimeLogStatus",
@@ -2987,10 +3041,20 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     value.modelStatus === null ? null : normalizeModelStatus(value.modelStatus);
   const modelLatencyMs =
     value.modelLatencyMs === null ? null : normalizeDuration(value.modelLatencyMs);
+  const contentPresent =
+    value.contentPresent === null ? null : normalizeTelemetryBoolean(value.contentPresent);
+  const contentLength =
+    value.contentLength === null ? null : normalizeTokenCount(value.contentLength);
   const finishReason =
     value.finishReason === null ? null : normalizeModelFinishReason(value.finishReason);
+  const promptTokens =
+    value.promptTokens === null ? null : normalizeTokenCount(value.promptTokens);
   const completionTokens =
     value.completionTokens === null ? null : normalizeTokenCount(value.completionTokens);
+  const reasoningTokens =
+    value.reasoningTokens === null ? null : normalizeTokenCount(value.reasoningTokens);
+  const totalTokens =
+    value.totalTokens === null ? null : normalizeTokenCount(value.totalTokens);
   const durationMs = normalizeDuration(value.durationMs);
   const runtimeLogStatus = normalizeRuntimeLogStatus(value.runtimeLogStatus);
   const validationStage =
@@ -3017,8 +3081,13 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     (value.source !== null && source === null) ||
     (value.modelStatus !== null && modelStatus === null) ||
     (value.modelLatencyMs !== null && modelLatencyMs === null) ||
+    (value.contentPresent !== null && contentPresent === null) ||
+    (value.contentLength !== null && contentLength === null) ||
     (value.finishReason !== null && finishReason === null) ||
+    (value.promptTokens !== null && promptTokens === null) ||
     (value.completionTokens !== null && completionTokens === null) ||
+    (value.reasoningTokens !== null && reasoningTokens === null) ||
+    (value.totalTokens !== null && totalTokens === null) ||
     durationMs === null ||
     runtimeLogStatus === null ||
     validationFieldPaths === null ||
@@ -3040,8 +3109,13 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     source,
     modelStatus,
     modelLatencyMs,
+    contentPresent,
+    contentLength,
     finishReason,
+    promptTokens,
     completionTokens,
+    reasoningTokens,
+    totalTokens,
     durationMs,
     errorClassification,
     runtimeLogStatus,
@@ -3059,8 +3133,13 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     source: persisted.source,
     modelStatus: persisted.modelStatus,
     modelLatencyMs: persisted.modelLatencyMs,
+    contentPresent: persisted.contentPresent,
+    contentLength: persisted.contentLength,
     finishReason: persisted.finishReason,
+    promptTokens: persisted.promptTokens,
     completionTokens: persisted.completionTokens,
+    reasoningTokens: persisted.reasoningTokens,
+    totalTokens: persisted.totalTokens,
     durationMs: persisted.durationMs,
     requestId: persisted.requestId,
     runtimeLogStatus: persisted.runtimeLogStatus,

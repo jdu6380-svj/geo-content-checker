@@ -1,7 +1,8 @@
 import {
   markGeoRequestOutcome,
-  normalizeGeoModelFinishReason,
+  sanitizeModelProviderTelemetry,
   type GeoModelFinishReason,
+  type ModelProviderTelemetry,
 } from "@/lib/server/geo-observability";
 import {
   consumeModelCallBudget,
@@ -111,33 +112,15 @@ export async function callOpenAICompatibleModel({
     }
 
     const payload: unknown = await response.json();
-    const content =
-      typeof payload === "object" && payload !== null && "choices" in payload
-        ? (payload as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content
-        : undefined;
-    const rawFinishReason =
-      typeof payload === "object" && payload !== null && "choices" in payload
-        ? (payload as { choices?: Array<{ finish_reason?: unknown }> }).choices?.[0]?.finish_reason
-        : undefined;
-    const finishReason = normalizeGeoModelFinishReason(rawFinishReason);
-    const rawUsage =
-      typeof payload === "object" && payload !== null && "usage" in payload
-        ? (payload as {
-            usage?: {
-              prompt_tokens?: unknown;
-              completion_tokens?: unknown;
-              total_tokens?: unknown;
-            };
-          }).usage
-        : undefined;
-    const usage = normalizeUsage(rawUsage);
+    const content = providerMessageContent(payload);
+    const telemetry = sanitizeModelProviderTelemetry(payload);
+    const usage = normalizeUsage(providerUsage(payload));
 
-    if (typeof content !== "string" || !content.trim()) {
+    if (!telemetry.contentPresent || typeof content !== "string") {
       markGeoRequestOutcome({
         modelStatus: "invalid-output",
         modelLatencyMs: modelLatencyMs(),
-        finishReason,
-        ...usageLogFields(usage),
+        ...providerTelemetryLogFields(telemetry, usage),
       });
       throw new ModelCallError("Model returned empty content");
     }
@@ -145,10 +128,13 @@ export async function callOpenAICompatibleModel({
     markGeoRequestOutcome({
       modelStatus: "success",
       modelLatencyMs: modelLatencyMs(),
-      finishReason,
-      ...usageLogFields(usage),
+      ...providerTelemetryLogFields(telemetry, usage),
     });
-    return { content, finishReason, ...(usage ? { usage } : {}) };
+    return {
+      content,
+      finishReason: telemetry.finishReason,
+      ...(usage ? { usage } : {}),
+    };
   } catch (error) {
     if (error instanceof ModelCallError) throw error;
     if (error instanceof Error && error.name === "AbortError") {
@@ -170,14 +156,24 @@ function normalizeTokenCount(value: unknown): number | undefined {
     : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function providerMessageContent(payload: unknown): unknown {
+  if (!isRecord(payload) || !Array.isArray(payload.choices)) return undefined;
+  const choice = payload.choices[0];
+  if (!isRecord(choice) || !isRecord(choice.message)) return undefined;
+  return choice.message.content;
+}
+
+function providerUsage(payload: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(payload) || !isRecord(payload.usage)) return undefined;
+  return payload.usage;
+}
+
 function normalizeUsage(
-  usage:
-    | {
-        prompt_tokens?: unknown;
-        completion_tokens?: unknown;
-        total_tokens?: unknown;
-      }
-    | undefined,
+  usage: Record<string, unknown> | undefined,
 ): ModelTokenUsage | undefined {
   const promptTokens = normalizeTokenCount(usage?.prompt_tokens);
   const completionTokens = normalizeTokenCount(usage?.completion_tokens);
@@ -209,18 +205,34 @@ function estimateCostUsd(usage: ModelTokenUsage): number | undefined {
   );
 }
 
-function usageLogFields(usage: ModelTokenUsage | undefined): {
+function providerTelemetryLogFields(
+  telemetry: ModelProviderTelemetry,
+  usage: ModelTokenUsage | undefined,
+): {
+  contentPresent: boolean;
+  contentLength: number;
+  finishReason: GeoModelFinishReason;
   promptTokens?: number;
   completionTokens?: number;
+  reasoningTokens?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
 } {
-  if (!usage) return {};
-  const estimatedCostUsd = estimateCostUsd(usage);
+  const estimatedCostUsd = usage ? estimateCostUsd(usage) : undefined;
   return {
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    totalTokens: usage.totalTokens,
+    contentPresent: telemetry.contentPresent,
+    contentLength: telemetry.contentLength,
+    finishReason: telemetry.finishReason,
+    ...(telemetry.promptTokens === undefined
+      ? {}
+      : { promptTokens: telemetry.promptTokens }),
+    ...(telemetry.completionTokens === undefined
+      ? {}
+      : { completionTokens: telemetry.completionTokens }),
+    ...(telemetry.reasoningTokens === undefined
+      ? {}
+      : { reasoningTokens: telemetry.reasoningTokens }),
+    ...(telemetry.totalTokens === undefined ? {} : { totalTokens: telemetry.totalTokens }),
     ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
   };
 }

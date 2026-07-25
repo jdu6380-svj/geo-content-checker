@@ -51,6 +51,7 @@ import {
   markGeoValidationTelemetry,
   normalizeGeoModelFinishReason,
   sanitizeGeoValidationTelemetry,
+  sanitizeModelProviderTelemetry,
 } from "../lib/server/geo-observability.ts";
 import { scrubSentryEvent } from "../lib/sentry-scrub.ts";
 import {
@@ -1016,6 +1017,67 @@ const b1SensitiveSentinels = [
   "B1_SENTINEL_MODEL_PAYLOAD",
   "B1_SENTINEL_FULL_RESPONSE",
 ];
+const providerTelemetry = sanitizeModelProviderTelemetry({
+  choices: [{
+    finish_reason: "length",
+    message: {
+      content: b1SensitiveSentinels[4],
+      reasoning_content: b1SensitiveSentinels[1],
+    },
+  }],
+  usage: {
+    prompt_tokens: 700,
+    completion_tokens: 1_800,
+    reasoning_tokens: 1_600,
+    completion_tokens_details: {
+      reasoning_tokens: 1_700,
+    },
+    total_tokens: 2_500,
+  },
+  prompt: b1SensitiveSentinels[1],
+  evidence: b1SensitiveSentinels[2],
+});
+assert.deepEqual(providerTelemetry, {
+  contentPresent: true,
+  contentLength: b1SensitiveSentinels[4].length,
+  finishReason: "length",
+  promptTokens: 700,
+  completionTokens: 1_800,
+  reasoningTokens: 1_700,
+  totalTokens: 2_500,
+});
+for (const sentinel of b1SensitiveSentinels) {
+  assert.doesNotMatch(JSON.stringify(providerTelemetry), new RegExp(sentinel));
+}
+for (const malformedPayload of [
+  undefined,
+  null,
+  false,
+  0,
+  "",
+  [],
+  { choices: "invalid", usage: [] },
+  { choices: [{ message: { content: "   " } }], usage: { completion_tokens: -1 } },
+  new Proxy({}, {
+    get() {
+      throw new Error(b1SensitiveSentinels[3]);
+    },
+  }),
+]) {
+  assert.doesNotThrow(() => sanitizeModelProviderTelemetry(malformedPayload));
+}
+assert.deepEqual(
+  sanitizeModelProviderTelemetry(new Proxy({}, {
+    get() {
+      throw new Error(b1SensitiveSentinels[3]);
+    },
+  })),
+  {
+    contentPresent: false,
+    contentLength: 0,
+    finishReason: "unknown",
+  },
+);
 const b1OperationRoutes = [
   "/api/evaluate-scoring",
   "/api/predict-questions",
@@ -1038,8 +1100,13 @@ const sensitiveB1PipelineRecord = {
     source: "model",
     modelStatus: "success",
     modelLatencyMs: 900 + index,
+    contentPresent: true,
+    contentLength: 300 + index,
     finishReason: "stop",
+    promptTokens: 800 + index,
     completionTokens: 400 + index,
+    reasoningTokens: 200 + index,
+    totalTokens: 1_200 + (index * 2),
     durationMs: 1_000 + index,
     requestId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
     runtimeLogStatus: "matched",
@@ -1099,16 +1166,21 @@ assert.deepEqual(Object.keys(b1CheckpointArtifact.records[0]).sort(), [
 for (const request of b1CheckpointArtifact.records[0].requests) {
   assert.deepEqual(Object.keys(request).sort(), [
     "completionTokens",
+    "contentLength",
+    "contentPresent",
     "durationMs",
     "errorClassification",
     "finishReason",
     "httpStatus",
     "modelLatencyMs",
     "modelStatus",
+    "promptTokens",
+    "reasoningTokens",
     "requestId",
     "route",
     "runtimeLogStatus",
     "source",
+    "totalTokens",
     "validationActionTypes",
     "validationFailureClassification",
     "validationFieldPaths",
@@ -1258,14 +1330,18 @@ const b1RuntimeLog = parseB1RuntimeLogMessage(
     source: "model",
     modelStatus: "success",
     modelLatencyMs: 987,
+    contentPresent: true,
+    contentLength: 4_096,
     finishReason: "length",
+    promptTokens: 1_000,
     completionTokens: 1_200,
+    reasoningTokens: 1_100,
+    totalTokens: 2_200,
     validationStage: "schema_validation",
     validationIssueCount: 2,
     validationFailureClassification: "required_field_missing",
     validationFieldPaths: ["$.actions[0].type"],
     validationActionTypes: ["faq", "unknown"],
-    promptTokens: 1_000,
     prompt: b1SensitiveSentinels[1],
     evidence: b1SensitiveSentinels[2],
     response: b1SensitiveSentinels[4],
@@ -1278,8 +1354,13 @@ assert.deepEqual(b1RuntimeLog, {
   source: "model",
   modelStatus: "success",
   modelLatencyMs: 987,
+  contentPresent: true,
+  contentLength: 4_096,
   finishReason: "length",
+  promptTokens: 1_000,
   completionTokens: 1_200,
+  reasoningTokens: 1_100,
+  totalTokens: 2_200,
   durationMs: 1_234,
   validationStage: "schema_validation",
   validationIssueCount: 2,
@@ -1305,8 +1386,13 @@ const historicalBodyRecords = parseB1RuntimeLogHistoryBody(
               source: "fallback",
               modelStatus: "success",
               modelLatencyMs: 11_659,
+              contentPresent: false,
+              contentLength: 0,
               finishReason: "length",
+              promptTokens: 2_300,
               completionTokens: 1_200,
+              reasoningTokens: 1_200,
+              totalTokens: 3_500,
               durationMs: 11_680,
               validationStage: "json_parse",
               validationIssueCount: 1,
@@ -1325,7 +1411,12 @@ const historicalBodyRecords = parseB1RuntimeLogHistoryBody(
 );
 assert.equal(historicalBodyRecords.length, 1);
 assert.equal(historicalBodyRecords[0]?.finishReason, "length");
+assert.equal(historicalBodyRecords[0]?.contentPresent, false);
+assert.equal(historicalBodyRecords[0]?.contentLength, 0);
+assert.equal(historicalBodyRecords[0]?.promptTokens, 2_300);
 assert.equal(historicalBodyRecords[0]?.completionTokens, 1_200);
+assert.equal(historicalBodyRecords[0]?.reasoningTokens, 1_200);
+assert.equal(historicalBodyRecords[0]?.totalTokens, 3_500);
 assert.equal(
   historicalBodyRecords[0]?.validationFailureClassification,
   "token_cap_truncation",
@@ -1690,24 +1781,29 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
   matchedCount: 2,
   unmatchedCount: 1,
 });
-for (const record of delayedRuntimeCollection.records.values()) {
+  for (const record of delayedRuntimeCollection.records.values()) {
     assert.deepEqual(Object.keys(record).sort(), [
       "completionTokens",
+      "contentLength",
+      "contentPresent",
       "durationMs",
       "finishReason",
       "modelLatencyMs",
       "modelStatus",
-    "requestId",
-    "route",
-    "source",
+      "promptTokens",
+      "reasoningTokens",
+      "requestId",
+      "route",
+      "source",
       "status",
+      "totalTokens",
       "validationActionTypes",
       "validationFailureClassification",
       "validationFieldPaths",
-    "validationIssueCount",
-    "validationStage",
-  ]);
-}
+      "validationIssueCount",
+      "validationStage",
+    ]);
+  }
 const serializedDelayedRuntimeRecords = JSON.stringify([
   ...delayedRuntimeCollection.records.values(),
   ...delayedRuntimeCollection.statuses.values(),
@@ -2688,8 +2784,13 @@ function createB15MockRuntimeCollector(
       source: call.source ?? "none",
       modelStatus: call.source === "model" ? "success" : "failed",
       modelLatencyMs: 90,
+      contentPresent: true,
+      contentLength: 256,
       finishReason: "stop",
+      promptTokens: 200,
       completionTokens: 100,
+      reasoningTokens: 50,
+      totalTokens: 300,
       durationMs: call.durationMs,
       validationStage: null,
       validationIssueCount: null,
@@ -2806,15 +2907,26 @@ assert.deepEqual(passingB15.artifact.runtimeLogCollectorState, {
 for (const record of passingB15.artifact.records) {
   assert.deepEqual(Object.keys(record).sort(), [
     "completionTokens",
+    "contentLength",
+    "contentPresent",
     "finishReason",
     "latencyMs",
     "modelStatus",
+    "promptTokens",
+    "reasoningTokens",
     "requestId",
     "route",
     "timeout",
+    "totalTokens",
     "validationFieldPaths",
     "validationStage",
   ]);
+  assert.equal(record.contentPresent, true);
+  assert.equal(record.contentLength, 256);
+  assert.equal(record.promptTokens, 200);
+  assert.equal(record.completionTokens, 100);
+  assert.equal(record.reasoningTokens, 50);
+  assert.equal(record.totalTokens, 300);
 }
 const b15SensitiveSentinel = "B15_SENSITIVE_SENTINEL_MUST_NOT_PERSIST";
 const taintedB15Artifact = buildB15CalibrationArtifact(

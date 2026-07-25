@@ -26,6 +26,16 @@ export const GEO_MODEL_FINISH_REASONS = [
 
 export type GeoModelFinishReason = (typeof GEO_MODEL_FINISH_REASONS)[number];
 
+export interface ModelProviderTelemetry {
+  contentPresent: boolean;
+  contentLength: number;
+  finishReason: GeoModelFinishReason;
+  promptTokens?: number;
+  completionTokens?: number;
+  reasoningTokens?: number;
+  totalTokens?: number;
+}
+
 export const GEO_VALIDATION_STAGES = [
   "json_parse",
   "schema_validation",
@@ -84,9 +94,12 @@ interface GeoRequestContext {
   source: GeoResponseSource;
   modelStatus: GeoModelStatus;
   modelLatencyMs?: number;
+  contentPresent?: boolean;
+  contentLength?: number;
   finishReason?: GeoModelFinishReason;
   promptTokens?: number;
   completionTokens?: number;
+  reasoningTokens?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
   validationStage?: GeoValidationStage;
@@ -104,6 +117,55 @@ export function normalizeGeoModelFinishReason(value: unknown): GeoModelFinishRea
   return GEO_MODEL_FINISH_REASONS.includes(value as GeoModelFinishReason)
     ? (value as GeoModelFinishReason)
     : "unknown";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeProviderTokenCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+export function sanitizeModelProviderTelemetry(payload: unknown): ModelProviderTelemetry {
+  try {
+    const root = isRecord(payload) ? payload : {};
+    const choice = Array.isArray(root.choices) && isRecord(root.choices[0])
+      ? root.choices[0]
+      : {};
+    const message = isRecord(choice.message) ? choice.message : {};
+    const content = message.content;
+    const usage = isRecord(root.usage) ? root.usage : {};
+    const completionDetails = isRecord(usage.completion_tokens_details)
+      ? usage.completion_tokens_details
+      : {};
+    const nestedReasoningTokens = normalizeProviderTokenCount(
+      completionDetails.reasoning_tokens,
+    );
+    const directReasoningTokens = normalizeProviderTokenCount(usage.reasoning_tokens);
+    const promptTokens = normalizeProviderTokenCount(usage.prompt_tokens);
+    const completionTokens = normalizeProviderTokenCount(usage.completion_tokens);
+    const reasoningTokens = nestedReasoningTokens ?? directReasoningTokens;
+    const totalTokens = normalizeProviderTokenCount(usage.total_tokens);
+
+    return {
+      contentPresent: typeof content === "string" && content.trim().length > 0,
+      contentLength: typeof content === "string" ? content.length : 0,
+      finishReason: normalizeGeoModelFinishReason(choice.finish_reason),
+      ...(promptTokens === undefined ? {} : { promptTokens }),
+      ...(completionTokens === undefined ? {} : { completionTokens }),
+      ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+      ...(totalTokens === undefined ? {} : { totalTokens }),
+    };
+  } catch {
+    return {
+      contentPresent: false,
+      contentLength: 0,
+      finishReason: "unknown",
+    };
+  }
 }
 
 function sanitizeValidationPath(value: unknown): string | null {
@@ -200,11 +262,16 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     modelStatus: context.modelStatus,
     rateLimitMode: response.headers.get("X-GEO-RateLimit-Mode") ?? "none",
     ...(context.modelLatencyMs === undefined ? {} : { modelLatencyMs: context.modelLatencyMs }),
+    ...(context.contentPresent === undefined ? {} : { contentPresent: context.contentPresent }),
+    ...(context.contentLength === undefined ? {} : { contentLength: context.contentLength }),
     ...(context.finishReason === undefined ? {} : { finishReason: context.finishReason }),
     ...(context.promptTokens === undefined ? {} : { promptTokens: context.promptTokens }),
     ...(context.completionTokens === undefined
       ? {}
       : { completionTokens: context.completionTokens }),
+    ...(context.reasoningTokens === undefined
+      ? {}
+      : { reasoningTokens: context.reasoningTokens }),
     ...(context.totalTokens === undefined ? {} : { totalTokens: context.totalTokens }),
     ...(context.estimatedCostUsd === undefined
       ? {}
@@ -239,9 +306,12 @@ export function markGeoRequestOutcome(params: {
   source?: GeoResponseSource;
   modelStatus?: GeoModelStatus;
   modelLatencyMs?: number;
+  contentPresent?: boolean;
+  contentLength?: number;
   finishReason?: GeoModelFinishReason;
   promptTokens?: number;
   completionTokens?: number;
+  reasoningTokens?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
 }): void {
@@ -250,9 +320,12 @@ export function markGeoRequestOutcome(params: {
   if (params.source) context.source = params.source;
   if (params.modelStatus) context.modelStatus = params.modelStatus;
   if (params.modelLatencyMs !== undefined) context.modelLatencyMs = params.modelLatencyMs;
+  if (params.contentPresent !== undefined) context.contentPresent = params.contentPresent;
+  if (params.contentLength !== undefined) context.contentLength = params.contentLength;
   if (params.finishReason !== undefined) context.finishReason = params.finishReason;
   if (params.promptTokens !== undefined) context.promptTokens = params.promptTokens;
   if (params.completionTokens !== undefined) context.completionTokens = params.completionTokens;
+  if (params.reasoningTokens !== undefined) context.reasoningTokens = params.reasoningTokens;
   if (params.totalTokens !== undefined) context.totalTokens = params.totalTokens;
   if (params.estimatedCostUsd !== undefined) context.estimatedCostUsd = params.estimatedCostUsd;
 }
