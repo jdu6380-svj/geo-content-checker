@@ -13,6 +13,7 @@ import {
   type B1RuntimeLogCollectionResult,
   type B1RuntimeLogCollector,
   type B1RuntimeLogConfig,
+  type B1RuntimeLogCollectorState,
   type B1RuntimeLogStatus,
 } from "./b1-technical-validation.ts";
 import {
@@ -284,6 +285,7 @@ export interface B15CalibrationArtifact {
   };
   overall: { round1: B15RoundGateResult; round2: B15RoundGateResult };
   runtimeLogStatus: Record<B1RuntimeLogStatus, number>;
+  runtimeLogCollectorState: B1RuntimeLogCollectorState;
   evidenceLiteralAccuracy: { checks: number; passes: number; rate: number | null };
   records: B15ArtifactRecord[];
 }
@@ -1043,6 +1045,7 @@ export function buildB15CalibrationArtifact(
     },
     overall: { round1, round2 },
     runtimeLogStatus,
+    runtimeLogCollectorState: collection.collectorState,
     evidenceLiteralAccuracy: {
       checks: evidenceChecks,
       passes: evidencePasses,
@@ -1317,11 +1320,19 @@ async function main(): Promise<void> {
     environment.bypassSecret,
   );
   const runtimeConfig = await verifyB15Deployment(environment);
-  await verifyB15Health(environment);
+  const runtimeLogCollector = startB1RuntimeLogCollector(Promise.resolve(runtimeConfig));
+  try {
+    await verifyB15Health(environment);
+    if ((await runtimeLogCollector.waitForLiveConnection()) !== "connected") {
+      throw new Error("B.1.5 Runtime Log collector preflight failed.");
+    }
+  } catch (error) {
+    runtimeLogCollector.close();
+    throw error;
+  }
 
   const runId = createB15RunId();
   const directory = await createB15CalibrationDirectory(process.cwd(), runId);
-  const runtimeLogCollector = startB1RuntimeLogCollector(Promise.resolve(runtimeConfig));
   let flow: B15FlowResult;
   try {
     flow = await runB15CalibrationFlow({

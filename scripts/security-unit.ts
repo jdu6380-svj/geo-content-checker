@@ -1290,26 +1290,30 @@ for (const sentinel of b1SensitiveSentinels) {
 const historicalBodyRecords = parseB1RuntimeLogHistoryBody(
   JSON.stringify([
     {
-      payload: {
-        text: JSON.stringify({
-          event: "geo_api_request",
-          requestId: "00000000-0000-4000-8000-000000000002",
-          route: "/api/generate-patches",
-          status: 200,
-          source: "fallback",
-          modelStatus: "success",
-          modelLatencyMs: 11_659,
-          finishReason: "length",
-          completionTokens: 1_200,
-          durationMs: 11_680,
-          validationStage: "json_parse",
-          validationIssueCount: 1,
-          validationFailureClassification: "token_cap_truncation",
-          validationFieldPaths: ["$"],
-          validationActionTypes: [],
-          prompt: b1SensitiveSentinels[1],
-          response: b1SensitiveSentinels[4],
-        }),
+      data: {
+        nested: {
+          payload: {
+            text: `2026-07-25T00:00:00.000Z ${JSON.stringify({
+              event: "geo_api_request",
+              requestId: "00000000-0000-4000-8000-000000000002",
+              route: "/api/generate-patches",
+              status: 200,
+              source: "fallback",
+              modelStatus: "success",
+              modelLatencyMs: 11_659,
+              finishReason: "length",
+              completionTokens: 1_200,
+              durationMs: 11_680,
+              validationStage: "json_parse",
+              validationIssueCount: 1,
+              validationFailureClassification: "token_cap_truncation",
+              validationFieldPaths: ["$"],
+              validationActionTypes: [],
+              prompt: b1SensitiveSentinels[1],
+              response: b1SensitiveSentinels[4],
+            })}`,
+          },
+        },
       },
     },
     { text: b1SensitiveSentinels[0] },
@@ -1425,6 +1429,10 @@ const delayedRuntimeCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
+    historyTimeoutMs: 100,
+    historyPollIntervalMs: 0,
+    historyStablePollCount: 2,
+    historyStabilityMs: 0,
     now: () => delayedRuntimeClock,
     history: async () => [],
     stream: async (_config, signal, handlers) => {
@@ -1438,6 +1446,7 @@ const delayedRuntimeCollector = startB1RuntimeLogCollector(
   },
 );
 await delayedRuntimeReady;
+assert.equal(await delayedRuntimeCollector.waitForLiveConnection(10), "connected");
 for (const call of delayedRuntimeCalls) delayedRuntimeCollector.register(call);
 emitDelayedRuntimeRecord?.(delayedRuntimeRecords[0] as NonNullable<(typeof delayedRuntimeRecords)[number]>);
 delayedRuntimeClock = 200;
@@ -1565,6 +1574,79 @@ assert.deepEqual(historicalBackfillCollection.collectorState, {
   historicalBackfill: "complete",
 });
 
+let delayedHistoryPollCount = 0;
+let markDelayedHistoryStreamReady: (() => void) | undefined;
+const delayedHistoryStreamReady = new Promise<void>((resolvePromise) => {
+  markDelayedHistoryStreamReady = resolvePromise;
+});
+const delayedHistoryCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    historyTimeoutMs: 100,
+    historyPollIntervalMs: 0,
+    historyStablePollCount: 4,
+    historyStabilityMs: 0,
+    stream: async (_config, signal, handlers) => {
+      handlers.connected();
+      markDelayedHistoryStreamReady?.();
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+    history: async () => {
+      delayedHistoryPollCount += 1;
+      if (delayedHistoryPollCount === 1) return [];
+      if (delayedHistoryPollCount === 2) return [wrongRouteHistoricalRecord];
+      return [historicalBackfillRecord];
+    },
+  },
+);
+await delayedHistoryStreamReady;
+delayedHistoryCollector.register(historicalBackfillCall);
+const delayedHistoryCollection = await delayedHistoryCollector.finish();
+assert.equal(delayedHistoryPollCount, 3);
+assert.deepEqual(
+  [...delayedHistoryCollection.statuses.values()],
+  ["delayed-ingestion"],
+);
+assert.equal(
+  [...delayedHistoryCollection.records.values()][0]?.route,
+  historicalBackfillCall.route,
+);
+
+let markUncoveredHistoryReady: (() => void) | undefined;
+const uncoveredHistoryReady = new Promise<void>((resolvePromise) => {
+  markUncoveredHistoryReady = resolvePromise;
+});
+const uncoveredHistoryCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    reconnectDelayMs: 100,
+    historyTimeoutMs: 100,
+    historyPollIntervalMs: 0,
+    historyStablePollCount: 2,
+    historyStabilityMs: 0,
+    stream: async () => {
+      markUncoveredHistoryReady?.();
+      throw new Error(b1SensitiveSentinels[4]);
+    },
+    history: async () => [],
+  },
+);
+await uncoveredHistoryReady;
+uncoveredHistoryCollector.register(historicalBackfillCall);
+const uncoveredHistoryCollection = await uncoveredHistoryCollector.finish();
+assert.deepEqual(
+  [...uncoveredHistoryCollection.statuses.values()],
+  ["collector-unavailable"],
+);
+assert.equal(
+  uncoveredHistoryCollection.collectorState.historicalBackfill,
+  "complete",
+);
+
 const unavailableRuntimeCollector = startB1RuntimeLogCollector(
   Promise.reject(new Error(b1SensitiveSentinels[4])),
   { maxDrainMs: 0 },
@@ -1583,6 +1665,52 @@ assert.deepEqual(unavailableRuntimeCollection.collectorState, {
   historicalBackfill: "unavailable",
 });
 
+const unconnectedRuntimeCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    stream: async (_config, signal) => {
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+  },
+);
+assert.equal(await unconnectedRuntimeCollector.waitForLiveConnection(1), "timeout");
+unconnectedRuntimeCollector.close();
+assert.equal(await unavailableRuntimeCollector.waitForLiveConnection(10), "unavailable");
+
+let readinessStreamAttempts = 0;
+let markFirstReadinessConnection: (() => void) | undefined;
+let markSecondReadinessAttempt: (() => void) | undefined;
+const firstReadinessConnection = new Promise<void>((resolvePromise) => {
+  markFirstReadinessConnection = resolvePromise;
+});
+const secondReadinessAttempt = new Promise<void>((resolvePromise) => {
+  markSecondReadinessAttempt = resolvePromise;
+});
+const interruptedReadinessCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    reconnectDelayMs: 0,
+    stream: async (_config, signal, handlers) => {
+      readinessStreamAttempts += 1;
+      if (readinessStreamAttempts === 1) {
+        handlers.connected();
+        markFirstReadinessConnection?.();
+        return;
+      }
+      markSecondReadinessAttempt?.();
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+  },
+);
+await firstReadinessConnection;
+await secondReadinessAttempt;
+assert.equal(await interruptedReadinessCollector.waitForLiveConnection(1), "timeout");
+interruptedReadinessCollector.close();
+
 let markHistoryFailureReady: (() => void) | undefined;
 const historyFailureReady = new Promise<void>((resolvePromise) => {
   markHistoryFailureReady = resolvePromise;
@@ -1591,6 +1719,10 @@ const historyFailureCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
+    historyTimeoutMs: 1,
+    historyPollIntervalMs: 0,
+    historyStablePollCount: 2,
+    historyStabilityMs: 0,
     stream: async (_config, signal, handlers) => {
       handlers.connected();
       markHistoryFailureReady?.();
@@ -1951,6 +2083,9 @@ function createB15MockRuntimeCollector(
       });
       statuses.set(key, "matched");
     },
+    async waitForLiveConnection() {
+      return "connected" as const;
+    },
     async finish() {
       return {
         records,
@@ -2003,6 +2138,12 @@ assert.equal(passingB15.artifact.modules.diagnose.round2.sourceModel, 30);
 assert.equal(passingB15.artifact.overall.round1.sourceModel, 70);
 assert.equal(passingB15.artifact.overall.round2.sourceModel, 70);
 assert.equal(passingB15.artifact.runtimeLogStatus.matched, B15_EXPECTED_MODEL_REQUESTS);
+assert.deepEqual(passingB15.artifact.runtimeLogCollectorState, {
+  liveConnectionAttempts: 1,
+  liveSuccessfulConnections: 1,
+  liveInterruptions: 0,
+  historicalBackfill: "not-needed",
+});
 for (const record of passingB15.artifact.records) {
   assert.deepEqual(Object.keys(record).sort(), [
     "completionTokens",

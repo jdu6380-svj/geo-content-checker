@@ -316,6 +316,10 @@ interface B1RuntimeLogCollectorOptions {
   stream?: B1RuntimeLogStream;
   history?: B1RuntimeLogHistory;
   historyTimeoutMs?: number;
+  historyPollIntervalMs?: number;
+  historyPollWindowMs?: number;
+  historyStablePollCount?: number;
+  historyStabilityMs?: number;
   wait?: (milliseconds: number) => Promise<void>;
   now?: () => number;
 }
@@ -350,6 +354,7 @@ export interface B1RuntimeLogCollectionResult {
 
 export interface B1RuntimeLogCollector {
   register(call: B1CallRecord): void;
+  waitForLiveConnection(timeoutMs?: number): Promise<"connected" | "unavailable" | "timeout">;
   finish(batchCompletedAt?: number): Promise<B1RuntimeLogCollectionResult>;
   close(): void;
 }
@@ -1528,14 +1533,7 @@ async function requestJson(params: {
   }
 }
 
-export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord | null {
-  if (typeof message !== "string") return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(message);
-  } catch {
-    return null;
-  }
+function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
   if (!isRecord(value) || value.event !== "geo_api_request") return null;
 
   const requestId = normalizeRequestId(value.requestId);
@@ -1610,6 +1608,29 @@ export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord |
   };
 }
 
+export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord | null {
+  if (typeof message !== "string") return null;
+  const trimmed = message.trim();
+  if (!trimmed) return null;
+
+  const candidates = [trimmed];
+  let objectStart = trimmed.indexOf("{");
+  while (objectStart >= 0 && candidates.length < 16) {
+    if (objectStart > 0) candidates.push(trimmed.slice(objectStart));
+    objectStart = trimmed.indexOf("{", objectStart + 1);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const record = parseB1RuntimeLogValue(JSON.parse(candidate));
+      if (record) return record;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 function requiredEnvironment(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required for B.1 Runtime Log correlation.`);
@@ -1676,6 +1697,32 @@ function runtimeLogKey(requestId: string, route: string): string {
   return `${requestId}\n${route}`;
 }
 
+function collectRuntimeLogRecords(
+  value: unknown,
+  records: Map<string, B1RuntimeLogRecord>,
+  depth = 0,
+): void {
+  if (depth > 12) return;
+  if (typeof value === "string") {
+    const record = parseB1RuntimeLogMessage(value);
+    if (record) records.set(runtimeLogKey(record.requestId, record.route), record);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectRuntimeLogRecords(item, records, depth + 1);
+    return;
+  }
+  if (!isRecord(value)) return;
+
+  const directRecord = parseB1RuntimeLogValue(value);
+  if (directRecord) {
+    records.set(runtimeLogKey(directRecord.requestId, directRecord.route), directRecord);
+  }
+  for (const nested of Object.values(value)) {
+    collectRuntimeLogRecords(nested, records, depth + 1);
+  }
+}
+
 async function consumeRuntimeLogStream(
   config: B1RuntimeLogConfig,
   signal: AbortSignal,
@@ -1698,9 +1745,9 @@ async function consumeRuntimeLogStream(
     } catch {
       return;
     }
-    if (!isRecord(event)) return;
-    const parsed = parseB1RuntimeLogMessage(event.message);
-    if (parsed) handlers.record(parsed);
+    const records = new Map<string, B1RuntimeLogRecord>();
+    collectRuntimeLogRecords(event, records);
+    for (const record of records.values()) handlers.record(record);
   };
 
   const response = await fetch(endpoint, {
@@ -1732,41 +1779,16 @@ async function consumeRuntimeLogStream(
   if (buffer) consumeLine(buffer);
 }
 
-function collectHistoricalRuntimeLogRecords(
-  value: unknown,
-  records: Map<string, B1RuntimeLogRecord>,
-): void {
-  if (Array.isArray(value)) {
-    for (const item of value) collectHistoricalRuntimeLogRecords(item, records);
-    return;
-  }
-  if (!isRecord(value)) return;
-
-  const payload = isRecord(value.payload) ? value.payload : null;
-  for (const message of [
-    value.message,
-    value.text,
-    payload?.message,
-    payload?.text,
-  ]) {
-    const record = parseB1RuntimeLogMessage(message);
-    if (record) records.set(runtimeLogKey(record.requestId, record.route), record);
-  }
-  if (Array.isArray(value.events)) {
-    collectHistoricalRuntimeLogRecords(value.events, records);
-  }
-}
-
 export function parseB1RuntimeLogHistoryBody(raw: string): B1RuntimeLogRecord[] {
   const records = new Map<string, B1RuntimeLogRecord>();
   try {
-    collectHistoricalRuntimeLogRecords(JSON.parse(raw), records);
+    collectRuntimeLogRecords(JSON.parse(raw), records);
   } catch {
     for (const rawLine of raw.split("\n")) {
       const line = rawLine.trim().replace(/^data:\s*/, "");
       if (!line) continue;
       try {
-        collectHistoricalRuntimeLogRecords(JSON.parse(line), records);
+        collectRuntimeLogRecords(JSON.parse(line), records);
       } catch {
         continue;
       }
@@ -1777,51 +1799,22 @@ export function parseB1RuntimeLogHistoryBody(raw: string): B1RuntimeLogRecord[] 
 
 async function queryRuntimeLogHistory(
   config: B1RuntimeLogConfig,
-  range: { sinceMs: number; untilMs: number },
+  _range: { sinceMs: number; untilMs: number },
   signal: AbortSignal,
 ): Promise<B1RuntimeLogRecord[]> {
   const records = new Map<string, B1RuntimeLogRecord>();
-  const segmentMs = 120_000;
-
-  for (
-    let sinceMs = Math.max(0, Math.floor(range.sinceMs));
-    sinceMs <= range.untilMs;
-    sinceMs += segmentMs
-  ) {
-    const untilMs = Math.min(
-      Math.floor(range.untilMs),
-      sinceMs + segmentMs - 1,
-    );
-    const endpoint = new URL(
-      `https://api.vercel.com/v3/deployments/${encodeURIComponent(config.deploymentId)}/events`,
-    );
-    endpoint.searchParams.set("teamId", config.teamId);
-    endpoint.searchParams.set("direction", "forward");
-    endpoint.searchParams.set("follow", "0");
-    endpoint.searchParams.set("limit", "-1");
-    endpoint.searchParams.set("builds", "0");
-    endpoint.searchParams.set("delimiter", "0");
-    endpoint.searchParams.set("since", String(sinceMs));
-    endpoint.searchParams.set("until", String(untilMs));
-
-    const response = await fetch(endpoint, {
-      headers: {
-        Authorization: `Bearer ${config.token}`,
-        Accept: "application/json, application/stream+json",
-        "User-Agent": "geo-content-checker-b1-validation",
+  try {
+    await consumeRuntimeLogStream(config, signal, {
+      connected: () => {},
+      record: (record) => {
+        records.set(runtimeLogKey(record.requestId, record.route), record);
       },
-      redirect: "manual",
-      signal,
     });
-    if (!response.ok) {
-      throw new Error(`Vercel Runtime Logs history lookup failed with HTTP ${response.status}.`);
-    }
-
-    for (const record of parseB1RuntimeLogHistoryBody(await response.text())) {
-      records.set(runtimeLogKey(record.requestId, record.route), record);
+  } catch {
+    if (!signal.aborted) {
+      throw new Error("Vercel Runtime Logs history lookup failed.");
     }
   }
-
   return [...records.values()];
 }
 
@@ -1832,13 +1825,30 @@ export function startB1RuntimeLogCollector(
   const maxDrainMs = Math.max(0, options.maxDrainMs ?? 60_000);
   const reconnectDelayMs = Math.max(0, options.reconnectDelayMs ?? 250);
   const historyTimeoutMs = Math.max(0, options.historyTimeoutMs ?? 60_000);
+  const historyPollIntervalMs = Math.max(0, options.historyPollIntervalMs ?? 5_000);
+  const historyPollWindowMs = Math.max(1, options.historyPollWindowMs ?? 10_000);
+  const historyStablePollCount = Math.max(
+    2,
+    Math.floor(options.historyStablePollCount ?? 3),
+  );
+  const historyStabilityMs = Math.max(
+    0,
+    options.historyStabilityMs ?? historyTimeoutMs,
+  );
   const stream = options.stream ?? consumeRuntimeLogStream;
   const history = options.history ?? queryRuntimeLogHistory;
   const wait = options.wait ?? ((milliseconds: number) =>
     new Promise<void>((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
   const now = options.now ?? Date.now;
   const collectorStartedAt = now();
-  const expected = new Map<string, { registeredAt: number }>();
+  const expected = new Map<
+    string,
+    {
+      registeredAt: number;
+      requestStartedAt: number;
+      liveConnectionGeneration: number | null;
+    }
+  >();
   const observations = new Map<
     string,
     { record: B1RuntimeLogRecord; observedAt: number; origin: "live" | "history" }
@@ -1851,17 +1861,36 @@ export function startB1RuntimeLogCollector(
   let liveConnectionAttempts = 0;
   let liveSuccessfulConnections = 0;
   let liveInterruptions = 0;
+  let liveConnectionGeneration = 0;
+  let liveConnectionStartedAt: number | null = null;
+  let liveConnected = false;
+  const liveConnectionWaiters = new Set<
+    (readiness: "connected" | "unavailable") => void
+  >();
+
+  const settleLiveConnectionWaiters = (
+    readiness: "connected" | "unavailable",
+  ) => {
+    for (const resolveWaiter of liveConnectionWaiters) resolveWaiter(readiness);
+    liveConnectionWaiters.clear();
+  };
+
+  const markCollectorUnavailable = () => {
+    terminalUnavailable = true;
+    liveConnected = false;
+    settleLiveConnectionWaiters("unavailable");
+  };
 
   const streamRunner = (async () => {
     let config: B1RuntimeLogConfig | null;
     try {
       config = await configPromise;
     } catch {
-      terminalUnavailable = true;
+      markCollectorUnavailable();
       return;
     }
     if (!config) {
-      terminalUnavailable = true;
+      markCollectorUnavailable();
       return;
     }
     resolvedConfig = config;
@@ -1876,6 +1905,9 @@ export function startB1RuntimeLogCollector(
           connected: () => {
             if (!connectionEstablished) liveSuccessfulConnections += 1;
             connectionEstablished = true;
+            liveConnectionStartedAt = now();
+            liveConnected = true;
+            settleLiveConnectionWaiters("connected");
           },
           record: (record) => {
             const key = runtimeLogKey(record.requestId, record.route);
@@ -1888,20 +1920,25 @@ export function startB1RuntimeLogCollector(
         });
       } catch {
       } finally {
-        if (!stopped && connectionEstablished) liveInterruptions += 1;
+        if (!stopped && connectionEstablished) {
+          liveInterruptions += 1;
+          liveConnectionGeneration += 1;
+          liveConnected = false;
+          liveConnectionStartedAt = null;
+        }
         if (activeController === controller) activeController = null;
       }
       if (!stopped) {
         try {
           await wait(reconnectDelayMs);
         } catch {
-          terminalUnavailable = true;
+          markCollectorUnavailable();
           return;
         }
       }
     }
   })().catch(() => {
-    terminalUnavailable = true;
+    markCollectorUnavailable();
   });
 
   return {
@@ -1910,10 +1947,37 @@ export function startB1RuntimeLogCollector(
         if (stopped) return;
         const requestId = normalizeRequestId(call.requestId);
         if (!requestId || !Object.values(B1_OPERATION_ROUTES).includes(call.route)) return;
-        expected.set(runtimeLogKey(requestId, call.route), { registeredAt: now() });
+        const registeredAt = now();
+        const durationMs = normalizeDuration(call.durationMs) ?? 0;
+        const requestStartedAt = Math.max(collectorStartedAt, registeredAt - durationMs);
+        expected.set(runtimeLogKey(requestId, call.route), {
+          registeredAt,
+          requestStartedAt,
+          liveConnectionGeneration:
+            liveConnectionStartedAt !== null &&
+            liveConnectionStartedAt <= requestStartedAt
+              ? liveConnectionGeneration
+              : null,
+        });
       } catch {
-        terminalUnavailable = true;
+        markCollectorUnavailable();
       }
+    },
+    async waitForLiveConnection(timeoutMs = 15_000) {
+      if (terminalUnavailable || stopped) return "unavailable";
+      if (liveConnected) return "connected";
+      const boundedTimeoutMs = Math.max(0, Math.floor(timeoutMs));
+      return new Promise<"connected" | "unavailable" | "timeout">((resolvePromise) => {
+        const resolveReadiness = (readiness: "connected" | "unavailable") => {
+          clearTimeout(timeout);
+          resolvePromise(readiness);
+        };
+        const timeout = setTimeout(() => {
+          liveConnectionWaiters.delete(resolveReadiness);
+          resolvePromise("timeout");
+        }, boundedTimeoutMs);
+        liveConnectionWaiters.add(resolveReadiness);
+      });
     },
     async finish(batchCompletedAt = now()) {
       if (finishedResult) return finishedResult;
@@ -1932,36 +1996,101 @@ export function startB1RuntimeLogCollector(
           await wait(Math.min(250, remainingMs));
         }
       } catch {
-        terminalUnavailable = true;
+        markCollectorUnavailable();
       }
 
       const missingKeys = [...expected.keys()].filter((key) => !observations.has(key));
       let historicalBackfill: B1RuntimeLogCollectorState["historicalBackfill"] =
         missingKeys.length ? "unavailable" : "not-needed";
-      let historyCompleted = false;
+      let historyStable = false;
       if (missingKeys.length && resolvedConfig) {
         const historyController = new AbortController();
-        const historyTimeout = setTimeout(() => historyController.abort(), historyTimeoutMs);
+        const historyTimeout = setTimeout(
+          () => historyController.abort(),
+          Math.max(1, historyTimeoutMs),
+        );
+        const historyStartedAt = now();
+        const historyDeadline = historyStartedAt + historyTimeoutMs;
+        const maxHistoryPolls = Math.max(
+          historyStablePollCount,
+          Math.ceil(historyTimeoutMs / Math.max(1, historyPollIntervalMs)) + 1,
+        );
+        let historyPolls = 0;
+        let stablePolls = 0;
+        let stableSince = historyStartedAt;
+        let previousSignature: string | null = null;
         try {
-          const historicalRecords = await history(
-            resolvedConfig,
-            {
-              sinceMs: Math.max(0, collectorStartedAt - 20_000),
-              untilMs: Math.max(batchCompletedAt, now()),
-            },
-            historyController.signal,
-          );
-          for (const record of historicalRecords) {
-            const key = runtimeLogKey(record.requestId, record.route);
-            if (!expected.has(key)) continue;
-            observations.set(key, {
-              record,
-              observedAt: now(),
-              origin: "history",
-            });
+          while (!historyController.signal.aborted && historyPolls < maxHistoryPolls) {
+            historyPolls += 1;
+            try {
+              const remainingMs = Math.max(0, historyDeadline - now());
+              const historyPollController = new AbortController();
+              const abortHistoryPoll = () => historyPollController.abort();
+              historyController.signal.addEventListener("abort", abortHistoryPoll, {
+                once: true,
+              });
+              const historyPollTimeout = setTimeout(
+                () => historyPollController.abort(),
+                Math.max(1, Math.min(historyPollWindowMs, remainingMs)),
+              );
+              let historicalRecords: B1RuntimeLogRecord[];
+              try {
+                historicalRecords = await history(
+                  resolvedConfig,
+                  {
+                    sinceMs: Math.max(0, collectorStartedAt - 20_000),
+                    untilMs: Math.max(batchCompletedAt, now()),
+                  },
+                  historyPollController.signal,
+                );
+              } finally {
+                clearTimeout(historyPollTimeout);
+                historyController.signal.removeEventListener("abort", abortHistoryPoll);
+              }
+              for (const record of historicalRecords) {
+                const key = runtimeLogKey(record.requestId, record.route);
+                if (!expected.has(key)) continue;
+                observations.set(key, {
+                  record,
+                  observedAt: now(),
+                  origin: "history",
+                });
+              }
+
+              const matchedKeys = [...expected.keys()]
+                .filter((key) => observations.has(key))
+                .sort();
+              if (matchedKeys.length === expected.size) {
+                historyStable = true;
+                break;
+              }
+              const signature = matchedKeys.join("\u0000");
+              if (signature === previousSignature) {
+                stablePolls += 1;
+              } else {
+                previousSignature = signature;
+                stablePolls = 1;
+                stableSince = now();
+              }
+              if (
+                stablePolls >= historyStablePollCount &&
+                now() - stableSince >= historyStabilityMs
+              ) {
+                historyStable = true;
+                break;
+              }
+            } catch {
+              if (historyController.signal.aborted) break;
+              previousSignature = null;
+              stablePolls = 0;
+              stableSince = now();
+            }
+
+            const remainingMs = Math.max(0, historyDeadline - now());
+            if (remainingMs === 0) break;
+            await wait(Math.min(historyPollIntervalMs, remainingMs));
           }
-          historyCompleted = true;
-          historicalBackfill = "complete";
+          historicalBackfill = historyStable ? "complete" : "unavailable";
         } catch {
           historicalBackfill = "unavailable";
         } finally {
@@ -1971,7 +2100,7 @@ export function startB1RuntimeLogCollector(
 
       const records = new Map<string, B1RuntimeLogRecord>();
       const statuses = new Map<string, B1RuntimeLogStatus>();
-      for (const key of expected.keys()) {
+      for (const [key, expectation] of expected) {
         const observation = observations.get(key);
         if (observation) {
           records.set(key, observation.record);
@@ -1982,9 +2111,17 @@ export function startB1RuntimeLogCollector(
               : "matched",
           );
         } else {
+          const hasContinuousLiveCoverage =
+            expectation.liveConnectionGeneration !== null &&
+            expectation.liveConnectionGeneration === liveConnectionGeneration &&
+            liveConnectionStartedAt !== null &&
+            liveConnectionStartedAt <= expectation.requestStartedAt &&
+            expectation.registeredAt <= batchCompletedAt;
           statuses.set(
             key,
-            historyCompleted ? "true-missing" : "collector-unavailable",
+            historyStable && hasContinuousLiveCoverage
+              ? "true-missing"
+              : "collector-unavailable",
           );
         }
       }
@@ -2007,6 +2144,8 @@ export function startB1RuntimeLogCollector(
     close() {
       stopped = true;
       activeController?.abort();
+      liveConnected = false;
+      settleLiveConnectionWaiters("unavailable");
       void streamRunner;
     },
   };
