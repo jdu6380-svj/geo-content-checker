@@ -159,7 +159,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         ],
         temperature: 0,
         timeoutMs: 20_000,
-        maxTokens: 1_800,
+        maxTokens: 2_200,
         rateLimitMode: authorization.mode,
       });
       let normalized: unknown;
