@@ -46,7 +46,7 @@ export const B1_MODEL_CALLS_PER_PIPELINE = B1_PIPELINE_OPERATIONS.length;
 export const B1_STAGE_1_ARTICLE_COUNT = 10;
 export const B1_STAGE_2_ARTICLE_COUNT = 9;
 export const B1_DEFAULT_STAGE_2_ROUNDS = 2;
-export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v2";
+export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v3";
 
 const B1_MODEL_STATUSES = [
   "not-requested",
@@ -59,6 +59,14 @@ const B1_MODEL_STATUSES = [
   "timeout",
 ] as const;
 const B1_RESPONSE_SOURCES = ["model", "fallback", "none"] as const;
+const B1_MODEL_FINISH_REASONS = [
+  "stop",
+  "length",
+  "content_filter",
+  "tool_calls",
+  "function_call",
+  "unknown",
+] as const;
 const B1_RUNTIME_LOG_STATUSES = [
   "matched",
   "delayed-ingestion",
@@ -72,6 +80,15 @@ const B1_VALIDATION_STAGES = [
   "semantic_validation",
   "reference_validation",
   "evidence_validation",
+] as const;
+const B1_VALIDATION_FAILURE_CLASSIFICATIONS = [
+  "json_parse_failed",
+  "token_cap_truncation",
+  "required_field_missing",
+  "schema_validation_failed",
+  "semantic_validation_failed",
+  "reference_mismatch",
+  "quote_mismatch",
 ] as const;
 const B1_VALIDATION_ACTION_TYPES = [
   "author_evidence",
@@ -124,8 +141,11 @@ type DimensionKey = (typeof DIMENSION_KEYS)[number];
 type B1PipelineOperation = (typeof B1_PIPELINE_OPERATIONS)[number];
 type B1ModelStatus = (typeof B1_MODEL_STATUSES)[number];
 type B1ResponseSource = (typeof B1_RESPONSE_SOURCES)[number];
+type B1ModelFinishReason = (typeof B1_MODEL_FINISH_REASONS)[number];
 export type B1RuntimeLogStatus = (typeof B1_RUNTIME_LOG_STATUSES)[number];
 type B1ValidationStage = (typeof B1_VALIDATION_STAGES)[number];
+type B1ValidationFailureClassification =
+  (typeof B1_VALIDATION_FAILURE_CLASSIFICATIONS)[number];
 type B1ValidationActionType = (typeof B1_VALIDATION_ACTION_TYPES)[number];
 type B1Answerability = (typeof B1_ANSWERABILITY_VALUES)[number];
 type B1ErrorClassification = (typeof B1_ERROR_CLASSIFICATIONS)[number];
@@ -177,11 +197,14 @@ export interface B1CallRecord {
   source: Exclude<B1ResponseSource, "none"> | null;
   modelStatus: B1ModelStatus | null;
   modelLatencyMs: number | null;
+  finishReason?: B1ModelFinishReason | null;
+  completionTokens?: number | null;
   durationMs: number;
   requestId: string | null;
   runtimeLogStatus?: B1RuntimeLogStatus;
   validationStage?: B1ValidationStage | null;
   validationIssueCount?: number | null;
+  validationFailureClassification?: B1ValidationFailureClassification | null;
   validationFieldPaths?: string[];
   validationActionTypes?: B1ValidationActionType[];
 }
@@ -235,11 +258,14 @@ interface B1PersistedCallRecord {
   source: Exclude<B1ResponseSource, "none"> | null;
   modelStatus: B1ModelStatus | null;
   modelLatencyMs: number | null;
+  finishReason: B1ModelFinishReason | null;
+  completionTokens: number | null;
   durationMs: number;
   errorClassification: B1ErrorClassification | null;
   runtimeLogStatus: B1RuntimeLogStatus;
   validationStage: B1ValidationStage | null;
   validationIssueCount: number | null;
+  validationFailureClassification: B1ValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: B1ValidationActionType[];
 }
@@ -267,9 +293,12 @@ export interface B1RuntimeLogRecord {
   source: B1ResponseSource;
   modelStatus: B1ModelStatus;
   modelLatencyMs: number | null;
+  finishReason: B1ModelFinishReason | null;
+  completionTokens: number | null;
   durationMs: number;
   validationStage: B1ValidationStage | null;
   validationIssueCount: number | null;
+  validationFailureClassification: B1ValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: B1ValidationActionType[];
 }
@@ -285,6 +314,8 @@ interface B1RuntimeLogCollectorOptions {
   maxDrainMs?: number;
   reconnectDelayMs?: number;
   stream?: B1RuntimeLogStream;
+  history?: B1RuntimeLogHistory;
+  historyTimeoutMs?: number;
   wait?: (milliseconds: number) => Promise<void>;
   now?: () => number;
 }
@@ -298,9 +329,23 @@ type B1RuntimeLogStream = (
   },
 ) => Promise<void>;
 
+type B1RuntimeLogHistory = (
+  config: B1RuntimeLogConfig,
+  range: { sinceMs: number; untilMs: number },
+  signal: AbortSignal,
+) => Promise<B1RuntimeLogRecord[]>;
+
+export interface B1RuntimeLogCollectorState {
+  liveConnectionAttempts: number;
+  liveSuccessfulConnections: number;
+  liveInterruptions: number;
+  historicalBackfill: "not-needed" | "complete" | "unavailable";
+}
+
 export interface B1RuntimeLogCollectionResult {
   records: Map<string, B1RuntimeLogRecord>;
   statuses: Map<string, B1RuntimeLogStatus>;
+  collectorState: B1RuntimeLogCollectorState;
 }
 
 export interface B1RuntimeLogCollector {
@@ -376,12 +421,30 @@ function normalizeModelStatus(value: unknown): B1ModelStatus | null {
   return isOneOf(value, B1_MODEL_STATUSES) ? value : null;
 }
 
+function normalizeModelFinishReason(value: unknown): B1ModelFinishReason | null {
+  return isOneOf(value, B1_MODEL_FINISH_REASONS) ? value : null;
+}
+
+function normalizeTokenCount(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+    ? value
+    : null;
+}
+
 function normalizeRuntimeLogStatus(value: unknown): B1RuntimeLogStatus | null {
   return isOneOf(value, B1_RUNTIME_LOG_STATUSES) ? value : null;
 }
 
 function normalizeValidationStage(value: unknown): B1ValidationStage | null {
   return isOneOf(value, B1_VALIDATION_STAGES) ? value : null;
+}
+
+function normalizeValidationFailureClassification(
+  value: unknown,
+): B1ValidationFailureClassification | null {
+  return isOneOf(value, B1_VALIDATION_FAILURE_CLASSIFICATIONS) ? value : null;
 }
 
 function normalizeValidationIssueCount(value: unknown): number | null {
@@ -962,6 +1025,9 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
   const requestId = normalizeRequestId(record.requestId);
   const validationStage = normalizeValidationStage(record.validationStage);
   const validationIssueCount = normalizeValidationIssueCount(record.validationIssueCount);
+  const validationFailureClassification = normalizeValidationFailureClassification(
+    record.validationFailureClassification,
+  );
   const validationFieldPaths =
     normalizeValidationFieldPaths(record.validationFieldPaths ?? []) ?? [];
   const validationActionTypes =
@@ -974,12 +1040,17 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
     source: normalizeSource(record.source),
     modelStatus: normalizeModelStatus(record.modelStatus),
     modelLatencyMs: normalizeDuration(record.modelLatencyMs),
+    finishReason: normalizeModelFinishReason(record.finishReason),
+    completionTokens: normalizeTokenCount(record.completionTokens),
     durationMs: normalizeDuration(record.durationMs) ?? 0,
     runtimeLogStatus:
       normalizeRuntimeLogStatus(record.runtimeLogStatus) ??
       (requestId ? "collector-unavailable" : "not-applicable"),
     validationStage: hasValidationTelemetry ? validationStage : null,
     validationIssueCount: hasValidationTelemetry ? validationIssueCount : null,
+    validationFailureClassification: hasValidationTelemetry
+      ? validationFailureClassification
+      : null,
     validationFieldPaths: hasValidationTelemetry ? validationFieldPaths : [],
     validationActionTypes: hasValidationTelemetry ? validationActionTypes : [],
   };
@@ -1089,6 +1160,7 @@ export function serializeB1CheckpointArtifact(checkpoint: B1Checkpoint): string 
 export function buildAnonymousB1Report(
   articles: B1CorpusArticle[],
   records: B1PipelineRecord[],
+  collectorState: B1RuntimeLogCollectorState | null = null,
 ): JsonRecord {
   const calls = records.flatMap((record) => record.calls);
   const persistedCalls = calls.map(persistedCallRecord);
@@ -1167,6 +1239,14 @@ export function buildAnonymousB1Report(
             routeCalls.map((call) => call.validationStage),
             B1_VALIDATION_STAGES,
           ),
+          failureClassifications: distribution(
+            routeCalls
+              .map((call) => call.validationFailureClassification)
+              .filter(
+                (value): value is B1ValidationFailureClassification => value !== null,
+              ),
+            B1_VALIDATION_FAILURE_CLASSIFICATIONS,
+          ),
           fieldPaths: countedValues(
             routeCalls.flatMap((call) => call.validationFieldPaths),
           ),
@@ -1208,6 +1288,12 @@ export function buildAnonymousB1Report(
           .filter((value): value is B1ModelStatus => value !== null),
         B1_MODEL_STATUSES,
       ),
+      modelFinishReasons: distribution(
+        calls
+          .map((call) => call.finishReason)
+          .filter((value): value is B1ModelFinishReason => value !== null && value !== undefined),
+        B1_MODEL_FINISH_REASONS,
+      ),
       errorClassifications: distribution(errorClassifications, B1_ERROR_CLASSIFICATIONS),
       callOutcomes: distribution(
         calls.map((call) => call.outcome),
@@ -1227,6 +1313,7 @@ export function buildAnonymousB1Report(
         persistedCalls.map((call) => call.runtimeLogStatus),
         B1_RUNTIME_LOG_STATUSES,
       ),
+      collectorState,
     },
     validationTelemetry: {
       observations: validationCalls.length,
@@ -1456,6 +1543,10 @@ export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord |
   const durationMs = normalizeDuration(value.durationMs);
   const modelLatencyMs =
     value.modelLatencyMs === undefined ? null : normalizeDuration(value.modelLatencyMs);
+  const finishReason =
+    value.finishReason === undefined ? null : normalizeModelFinishReason(value.finishReason);
+  const completionTokens =
+    value.completionTokens === undefined ? null : normalizeTokenCount(value.completionTokens);
   if (
     requestId === null ||
     typeof value.route !== "string" ||
@@ -1464,7 +1555,9 @@ export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord |
     durationMs === null ||
     !isOneOf(value.source, B1_RESPONSE_SOURCES) ||
     !isOneOf(value.modelStatus, B1_MODEL_STATUSES) ||
-    (value.modelLatencyMs !== undefined && modelLatencyMs === null)
+    (value.modelLatencyMs !== undefined && modelLatencyMs === null) ||
+    (value.finishReason !== undefined && finishReason === null) ||
+    (value.completionTokens !== undefined && completionTokens === null)
   ) {
     return null;
   }
@@ -1477,6 +1570,10 @@ export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord |
     value.validationStage === undefined
       ? null
       : normalizeValidationIssueCount(value.validationIssueCount);
+  const validationFailureClassification =
+    value.validationFailureClassification === undefined
+      ? null
+      : normalizeValidationFailureClassification(value.validationFailureClassification);
   const validationFieldPaths =
     value.validationStage === undefined
       ? []
@@ -1488,6 +1585,8 @@ export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord |
   const hasValidValidationTelemetry =
     validationStage !== null &&
     validationIssueCount !== null &&
+    (value.validationFailureClassification === undefined ||
+      validationFailureClassification !== null) &&
     validationFieldPaths !== null &&
     validationActionTypes !== null;
 
@@ -1498,9 +1597,14 @@ export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord |
     source: value.source,
     modelStatus: value.modelStatus,
     modelLatencyMs,
+    finishReason,
+    completionTokens,
     durationMs,
     validationStage: hasValidValidationTelemetry ? validationStage : null,
     validationIssueCount: hasValidValidationTelemetry ? validationIssueCount : null,
+    validationFailureClassification: hasValidValidationTelemetry
+      ? validationFailureClassification
+      : null,
     validationFieldPaths: hasValidValidationTelemetry ? validationFieldPaths : [],
     validationActionTypes: hasValidValidationTelemetry ? validationActionTypes : [],
   };
@@ -1628,28 +1732,125 @@ async function consumeRuntimeLogStream(
   if (buffer) consumeLine(buffer);
 }
 
+function collectHistoricalRuntimeLogRecords(
+  value: unknown,
+  records: Map<string, B1RuntimeLogRecord>,
+): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectHistoricalRuntimeLogRecords(item, records);
+    return;
+  }
+  if (!isRecord(value)) return;
+
+  const payload = isRecord(value.payload) ? value.payload : null;
+  for (const message of [
+    value.message,
+    value.text,
+    payload?.message,
+    payload?.text,
+  ]) {
+    const record = parseB1RuntimeLogMessage(message);
+    if (record) records.set(runtimeLogKey(record.requestId, record.route), record);
+  }
+  if (Array.isArray(value.events)) {
+    collectHistoricalRuntimeLogRecords(value.events, records);
+  }
+}
+
+export function parseB1RuntimeLogHistoryBody(raw: string): B1RuntimeLogRecord[] {
+  const records = new Map<string, B1RuntimeLogRecord>();
+  try {
+    collectHistoricalRuntimeLogRecords(JSON.parse(raw), records);
+  } catch {
+    for (const rawLine of raw.split("\n")) {
+      const line = rawLine.trim().replace(/^data:\s*/, "");
+      if (!line) continue;
+      try {
+        collectHistoricalRuntimeLogRecords(JSON.parse(line), records);
+      } catch {
+        continue;
+      }
+    }
+  }
+  return [...records.values()];
+}
+
+async function queryRuntimeLogHistory(
+  config: B1RuntimeLogConfig,
+  range: { sinceMs: number; untilMs: number },
+  signal: AbortSignal,
+): Promise<B1RuntimeLogRecord[]> {
+  const records = new Map<string, B1RuntimeLogRecord>();
+  const segmentMs = 120_000;
+
+  for (
+    let sinceMs = Math.max(0, Math.floor(range.sinceMs));
+    sinceMs <= range.untilMs;
+    sinceMs += segmentMs
+  ) {
+    const untilMs = Math.min(
+      Math.floor(range.untilMs),
+      sinceMs + segmentMs - 1,
+    );
+    const endpoint = new URL(
+      `https://api.vercel.com/v3/deployments/${encodeURIComponent(config.deploymentId)}/events`,
+    );
+    endpoint.searchParams.set("teamId", config.teamId);
+    endpoint.searchParams.set("direction", "forward");
+    endpoint.searchParams.set("follow", "0");
+    endpoint.searchParams.set("limit", "-1");
+    endpoint.searchParams.set("builds", "0");
+    endpoint.searchParams.set("delimiter", "0");
+    endpoint.searchParams.set("since", String(sinceMs));
+    endpoint.searchParams.set("until", String(untilMs));
+
+    const response = await fetch(endpoint, {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        Accept: "application/json, application/stream+json",
+        "User-Agent": "geo-content-checker-b1-validation",
+      },
+      redirect: "manual",
+      signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Vercel Runtime Logs history lookup failed with HTTP ${response.status}.`);
+    }
+
+    for (const record of parseB1RuntimeLogHistoryBody(await response.text())) {
+      records.set(runtimeLogKey(record.requestId, record.route), record);
+    }
+  }
+
+  return [...records.values()];
+}
+
 export function startB1RuntimeLogCollector(
   configPromise: Promise<B1RuntimeLogConfig | null>,
   options: B1RuntimeLogCollectorOptions = {},
 ): B1RuntimeLogCollector {
   const maxDrainMs = Math.max(0, options.maxDrainMs ?? 60_000);
   const reconnectDelayMs = Math.max(0, options.reconnectDelayMs ?? 250);
+  const historyTimeoutMs = Math.max(0, options.historyTimeoutMs ?? 60_000);
   const stream = options.stream ?? consumeRuntimeLogStream;
+  const history = options.history ?? queryRuntimeLogHistory;
   const wait = options.wait ?? ((milliseconds: number) =>
     new Promise<void>((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
   const now = options.now ?? Date.now;
-  const expected = new Map<string, { eligibleForTrueMissing: boolean }>();
+  const collectorStartedAt = now();
+  const expected = new Map<string, { registeredAt: number }>();
   const observations = new Map<
     string,
-    { record: B1RuntimeLogRecord; observedAt: number }
+    { record: B1RuntimeLogRecord; observedAt: number; origin: "live" | "history" }
   >();
-  let connected = false;
-  let everConnected = false;
-  let coverageCompromised = false;
   let terminalUnavailable = false;
   let stopped = false;
+  let resolvedConfig: B1RuntimeLogConfig | null = null;
   let activeController: AbortController | null = null;
   let finishedResult: B1RuntimeLogCollectionResult | null = null;
+  let liveConnectionAttempts = 0;
+  let liveSuccessfulConnections = 0;
+  let liveInterruptions = 0;
 
   const streamRunner = (async () => {
     let config: B1RuntimeLogConfig | null;
@@ -1663,31 +1864,31 @@ export function startB1RuntimeLogCollector(
       terminalUnavailable = true;
       return;
     }
+    resolvedConfig = config;
 
     while (!stopped) {
+      liveConnectionAttempts += 1;
       const controller = new AbortController();
       activeController = controller;
-      connected = false;
+      let connectionEstablished = false;
       try {
         await stream(config, controller.signal, {
           connected: () => {
-            connected = true;
-            everConnected = true;
+            if (!connectionEstablished) liveSuccessfulConnections += 1;
+            connectionEstablished = true;
           },
           record: (record) => {
             const key = runtimeLogKey(record.requestId, record.route);
-            observations.set(key, { record, observedAt: now() });
+            observations.set(key, { record, observedAt: now(), origin: "live" });
             if (observations.size > 1_024) {
               const oldestKey = observations.keys().next().value;
               if (typeof oldestKey === "string") observations.delete(oldestKey);
             }
           },
         });
-        if (!stopped) coverageCompromised = true;
       } catch {
-        if (!stopped) coverageCompromised = true;
       } finally {
-        connected = false;
+        if (!stopped && connectionEstablished) liveInterruptions += 1;
         if (activeController === controller) activeController = null;
       }
       if (!stopped) {
@@ -1709,9 +1910,7 @@ export function startB1RuntimeLogCollector(
         if (stopped) return;
         const requestId = normalizeRequestId(call.requestId);
         if (!requestId || !Object.values(B1_OPERATION_ROUTES).includes(call.route)) return;
-        expected.set(runtimeLogKey(requestId, call.route), {
-          eligibleForTrueMissing: connected && everConnected && !coverageCompromised,
-        });
+        expected.set(runtimeLogKey(requestId, call.route), { registeredAt: now() });
       } catch {
         terminalUnavailable = true;
       }
@@ -1736,24 +1935,56 @@ export function startB1RuntimeLogCollector(
         terminalUnavailable = true;
       }
 
-      const healthyAtFinish =
-        connected && everConnected && !coverageCompromised && !terminalUnavailable;
+      const missingKeys = [...expected.keys()].filter((key) => !observations.has(key));
+      let historicalBackfill: B1RuntimeLogCollectorState["historicalBackfill"] =
+        missingKeys.length ? "unavailable" : "not-needed";
+      let historyCompleted = false;
+      if (missingKeys.length && resolvedConfig) {
+        const historyController = new AbortController();
+        const historyTimeout = setTimeout(() => historyController.abort(), historyTimeoutMs);
+        try {
+          const historicalRecords = await history(
+            resolvedConfig,
+            {
+              sinceMs: Math.max(0, collectorStartedAt - 20_000),
+              untilMs: Math.max(batchCompletedAt, now()),
+            },
+            historyController.signal,
+          );
+          for (const record of historicalRecords) {
+            const key = runtimeLogKey(record.requestId, record.route);
+            if (!expected.has(key)) continue;
+            observations.set(key, {
+              record,
+              observedAt: now(),
+              origin: "history",
+            });
+          }
+          historyCompleted = true;
+          historicalBackfill = "complete";
+        } catch {
+          historicalBackfill = "unavailable";
+        } finally {
+          clearTimeout(historyTimeout);
+        }
+      }
+
       const records = new Map<string, B1RuntimeLogRecord>();
       const statuses = new Map<string, B1RuntimeLogStatus>();
-      for (const [key, expectation] of expected) {
+      for (const key of expected.keys()) {
         const observation = observations.get(key);
         if (observation) {
           records.set(key, observation.record);
           statuses.set(
             key,
-            observation.observedAt > batchCompletedAt ? "delayed-ingestion" : "matched",
+            observation.origin === "history" || observation.observedAt > batchCompletedAt
+              ? "delayed-ingestion"
+              : "matched",
           );
         } else {
           statuses.set(
             key,
-            expectation.eligibleForTrueMissing && healthyAtFinish
-              ? "true-missing"
-              : "collector-unavailable",
+            historyCompleted ? "true-missing" : "collector-unavailable",
           );
         }
       }
@@ -1761,7 +1992,16 @@ export function startB1RuntimeLogCollector(
       stopped = true;
       activeController?.abort();
       void streamRunner;
-      finishedResult = { records, statuses };
+      finishedResult = {
+        records,
+        statuses,
+        collectorState: {
+          liveConnectionAttempts,
+          liveSuccessfulConnections,
+          liveInterruptions,
+          historicalBackfill,
+        },
+      };
       return finishedResult;
     },
     close() {
@@ -1799,11 +2039,14 @@ function applyRuntimeLogRecords(
       source: runtime.source === "none" ? call.source : runtime.source,
       modelStatus: runtime.modelStatus,
       modelLatencyMs: runtime.modelLatencyMs,
+      finishReason: runtime.finishReason,
+      completionTokens: runtime.completionTokens,
       durationMs: runtime.durationMs,
       requestId,
       runtimeLogStatus,
       validationStage: runtime.validationStage,
       validationIssueCount: runtime.validationIssueCount,
+      validationFailureClassification: runtime.validationFailureClassification,
       validationFieldPaths: runtime.validationFieldPaths,
       validationActionTypes: runtime.validationActionTypes,
     };
@@ -2108,11 +2351,14 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       "source",
       "modelStatus",
       "modelLatencyMs",
+      "finishReason",
+      "completionTokens",
       "durationMs",
       "errorClassification",
       "runtimeLogStatus",
       "validationStage",
       "validationIssueCount",
+      "validationFailureClassification",
       "validationFieldPaths",
       "validationActionTypes",
     ]) ||
@@ -2128,6 +2374,10 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     value.modelStatus === null ? null : normalizeModelStatus(value.modelStatus);
   const modelLatencyMs =
     value.modelLatencyMs === null ? null : normalizeDuration(value.modelLatencyMs);
+  const finishReason =
+    value.finishReason === null ? null : normalizeModelFinishReason(value.finishReason);
+  const completionTokens =
+    value.completionTokens === null ? null : normalizeTokenCount(value.completionTokens);
   const durationMs = normalizeDuration(value.durationMs);
   const runtimeLogStatus = normalizeRuntimeLogStatus(value.runtimeLogStatus);
   const validationStage =
@@ -2136,6 +2386,10 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     value.validationIssueCount === null
       ? null
       : normalizeValidationIssueCount(value.validationIssueCount);
+  const validationFailureClassification =
+    value.validationFailureClassification === null
+      ? null
+      : normalizeValidationFailureClassification(value.validationFailureClassification);
   const validationFieldPaths = normalizeValidationFieldPaths(value.validationFieldPaths);
   const validationActionTypes = normalizeValidationActionTypes(value.validationActionTypes);
   const errorClassification =
@@ -2150,13 +2404,17 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     (value.source !== null && source === null) ||
     (value.modelStatus !== null && modelStatus === null) ||
     (value.modelLatencyMs !== null && modelLatencyMs === null) ||
+    (value.finishReason !== null && finishReason === null) ||
+    (value.completionTokens !== null && completionTokens === null) ||
     durationMs === null ||
     runtimeLogStatus === null ||
     validationFieldPaths === null ||
     validationActionTypes === null ||
     ((validationStage === null) !== (validationIssueCount === null)) ||
     (validationStage === null &&
-      (validationFieldPaths.length > 0 || validationActionTypes.length > 0)) ||
+      (validationFailureClassification !== null ||
+        validationFieldPaths.length > 0 ||
+        validationActionTypes.length > 0)) ||
     errorClassification === undefined
   ) {
     throw new Error("Existing B.1 checkpoint request metadata is invalid.");
@@ -2169,11 +2427,14 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     source,
     modelStatus,
     modelLatencyMs,
+    finishReason,
+    completionTokens,
     durationMs,
     errorClassification,
     runtimeLogStatus,
     validationStage,
     validationIssueCount,
+    validationFailureClassification,
     validationFieldPaths,
     validationActionTypes,
   };
@@ -2185,11 +2446,14 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     source: persisted.source,
     modelStatus: persisted.modelStatus,
     modelLatencyMs: persisted.modelLatencyMs,
+    finishReason: persisted.finishReason,
+    completionTokens: persisted.completionTokens,
     durationMs: persisted.durationMs,
     requestId: persisted.requestId,
     runtimeLogStatus: persisted.runtimeLogStatus,
     validationStage: persisted.validationStage,
     validationIssueCount: persisted.validationIssueCount,
+    validationFailureClassification: persisted.validationFailureClassification,
     validationFieldPaths: persisted.validationFieldPaths,
     validationActionTypes: persisted.validationActionTypes,
   };
@@ -2510,7 +2774,11 @@ async function main(): Promise<void> {
     checkpoint,
   );
   const allRecords = await loadAllRecords(cwd, corpusSha256, baseUrl);
-  const report = buildAnonymousB1Report(articles, allRecords);
+  const report = buildAnonymousB1Report(
+    articles,
+    allRecords,
+    runtimeLogCollection.collectorState,
+  );
   await writeJsonAtomic(cwd, join(campaignDirectory, "anonymous-report.json"), report);
 
   if (!checkpoint.complete) {

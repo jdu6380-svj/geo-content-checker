@@ -112,7 +112,7 @@ async function evaluateWithModel(params: {
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
-    timeoutMs: 10_000,
+    timeoutMs: 12_000,
     maxTokens: 1_200,
     rateLimitMode: params.rateLimitMode,
   });

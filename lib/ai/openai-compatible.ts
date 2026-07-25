@@ -1,4 +1,8 @@
-import { markGeoRequestOutcome } from "@/lib/server/geo-observability";
+import {
+  markGeoRequestOutcome,
+  normalizeGeoModelFinishReason,
+  type GeoModelFinishReason,
+} from "@/lib/server/geo-observability";
 import {
   consumeModelCallBudget,
   type ModelCallBudgetMode,
@@ -25,6 +29,7 @@ export interface ModelTokenUsage {
 
 export interface ModelCallResult {
   content: string;
+  finishReason: GeoModelFinishReason;
   usage?: ModelTokenUsage;
 }
 
@@ -110,6 +115,11 @@ export async function callOpenAICompatibleModel({
       typeof payload === "object" && payload !== null && "choices" in payload
         ? (payload as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content
         : undefined;
+    const rawFinishReason =
+      typeof payload === "object" && payload !== null && "choices" in payload
+        ? (payload as { choices?: Array<{ finish_reason?: unknown }> }).choices?.[0]?.finish_reason
+        : undefined;
+    const finishReason = normalizeGeoModelFinishReason(rawFinishReason);
     const rawUsage =
       typeof payload === "object" && payload !== null && "usage" in payload
         ? (payload as {
@@ -126,6 +136,7 @@ export async function callOpenAICompatibleModel({
       markGeoRequestOutcome({
         modelStatus: "invalid-output",
         modelLatencyMs: modelLatencyMs(),
+        finishReason,
         ...usageLogFields(usage),
       });
       throw new ModelCallError("Model returned empty content");
@@ -134,9 +145,10 @@ export async function callOpenAICompatibleModel({
     markGeoRequestOutcome({
       modelStatus: "success",
       modelLatencyMs: modelLatencyMs(),
+      finishReason,
       ...usageLogFields(usage),
     });
-    return { content, ...(usage ? { usage } : {}) };
+    return { content, finishReason, ...(usage ? { usage } : {}) };
   } catch (error) {
     if (error instanceof ModelCallError) throw error;
     if (error instanceof Error && error.name === "AbortError") {

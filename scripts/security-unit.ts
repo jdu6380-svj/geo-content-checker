@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -48,6 +49,7 @@ import {
 } from "../lib/server/security-config.ts";
 import {
   markGeoValidationTelemetry,
+  normalizeGeoModelFinishReason,
   sanitizeGeoValidationTelemetry,
 } from "../lib/server/geo-observability.ts";
 import { scrubSentryEvent } from "../lib/sentry-scrub.ts";
@@ -63,6 +65,7 @@ import {
   diagnosticEvidenceIsLiteral,
   evaluateThirdRoundRequirement,
   parseB1CheckpointArtifact,
+  parseB1RuntimeLogHistoryBody,
   parseB1RuntimeLogMessage,
   parseB1Arguments,
   resolveB1CampaignDirectory,
@@ -74,9 +77,31 @@ import {
   type B1CallRecord,
   type B1Checkpoint,
   type B1PipelineRecord,
+  type B1RuntimeLogCollector,
   type B1RuntimeLogConfig,
+  type B1RuntimeLogRecord,
+  type B1RuntimeLogStatus,
   type B1StabilityObservation,
 } from "./b1-technical-validation.ts";
+import {
+  B15_CALIBRATION_SCHEMA_VERSION,
+  B15_EXPECTED_MODEL_REQUESTS,
+  B15_REQUIRED_NODE_VERSION,
+  assertB15NodeVersion,
+  b15QuestionTemplates,
+  buildB15CalibrationArtifact,
+  classifyB15Calibration,
+  createB15CalibrationDirectory,
+  createB15RunId,
+  parseB15Arguments,
+  resolveB15CalibrationDirectory,
+  resolveB15Environment,
+  runB15CalibrationFlow,
+  selectB15DiagnosticQuestions,
+  serializeB15CalibrationArtifact,
+  type B15CalibrationTransport,
+  type B15TransportResult,
+} from "./b1.5-model-calibration.ts";
 import {
   applyAutomationBypassHeader,
   automationBypassHeaders,
@@ -88,6 +113,36 @@ import {
 } from "./preview-automation.mjs";
 
 assert.equal(MAX_ARTICLE_CHARACTERS, 12_000);
+const scoringRouteSource = readFileSync(
+  fileURLToPath(new URL("../app/api/evaluate-scoring/route.ts", import.meta.url)),
+  "utf8",
+);
+assert.match(scoringRouteSource, /timeoutMs:\s*12_000/);
+assert.doesNotMatch(scoringRouteSource, /timeoutMs:\s*10_000/);
+const diagnosticRouteSource = readFileSync(
+  fileURLToPath(new URL("../app/api/qa-diagnostic/route.ts", import.meta.url)),
+  "utf8",
+);
+assert.match(diagnosticRouteSource, /temperature:\s*0/);
+assert.match(diagnosticRouteSource, /timeoutMs:\s*15_000/);
+assert.match(diagnosticRouteSource, /maxTokens:\s*1_400/);
+assert.match(diagnosticRouteSource, /顶层字段必须且只能各出现一次/);
+assert.match(diagnosticRouteSource, /question、recommendation、answerability/);
+const patchesRouteSource = readFileSync(
+  fileURLToPath(new URL("../app/api/generate-patches/route.ts", import.meta.url)),
+  "utf8",
+);
+assert.match(patchesRouteSource, /temperature:\s*0/);
+assert.match(patchesRouteSource, /timeoutMs:\s*mode === "advice" \? 17_000 : 15_000/);
+assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 1_800/);
+const modelAdapterSource = readFileSync(
+  fileURLToPath(new URL("../lib/ai/openai-compatible.ts", import.meta.url)),
+  "utf8",
+);
+assert.match(modelAdapterSource, /response_format:\s*\{ type: "json_object" \}/);
+assert.doesNotMatch(modelAdapterSource, /json_schema/);
+assert.equal(normalizeGeoModelFinishReason("length"), "length");
+assert.equal(normalizeGeoModelFinishReason("provider-specific"), "unknown");
 
 const normalizedHash = await createAnalysisHash({
   title: "  测试标题  ",
@@ -979,11 +1034,15 @@ const sensitiveB1PipelineRecord = {
     source: "model",
     modelStatus: "success",
     modelLatencyMs: 900 + index,
+    finishReason: "stop",
+    completionTokens: 400 + index,
     durationMs: 1_000 + index,
     requestId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
     runtimeLogStatus: "matched",
     validationStage: index === 5 ? "schema_validation" : null,
     validationIssueCount: index === 5 ? 2 : null,
+    validationFailureClassification:
+      index === 5 ? "schema_validation_failed" : null,
     validationFieldPaths: index === 5 ? ["$.actions[0].type"] : [],
     validationActionTypes: index === 5 ? ["faq", "unknown"] : [],
     modelPayload: b1SensitiveSentinels[3],
@@ -1035,8 +1094,10 @@ assert.deepEqual(Object.keys(b1CheckpointArtifact.records[0]).sort(), [
 ]);
 for (const request of b1CheckpointArtifact.records[0].requests) {
   assert.deepEqual(Object.keys(request).sort(), [
+    "completionTokens",
     "durationMs",
     "errorClassification",
+    "finishReason",
     "httpStatus",
     "modelLatencyMs",
     "modelStatus",
@@ -1045,6 +1106,7 @@ for (const request of b1CheckpointArtifact.records[0].requests) {
     "runtimeLogStatus",
     "source",
     "validationActionTypes",
+    "validationFailureClassification",
     "validationFieldPaths",
     "validationIssueCount",
     "validationStage",
@@ -1101,6 +1163,15 @@ assert.throws(
     ),
   new RegExp(B1_TELEMETRY_SCHEMA_VERSION),
 );
+assert.throws(
+  () =>
+    parseB1CheckpointArtifact(
+      { ...b1CheckpointArtifact, telemetrySchemaVersion: "b1-v2" },
+      1,
+      1,
+    ),
+  new RegExp(B1_TELEMETRY_SCHEMA_VERSION),
+);
 const unversionedB1Checkpoint = Object.fromEntries(
   Object.entries(b1CheckpointArtifact).filter(
     ([key]) => key !== "telemetrySchemaVersion",
@@ -1134,6 +1205,7 @@ try {
 const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
   stage: "schema_validation",
   issueCount: 3,
+  failureClassification: "required_field_missing",
   fieldPaths: [
     ["actions", 0, "type"],
     ["actions", 1, "evidence", "quote"],
@@ -1147,6 +1219,7 @@ const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
 assert.deepEqual(sanitizedValidationTelemetry, {
   validationStage: "schema_validation",
   validationIssueCount: 3,
+  validationFailureClassification: "required_field_missing",
   validationFieldPaths: [
     "$.actions[0].type",
     "$.actions[1].evidence.quote",
@@ -1155,8 +1228,9 @@ assert.deepEqual(sanitizedValidationTelemetry, {
 });
 assert.doesNotThrow(() =>
   markGeoValidationTelemetry({
-    stage: "schema_validation",
-    issueCount: 1,
+      stage: "schema_validation",
+      issueCount: 1,
+      failureClassification: "schema_validation_failed",
     fieldPaths: [[b1SensitiveSentinels[0]]],
     actionTypes: [b1SensitiveSentinels[4]],
   }),
@@ -1180,12 +1254,14 @@ const b1RuntimeLog = parseB1RuntimeLogMessage(
     source: "model",
     modelStatus: "success",
     modelLatencyMs: 987,
+    finishReason: "length",
+    completionTokens: 1_200,
     validationStage: "schema_validation",
     validationIssueCount: 2,
+    validationFailureClassification: "required_field_missing",
     validationFieldPaths: ["$.actions[0].type"],
     validationActionTypes: ["faq", "unknown"],
     promptTokens: 1_000,
-    completionTokens: 500,
     prompt: b1SensitiveSentinels[1],
     evidence: b1SensitiveSentinels[2],
     response: b1SensitiveSentinels[4],
@@ -1198,15 +1274,56 @@ assert.deepEqual(b1RuntimeLog, {
   source: "model",
   modelStatus: "success",
   modelLatencyMs: 987,
+  finishReason: "length",
+  completionTokens: 1_200,
   durationMs: 1_234,
   validationStage: "schema_validation",
   validationIssueCount: 2,
+  validationFailureClassification: "required_field_missing",
   validationFieldPaths: ["$.actions[0].type"],
   validationActionTypes: ["faq", "unknown"],
 });
 const serializedB1RuntimeLog = JSON.stringify(b1RuntimeLog);
 for (const sentinel of b1SensitiveSentinels) {
   assert.doesNotMatch(serializedB1RuntimeLog, new RegExp(sentinel));
+}
+const historicalBodyRecords = parseB1RuntimeLogHistoryBody(
+  JSON.stringify([
+    {
+      payload: {
+        text: JSON.stringify({
+          event: "geo_api_request",
+          requestId: "00000000-0000-4000-8000-000000000002",
+          route: "/api/generate-patches",
+          status: 200,
+          source: "fallback",
+          modelStatus: "success",
+          modelLatencyMs: 11_659,
+          finishReason: "length",
+          completionTokens: 1_200,
+          durationMs: 11_680,
+          validationStage: "json_parse",
+          validationIssueCount: 1,
+          validationFailureClassification: "token_cap_truncation",
+          validationFieldPaths: ["$"],
+          validationActionTypes: [],
+          prompt: b1SensitiveSentinels[1],
+          response: b1SensitiveSentinels[4],
+        }),
+      },
+    },
+    { text: b1SensitiveSentinels[0] },
+  ]),
+);
+assert.equal(historicalBodyRecords.length, 1);
+assert.equal(historicalBodyRecords[0]?.finishReason, "length");
+assert.equal(historicalBodyRecords[0]?.completionTokens, 1_200);
+assert.equal(
+  historicalBodyRecords[0]?.validationFailureClassification,
+  "token_cap_truncation",
+);
+for (const sentinel of b1SensitiveSentinels) {
+  assert.doesNotMatch(JSON.stringify(historicalBodyRecords), new RegExp(sentinel));
 }
 
 const delayedRuntimeCalls: B1CallRecord[] = [
@@ -1309,6 +1426,7 @@ const delayedRuntimeCollector = startB1RuntimeLogCollector(
   {
     maxDrainMs: 0,
     now: () => delayedRuntimeClock,
+    history: async () => [],
     stream: async (_config, signal, handlers) => {
       emitDelayedRuntimeRecord = handlers.record;
       handlers.connected();
@@ -1332,17 +1450,26 @@ assert.deepEqual([...delayedRuntimeCollection.statuses.values()], [
   "true-missing",
 ]);
 assert.equal(delayedRuntimeCollection.records.size, 2);
+assert.deepEqual(delayedRuntimeCollection.collectorState, {
+  liveConnectionAttempts: 1,
+  liveSuccessfulConnections: 1,
+  liveInterruptions: 0,
+  historicalBackfill: "complete",
+});
 for (const record of delayedRuntimeCollection.records.values()) {
-  assert.deepEqual(Object.keys(record).sort(), [
-    "durationMs",
-    "modelLatencyMs",
-    "modelStatus",
+    assert.deepEqual(Object.keys(record).sort(), [
+      "completionTokens",
+      "durationMs",
+      "finishReason",
+      "modelLatencyMs",
+      "modelStatus",
     "requestId",
     "route",
     "source",
-    "status",
-    "validationActionTypes",
-    "validationFieldPaths",
+      "status",
+      "validationActionTypes",
+      "validationFailureClassification",
+      "validationFieldPaths",
     "validationIssueCount",
     "validationStage",
   ]);
@@ -1355,6 +1482,89 @@ for (const sentinel of [...b1SensitiveSentinels, delayedRuntimeConfig.token]) {
   assert.doesNotMatch(serializedDelayedRuntimeRecords, new RegExp(sentinel));
 }
 
+const historicalBackfillCall: B1CallRecord = {
+  operation: "scoring",
+  route: "/api/evaluate-scoring",
+  outcome: "fallback",
+  status: 200,
+  source: "fallback",
+  modelStatus: null,
+  modelLatencyMs: null,
+  durationMs: 12_050,
+  requestId: "00000000-0000-4000-8000-000000000021",
+};
+const historicalBackfillRecord = parseB1RuntimeLogMessage(
+  JSON.stringify({
+    event: "geo_api_request",
+    requestId: historicalBackfillCall.requestId,
+    route: historicalBackfillCall.route,
+    status: 200,
+    source: "fallback",
+    modelStatus: "timeout",
+    modelLatencyMs: 12_001,
+    durationMs: 12_025,
+  }),
+);
+const wrongRouteHistoricalRecord = parseB1RuntimeLogMessage(
+  JSON.stringify({
+    event: "geo_api_request",
+    requestId: historicalBackfillCall.requestId,
+    route: "/api/predict-questions",
+    status: 200,
+    source: "model",
+    modelStatus: "success",
+    modelLatencyMs: 1_000,
+    durationMs: 1_025,
+  }),
+);
+if (!historicalBackfillRecord || !wrongRouteHistoricalRecord) {
+  throw new Error("Historical Runtime Log fixtures must be valid.");
+}
+let historicalStreamConnections = 0;
+let markSecondHistoricalConnection: (() => void) | undefined;
+const secondHistoricalConnection = new Promise<void>((resolvePromise) => {
+  markSecondHistoricalConnection = resolvePromise;
+});
+const historicalBackfillCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    reconnectDelayMs: 0,
+    stream: async (_config, signal, handlers) => {
+      handlers.connected();
+      historicalStreamConnections += 1;
+      if (historicalStreamConnections === 1) return;
+      markSecondHistoricalConnection?.();
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+    history: async (config, range, signal) => {
+      assert.equal(config.deploymentId, delayedRuntimeConfig.deploymentId);
+      assert.equal(signal.aborted, false);
+      assert.ok(range.sinceMs <= range.untilMs);
+      return [wrongRouteHistoricalRecord, historicalBackfillRecord];
+    },
+  },
+);
+await secondHistoricalConnection;
+historicalBackfillCollector.register(historicalBackfillCall);
+const historicalBackfillCollection = await historicalBackfillCollector.finish();
+assert.deepEqual(
+  [...historicalBackfillCollection.statuses.values()],
+  ["delayed-ingestion"],
+);
+assert.equal(
+  [...historicalBackfillCollection.records.values()][0]?.route,
+  historicalBackfillCall.route,
+);
+assert.deepEqual(historicalBackfillCollection.collectorState, {
+  liveConnectionAttempts: 2,
+  liveSuccessfulConnections: 2,
+  liveInterruptions: 1,
+  historicalBackfill: "complete",
+});
+
 const unavailableRuntimeCollector = startB1RuntimeLogCollector(
   Promise.reject(new Error(b1SensitiveSentinels[4])),
   { maxDrainMs: 0 },
@@ -1366,6 +1576,51 @@ assert.deepEqual(
   ["collector-unavailable"],
 );
 assert.equal(unavailableRuntimeCollection.records.size, 0);
+assert.deepEqual(unavailableRuntimeCollection.collectorState, {
+  liveConnectionAttempts: 0,
+  liveSuccessfulConnections: 0,
+  liveInterruptions: 0,
+  historicalBackfill: "unavailable",
+});
+
+let markHistoryFailureReady: (() => void) | undefined;
+const historyFailureReady = new Promise<void>((resolvePromise) => {
+  markHistoryFailureReady = resolvePromise;
+});
+const historyFailureCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    stream: async (_config, signal, handlers) => {
+      handlers.connected();
+      markHistoryFailureReady?.();
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+    history: async () => {
+      throw new Error(b1SensitiveSentinels[4]);
+    },
+  },
+);
+await historyFailureReady;
+historyFailureCollector.register(historicalBackfillCall);
+const historyFailureCollection = await historyFailureCollector.finish();
+assert.deepEqual(
+  [...historyFailureCollection.statuses.values()],
+  ["collector-unavailable"],
+);
+assert.equal(historyFailureCollection.records.size, 0);
+assert.deepEqual(historyFailureCollection.collectorState, {
+  liveConnectionAttempts: 1,
+  liveSuccessfulConnections: 1,
+  liveInterruptions: 0,
+  historicalBackfill: "unavailable",
+});
+assert.doesNotMatch(
+  JSON.stringify(historyFailureCollection),
+  new RegExp(b1SensitiveSentinels[4]),
+);
 
 const b1RunnerScript = fileURLToPath(
   new URL("./b1-technical-validation.ts", import.meta.url),
@@ -1445,6 +1700,468 @@ for (const invalidDeployment of [
     }),
   );
 }
+
+assertB15NodeVersion(B15_REQUIRED_NODE_VERSION);
+assert.throws(() => assertB15NodeVersion("v24.14.0"), /Node v22\.23\.1/);
+assert.deepEqual(parseB15Arguments([`--corpus=${b1FixturePath}`]), {
+  corpusPath: b1FixturePath,
+});
+for (const rejectedArguments of [
+  [],
+  [`--corpus=${b1FixturePath}`, "--resume"],
+  [`--corpus=${b1FixturePath}`, "--stage=1"],
+  [`--corpus=${b1FixturePath}`, "--round=1"],
+  [`--corpus=${b1FixturePath}`, "--preview=https://preview.vercel.app"],
+  [`--corpus=${b1FixturePath}`, "--secret=forbidden"],
+]) {
+  assert.throws(
+    () => parseB15Arguments(rejectedArguments),
+    /accepts exactly one --corpus argument/,
+  );
+}
+
+const b15Environment = resolveB15Environment({
+  NODE_ENV: "test",
+  GEO_BASE_URL: "https://geo-content-checker-calibration.vercel.app",
+  VERCEL_PROJECT_ID: "prj_calibration",
+  VERCEL_ORG_ID: "team_calibration",
+  EXPECTED_BRANCH: "feature/public-beta-hardening",
+  EXPECTED_SHA: "c".repeat(40),
+  VERCEL_AUTOMATION_BYPASS_SECRET: "b15-bypass-secret",
+  VERCEL_TOKEN: "b15-vercel-token",
+});
+assert.equal(b15Environment.baseUrl, "https://geo-content-checker-calibration.vercel.app");
+assert.equal(b15Environment.expectedSha, "c".repeat(40));
+
+const b15RunnerScript = fileURLToPath(
+  new URL("./b1.5-model-calibration.ts", import.meta.url),
+);
+const b15CliSecretSentinel = "b15-cli-secret-must-not-appear";
+const rejectedB15Runner = spawnSync(
+  process.execPath,
+  [
+    "--experimental-strip-types",
+    b15RunnerScript,
+    `--resume=${b15CliSecretSentinel}`,
+  ],
+  { encoding: "utf8", env: { ...process.env } },
+);
+const rejectedB15RunnerOutput = `${rejectedB15Runner.stdout}\n${rejectedB15Runner.stderr}`;
+assert.equal(rejectedB15Runner.status, 1);
+assert.match(rejectedB15RunnerOutput, /accepts exactly one --corpus argument/);
+assert.doesNotMatch(rejectedB15RunnerOutput, new RegExp(b15CliSecretSentinel));
+
+const b15RunIdOne = createB15RunId(
+  new Date("2026-07-25T00:00:00.000Z"),
+  "000000000001",
+);
+const b15RunIdTwo = createB15RunId(
+  new Date("2026-07-25T00:00:00.000Z"),
+  "000000000002",
+);
+assert.notEqual(b15RunIdOne, b15RunIdTwo);
+const b15DirectoryRoot = mkdtempSync(join(tmpdir(), "b15-directory-"));
+try {
+  const b15Directory = await createB15CalibrationDirectory(
+    b15DirectoryRoot,
+    b15RunIdOne,
+  );
+  assert.equal(
+    b15Directory,
+    resolveB15CalibrationDirectory(b15DirectoryRoot, b15RunIdOne),
+  );
+  assert.match(b15Directory, /outputs\/b1\/calibration/);
+  assert.equal(existsSync(join(b15DirectoryRoot, "outputs", "b1", "stage1")), false);
+  await assert.rejects(
+    createB15CalibrationDirectory(b15DirectoryRoot, b15RunIdOne),
+  );
+} finally {
+  rmSync(b15DirectoryRoot, { recursive: true, force: true });
+}
+
+const b15QuestionTypeCounts = [0, 0, 0, 0, 0];
+for (const article of b1Fixture) {
+  const templates = b15QuestionTemplates(article.title);
+  const selected = selectB15DiagnosticQuestions(article.title, article.sourceIndex);
+  assert.equal(selected.length, 3);
+  for (const question of selected) {
+    const questionIndex = templates.indexOf(question);
+    assert.ok(questionIndex >= 0);
+    b15QuestionTypeCounts[questionIndex] += 1;
+  }
+}
+assert.deepEqual(b15QuestionTypeCounts, [6, 6, 6, 6, 6]);
+
+interface B15MockTransportOptions {
+  diagnoseFallbackIndexes?: number[];
+  contentFallbackIndexes?: number[];
+}
+
+interface B15MockTransportState {
+  sessions: number;
+  diagnose: number;
+  scoring: number;
+  advice: number;
+  contentDraft: number;
+}
+
+function b15MockResult(
+  route: B15TransportResult["route"],
+  source: "model" | "fallback",
+  payload: Record<string, unknown>,
+): B15TransportResult {
+  return {
+    route,
+    outcome: "success",
+    httpStatus: 200,
+    requestId: crypto.randomUUID(),
+    source,
+    latencyMs: 100,
+    payload: { ...payload, source },
+  };
+}
+
+function createB15MockTransport(options: B15MockTransportOptions = {}): {
+  transport: B15CalibrationTransport;
+  state: B15MockTransportState;
+} {
+  const diagnoseFallbackIndexes = new Set(options.diagnoseFallbackIndexes ?? []);
+  const contentFallbackIndexes = new Set(options.contentFallbackIndexes ?? []);
+  const state: B15MockTransportState = {
+    sessions: 0,
+    diagnose: 0,
+    scoring: 0,
+    advice: 0,
+    contentDraft: 0,
+  };
+  const transport: B15CalibrationTransport = {
+    async request(input) {
+      if (input.route === "/api/analysis-session") {
+        state.sessions += 1;
+        return {
+          route: input.route,
+          outcome: "success",
+          httpStatus: 200,
+          requestId: crypto.randomUUID(),
+          source: null,
+          latencyMs: 5,
+          payload: { token: `mock-analysis-token-${state.sessions}` },
+        };
+      }
+
+      const body = typeof input.body === "object" && input.body !== null
+        ? input.body as Record<string, unknown>
+        : {};
+      if (input.route === "/api/qa-diagnostic") {
+        const callIndex = state.diagnose;
+        state.diagnose += 1;
+        const source = diagnoseFallbackIndexes.has(callIndex) ? "fallback" : "model";
+        const paragraphs = Array.isArray(body.numbered_paragraphs)
+          ? body.numbered_paragraphs as Array<{ id: string; text: string }>
+          : [];
+        const paragraph = paragraphs[0];
+        const quote = paragraph?.text.slice(0, 80) ?? "";
+        return b15MockResult(input.route, source, {
+          question: body.question,
+          recommendation: "保留严格契约并补充缺失信息。",
+          answerability: "信息不足",
+          riskLevel: "medium",
+          evidence: paragraph ? [{ paragraphId: paragraph.id, quote }] : [],
+          missingInfo: ["缺失信息"],
+          evidenceStatus: paragraph ? "valid" : "missing",
+        });
+      }
+      if (input.route === "/api/evaluate-scoring") {
+        state.scoring += 1;
+        return b15MockResult(input.route, "model", { totalScore: 80, dimensions: {} });
+      }
+
+      const mode = body.mode;
+      if (mode === "advice") {
+        state.advice += 1;
+        return b15MockResult(input.route, "model", {
+          mode,
+          actions: [{ type: "author_evidence" }],
+          markdown: "mock",
+        });
+      }
+      const callIndex = state.contentDraft;
+      state.contentDraft += 1;
+      const source = contentFallbackIndexes.has(callIndex) ? "fallback" : "model";
+      const paragraphs = Array.isArray(body.numbered_paragraphs)
+        ? body.numbered_paragraphs as Array<{ id: string; text: string }>
+        : [];
+      const paragraph = paragraphs[0];
+      const quote = paragraph?.text.slice(0, 80) ?? "";
+      return b15MockResult(input.route, source, {
+        mode: "content_draft",
+        actions: paragraph
+          ? [{
+              type: "faq",
+              question: "这篇文章的核心信息是什么？",
+              answer: quote,
+              evidence: { paragraphId: paragraph.id, quote },
+            }]
+          : [],
+        markdown: "mock",
+      });
+    },
+  };
+  return { transport, state };
+}
+
+interface B15MockRuntimeDecision extends Partial<B1RuntimeLogRecord> {
+  unavailable?: boolean;
+}
+
+function createB15MockRuntimeCollector(
+  override?: (call: B1CallRecord, index: number) => B15MockRuntimeDecision,
+): B1RuntimeLogCollector {
+  const records = new Map<string, B1RuntimeLogRecord>();
+  const statuses = new Map<string, B1RuntimeLogStatus>();
+  let registered = 0;
+  return {
+    register(call) {
+      const index = registered;
+      registered += 1;
+      if (!call.requestId) return;
+      const key = `${call.requestId}\n${call.route}`;
+      const decision = override?.(call, index) ?? {};
+      const { unavailable, ...recordOverrides } = decision;
+      if (unavailable) {
+        statuses.set(key, "collector-unavailable");
+        return;
+      }
+      records.set(key, {
+        requestId: call.requestId,
+        route: call.route,
+        status: call.status ?? 200,
+        source: call.source ?? "none",
+        modelStatus: call.source === "model" ? "success" : "failed",
+        modelLatencyMs: 90,
+        finishReason: "stop",
+        completionTokens: 100,
+        durationMs: call.durationMs,
+        validationStage: null,
+        validationIssueCount: null,
+        validationFailureClassification: null,
+        validationFieldPaths: [],
+        validationActionTypes: [],
+        ...recordOverrides,
+      });
+      statuses.set(key, "matched");
+    },
+    async finish() {
+      return {
+        records,
+        statuses,
+        collectorState: {
+          liveConnectionAttempts: 1,
+          liveSuccessfulConnections: 1,
+          liveInterruptions: 0,
+          historicalBackfill: "not-needed" as const,
+        },
+      };
+    },
+    close() {},
+  };
+}
+
+async function runB15MockCalibration(
+  transportOptions: B15MockTransportOptions = {},
+  runtimeOverride?: (call: B1CallRecord, index: number) => B15MockRuntimeDecision,
+) {
+  const { transport, state } = createB15MockTransport(transportOptions);
+  const runtimeLogCollector = createB15MockRuntimeCollector(runtimeOverride);
+  const flow = await runB15CalibrationFlow({
+    articles: b1Fixture,
+    transport,
+    runtimeLogCollector,
+    wait: async () => {},
+  });
+  const collection = await runtimeLogCollector.finish();
+  return {
+    state,
+    flow,
+    artifact: buildB15CalibrationArtifact(flow, collection),
+  };
+}
+
+const passingB15 = await runB15MockCalibration();
+assert.deepEqual(passingB15.state, {
+  sessions: 40,
+  diagnose: 60,
+  scoring: 20,
+  advice: 20,
+  contentDraft: 20,
+});
+assert.equal(passingB15.flow.calls.length, B15_EXPECTED_MODEL_REQUESTS);
+assert.equal(passingB15.artifact.calibrationSchemaVersion, B15_CALIBRATION_SCHEMA_VERSION);
+assert.equal(passingB15.artifact.result, "PASS");
+assert.equal(passingB15.artifact.modules.diagnose.round1.sourceModel, 30);
+assert.equal(passingB15.artifact.modules.diagnose.round2.sourceModel, 30);
+assert.equal(passingB15.artifact.overall.round1.sourceModel, 70);
+assert.equal(passingB15.artifact.overall.round2.sourceModel, 70);
+assert.equal(passingB15.artifact.runtimeLogStatus.matched, B15_EXPECTED_MODEL_REQUESTS);
+for (const record of passingB15.artifact.records) {
+  assert.deepEqual(Object.keys(record).sort(), [
+    "completionTokens",
+    "finishReason",
+    "latencyMs",
+    "modelStatus",
+    "requestId",
+    "route",
+    "timeout",
+    "validationFieldPaths",
+    "validationStage",
+  ]);
+}
+const b15SensitiveSentinel = "B15_SENSITIVE_SENTINEL_MUST_NOT_PERSIST";
+const taintedB15Artifact = buildB15CalibrationArtifact(
+  {
+    ...passingB15.flow,
+    stopReason: "infrastructure",
+    infrastructureIssues: [b15SensitiveSentinel],
+  },
+  await createB15MockRuntimeCollector().finish(),
+);
+const serializedTaintedB15Artifact = serializeB15CalibrationArtifact(
+  taintedB15Artifact,
+  [b15SensitiveSentinel],
+);
+assert.doesNotMatch(serializedTaintedB15Artifact, new RegExp(b15SensitiveSentinel));
+const serializedPassingB15Artifact = serializeB15CalibrationArtifact(
+  passingB15.artifact,
+  [b15SensitiveSentinel],
+);
+assert.doesNotMatch(
+  serializedPassingB15Artifact,
+  /"(?:title|content|question|prompt|evidence|payload|response|secret|token)"\s*:/,
+);
+
+const blockedDiagnoseB15 = await runB15MockCalibration(
+  { diagnoseFallbackIndexes: [0] },
+  (_call, index) => index === 0
+    ? {
+        modelStatus: "success",
+        validationStage: "schema_validation",
+        validationIssueCount: 1,
+        validationFailureClassification: "required_field_missing",
+        validationFieldPaths: ["$.recommendation"],
+      }
+    : {},
+);
+assert.equal(blockedDiagnoseB15.flow.stopReason, "module-gate");
+assert.equal(blockedDiagnoseB15.state.diagnose, 30);
+assert.equal(blockedDiagnoseB15.state.scoring, 0);
+assert.equal(blockedDiagnoseB15.state.advice, 0);
+assert.equal(blockedDiagnoseB15.state.contentDraft, 0);
+assert.equal(blockedDiagnoseB15.artifact.result, "BLOCKED");
+assert.equal(blockedDiagnoseB15.artifact.modules.diagnose.round1.sourceModel, 29);
+assert.equal(blockedDiagnoseB15.artifact.modules.diagnose.round1.requiredFieldMissing, 1);
+assert.equal(blockedDiagnoseB15.artifact.modules.diagnose.round1.recommendationMissing, 1);
+
+const seventeenContentDraftB15 = await runB15MockCalibration({
+  contentFallbackIndexes: [0, 1, 10],
+});
+assert.equal(seventeenContentDraftB15.artifact.modules.contentDraft.sourceModel, 17);
+assert.equal(seventeenContentDraftB15.artifact.modules.contentDraft.pass, false);
+assert.equal(seventeenContentDraftB15.artifact.overall.round1.pass, true);
+assert.equal(seventeenContentDraftB15.artifact.overall.round2.pass, true);
+assert.equal(seventeenContentDraftB15.artifact.result, "BLOCKED");
+
+let b15ContentRuntimeIndex = 0;
+const quoteMismatchB15 = await runB15MockCalibration(
+  { contentFallbackIndexes: [0] },
+  (call) => {
+    if (call.operation !== "content_draft") return {};
+    const currentIndex = b15ContentRuntimeIndex;
+    b15ContentRuntimeIndex += 1;
+    if (currentIndex !== 0) return {};
+    return {
+      modelStatus: "success",
+      finishReason: "length",
+      completionTokens: 1_200,
+      validationStage: "evidence_validation",
+      validationIssueCount: 1,
+      validationFailureClassification: "quote_mismatch",
+      validationFieldPaths: ["$.actions[0].evidence.quote"],
+    };
+  },
+);
+assert.equal(quoteMismatchB15.artifact.modules.contentDraft.sourceModel, 19);
+assert.equal(quoteMismatchB15.artifact.modules.contentDraft.quoteMismatch, 1);
+assert.equal(quoteMismatchB15.artifact.result, "BLOCKED");
+assert.equal(
+  quoteMismatchB15.artifact.records.find(
+    (record) => record.validationStage === "evidence_validation",
+  )?.finishReason,
+  "length",
+);
+
+const unavailableRuntimeB15 = await runB15MockCalibration(
+  {},
+  (_call, index) => index === 0 ? { unavailable: true } : {},
+);
+assert.equal(unavailableRuntimeB15.artifact.runtimeLogStatus["collector-unavailable"], 1);
+assert.equal(unavailableRuntimeB15.artifact.result, "INCONCLUSIVE");
+
+const mismatchedRuntimeB15 = await runB15MockCalibration(
+  {},
+  (_call, index) => index === 0 ? { source: "fallback" } : {},
+);
+assert.equal(mismatchedRuntimeB15.artifact.result, "INCONCLUSIVE");
+
+const b15Classifications = new Set([
+  classifyB15Calibration({
+    executionComplete: true,
+    runtimeTelemetryComplete: true,
+    infrastructureFailure: false,
+    artifactIntegrityValid: true,
+    confirmedGateFailure: false,
+    moduleGatePass: true,
+    overallGatePass: true,
+  }),
+  classifyB15Calibration({
+    executionComplete: false,
+    runtimeTelemetryComplete: true,
+    infrastructureFailure: false,
+    artifactIntegrityValid: true,
+    confirmedGateFailure: true,
+    moduleGatePass: false,
+    overallGatePass: false,
+  }),
+  classifyB15Calibration({
+    executionComplete: false,
+    runtimeTelemetryComplete: true,
+    infrastructureFailure: false,
+    artifactIntegrityValid: true,
+    confirmedGateFailure: false,
+    moduleGatePass: true,
+    overallGatePass: true,
+  }),
+]);
+assert.deepEqual([...b15Classifications].sort(), ["BLOCKED", "INCONCLUSIVE", "PASS"]);
+assert.equal(
+  classifyB15Calibration({
+    executionComplete: true,
+    runtimeTelemetryComplete: false,
+    infrastructureFailure: false,
+    artifactIntegrityValid: true,
+    confirmedGateFailure: false,
+    moduleGatePass: true,
+    overallGatePass: true,
+  }),
+  "INCONCLUSIVE",
+);
+
+const packageJson = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+) as { scripts?: Record<string, string> };
+assert.equal(
+  packageJson.scripts?.["b1.5:calibrate"],
+  "node --experimental-strip-types scripts/b1.5-model-calibration.ts",
+);
 
 const releaseConfigScript = fileURLToPath(new URL("./check-release-config.mjs", import.meta.url));
 const validReleaseEnvironment: NodeJS.ProcessEnv = {

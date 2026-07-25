@@ -305,12 +305,13 @@ async function handlePost(request: NextRequest): Promise<Response> {
     const prompts = promptsForMode(mode, title, paragraphs, diagnostics);
 
     try {
-      const { content: raw } = await callOpenAICompatibleModel({
+      const { content: raw, finishReason, usage } = await callOpenAICompatibleModel({
         messages: [
           { role: "system", content: prompts.system },
           { role: "user", content: prompts.user },
         ],
-        timeoutMs: 15_000,
+        temperature: 0,
+        timeoutMs: mode === "advice" ? 17_000 : 15_000,
         maxTokens: mode === "advice" ? 1_800 : CONTENT_DRAFT_MAX_TOKENS,
         rateLimitMode: authorization.mode,
       });
@@ -321,6 +322,12 @@ async function handlePost(request: NextRequest): Promise<Response> {
         markGeoValidationTelemetry({
           stage: "json_parse",
           issueCount: 1,
+          failureClassification:
+            finishReason === "length" &&
+              usage?.completionTokens ===
+                (mode === "advice" ? 1_800 : CONTENT_DRAFT_MAX_TOKENS)
+              ? "token_cap_truncation"
+              : "json_parse_failed",
           fieldPaths: [[]],
         });
         throw error;
@@ -334,6 +341,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         markGeoValidationTelemetry({
           stage: "schema_validation",
           issueCount: parsed.error.issues.length,
+          failureClassification: "schema_validation_failed",
           fieldPaths: parsed.error.issues.map((issue) => issue.path),
           actionTypes,
         });
@@ -355,9 +363,26 @@ async function handlePost(request: NextRequest): Promise<Response> {
               parsed.data.actions as ModelContentAction[],
               paragraphs,
             );
+        const hasQuoteMismatch = issuePaths.some(
+          (path) =>
+            path.length >= 2 &&
+            path[path.length - 2] === "evidence" &&
+            path[path.length - 1] === "quote",
+        );
+        const hasReferenceMismatch = issuePaths.some(
+          (path) =>
+            path.at(-1) === "paragraphId" ||
+            path.includes("relatedQuestion") ||
+            path.includes("targetParagraphIds"),
+        );
         markGeoValidationTelemetry({
           stage: mode === "advice" ? "reference_validation" : "evidence_validation",
           issueCount: Math.max(1, issuePaths.length),
+          failureClassification: hasQuoteMismatch
+            ? "quote_mismatch"
+            : hasReferenceMismatch
+              ? "reference_mismatch"
+              : "semantic_validation_failed",
           fieldPaths: issuePaths,
           actionTypes,
         });

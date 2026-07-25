@@ -15,6 +15,17 @@ export type GeoModelStatus =
   | "rate-limited"
   | "timeout";
 
+export const GEO_MODEL_FINISH_REASONS = [
+  "stop",
+  "length",
+  "content_filter",
+  "tool_calls",
+  "function_call",
+  "unknown",
+] as const;
+
+export type GeoModelFinishReason = (typeof GEO_MODEL_FINISH_REASONS)[number];
+
 export const GEO_VALIDATION_STAGES = [
   "json_parse",
   "schema_validation",
@@ -24,6 +35,19 @@ export const GEO_VALIDATION_STAGES = [
 ] as const;
 
 export type GeoValidationStage = (typeof GEO_VALIDATION_STAGES)[number];
+
+export const GEO_VALIDATION_FAILURE_CLASSIFICATIONS = [
+  "json_parse_failed",
+  "token_cap_truncation",
+  "required_field_missing",
+  "schema_validation_failed",
+  "semantic_validation_failed",
+  "reference_mismatch",
+  "quote_mismatch",
+] as const;
+
+export type GeoValidationFailureClassification =
+  (typeof GEO_VALIDATION_FAILURE_CLASSIFICATIONS)[number];
 
 const GEO_VALIDATION_ACTION_TYPES = [
   "author_evidence",
@@ -40,6 +64,7 @@ type GeoValidationActionType =
 export interface GeoValidationTelemetryInput {
   stage: GeoValidationStage;
   issueCount: number;
+  failureClassification?: GeoValidationFailureClassification;
   fieldPaths?: readonly (readonly (string | number)[])[];
   actionTypes?: readonly unknown[];
 }
@@ -47,6 +72,7 @@ export interface GeoValidationTelemetryInput {
 export interface GeoValidationTelemetry {
   validationStage: GeoValidationStage;
   validationIssueCount: number;
+  validationFailureClassification: GeoValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: GeoValidationActionType[];
 }
@@ -58,12 +84,14 @@ interface GeoRequestContext {
   source: GeoResponseSource;
   modelStatus: GeoModelStatus;
   modelLatencyMs?: number;
+  finishReason?: GeoModelFinishReason;
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
   validationStage?: GeoValidationStage;
   validationIssueCount?: number;
+  validationFailureClassification?: GeoValidationFailureClassification;
   validationFieldPaths?: string[];
   validationActionTypes?: GeoValidationActionType[];
 }
@@ -71,6 +99,12 @@ interface GeoRequestContext {
 type RouteHandler = (request: NextRequest) => Promise<Response>;
 
 const requestStorage = new AsyncLocalStorage<GeoRequestContext>();
+
+export function normalizeGeoModelFinishReason(value: unknown): GeoModelFinishReason {
+  return GEO_MODEL_FINISH_REASONS.includes(value as GeoModelFinishReason)
+    ? (value as GeoModelFinishReason)
+    : "unknown";
+}
 
 function sanitizeValidationPath(value: unknown): string | null {
   if (!Array.isArray(value)) return null;
@@ -133,9 +167,19 @@ export function sanitizeGeoValidationTelemetry(
       }
     }
 
+    const validationFailureClassification =
+      value.failureClassification === undefined
+        ? null
+        : GEO_VALIDATION_FAILURE_CLASSIFICATIONS.includes(
+              value.failureClassification as GeoValidationFailureClassification,
+            )
+          ? (value.failureClassification as GeoValidationFailureClassification)
+          : null;
+
     return {
       validationStage: value.stage as GeoValidationStage,
       validationIssueCount: value.issueCount,
+      validationFailureClassification,
       validationFieldPaths,
       validationActionTypes,
     };
@@ -156,6 +200,7 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     modelStatus: context.modelStatus,
     rateLimitMode: response.headers.get("X-GEO-RateLimit-Mode") ?? "none",
     ...(context.modelLatencyMs === undefined ? {} : { modelLatencyMs: context.modelLatencyMs }),
+    ...(context.finishReason === undefined ? {} : { finishReason: context.finishReason }),
     ...(context.promptTokens === undefined ? {} : { promptTokens: context.promptTokens }),
     ...(context.completionTokens === undefined
       ? {}
@@ -169,6 +214,12 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
       : {
           validationStage: context.validationStage,
           validationIssueCount: context.validationIssueCount,
+          ...(context.validationFailureClassification === undefined
+            ? {}
+            : {
+                validationFailureClassification:
+                  context.validationFailureClassification,
+              }),
           validationFieldPaths: context.validationFieldPaths,
           validationActionTypes: context.validationActionTypes,
         }),
@@ -188,6 +239,7 @@ export function markGeoRequestOutcome(params: {
   source?: GeoResponseSource;
   modelStatus?: GeoModelStatus;
   modelLatencyMs?: number;
+  finishReason?: GeoModelFinishReason;
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
@@ -198,6 +250,7 @@ export function markGeoRequestOutcome(params: {
   if (params.source) context.source = params.source;
   if (params.modelStatus) context.modelStatus = params.modelStatus;
   if (params.modelLatencyMs !== undefined) context.modelLatencyMs = params.modelLatencyMs;
+  if (params.finishReason !== undefined) context.finishReason = params.finishReason;
   if (params.promptTokens !== undefined) context.promptTokens = params.promptTokens;
   if (params.completionTokens !== undefined) context.completionTokens = params.completionTokens;
   if (params.totalTokens !== undefined) context.totalTokens = params.totalTokens;
@@ -212,6 +265,9 @@ export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput):
     if (!telemetry) return;
     context.validationStage = telemetry.validationStage;
     context.validationIssueCount = telemetry.validationIssueCount;
+    if (telemetry.validationFailureClassification !== null) {
+      context.validationFailureClassification = telemetry.validationFailureClassification;
+    }
     context.validationFieldPaths = telemetry.validationFieldPaths;
     context.validationActionTypes = telemetry.validationActionTypes;
   } catch {
