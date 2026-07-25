@@ -158,7 +158,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           { role: "user", content: userPrompt },
         ],
         temperature: 0,
-        timeoutMs: 17_000,
+        timeoutMs: 20_000,
         maxTokens: 1_800,
         rateLimitMode: authorization.mode,
       });
