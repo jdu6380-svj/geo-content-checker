@@ -76,7 +76,9 @@ export async function callOpenAICompatibleModel({
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const modelStartedAt = performance.now();
-  markGeoRequestOutcome({ modelStatus: "requested" });
+  const providerRequestStartAt = Date.now();
+  let firstByteAt: number | undefined;
+  markGeoRequestOutcome({ modelStatus: "requested", providerRequestStartAt });
 
   function modelLatencyMs(): number {
     return Math.max(0, Math.round(performance.now() - modelStartedAt));
@@ -99,6 +101,8 @@ export async function callOpenAICompatibleModel({
       signal: controller.signal,
       cache: "no-store",
     });
+    firstByteAt = Date.now();
+    markGeoRequestOutcome({ firstByteAt });
 
     if (!response.ok) {
       markGeoRequestOutcome({
@@ -112,6 +116,11 @@ export async function callOpenAICompatibleModel({
     }
 
     const payload: unknown = await response.json();
+    const responseCompletedAt = Date.now();
+    markGeoRequestOutcome({
+      responseCompletedAt,
+      streamDurationMs: Math.max(0, responseCompletedAt - firstByteAt),
+    });
     const content = providerMessageContent(payload);
     const telemetry = sanitizeModelProviderTelemetry(payload);
     const usage = normalizeUsage(providerUsage(payload));
@@ -138,7 +147,15 @@ export async function callOpenAICompatibleModel({
   } catch (error) {
     if (error instanceof ModelCallError) throw error;
     if (error instanceof Error && error.name === "AbortError") {
-      markGeoRequestOutcome({ modelStatus: "timeout", modelLatencyMs: modelLatencyMs() });
+      const abortedAt = Date.now();
+      markGeoRequestOutcome({
+        modelStatus: "timeout",
+        modelLatencyMs: modelLatencyMs(),
+        abortedAt,
+        ...(firstByteAt === undefined
+          ? {}
+          : { streamDurationMs: Math.max(0, abortedAt - firstByteAt) }),
+      });
       throw new ModelCallError("Model request timed out", { cause: error });
     }
     markGeoRequestOutcome({ modelStatus: "failed", modelLatencyMs: modelLatencyMs() });

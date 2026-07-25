@@ -94,6 +94,12 @@ interface GeoRequestContext {
   source: GeoResponseSource;
   modelStatus: GeoModelStatus;
   modelLatencyMs?: number;
+  providerRequestStartAt?: number;
+  firstByteAt?: number;
+  firstTokenAt?: number;
+  responseCompletedAt?: number;
+  abortedAt?: number;
+  streamDurationMs?: number;
   contentPresent?: boolean;
   contentLength?: number;
   finishReason?: GeoModelFinishReason;
@@ -262,6 +268,18 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     modelStatus: context.modelStatus,
     rateLimitMode: response.headers.get("X-GEO-RateLimit-Mode") ?? "none",
     ...(context.modelLatencyMs === undefined ? {} : { modelLatencyMs: context.modelLatencyMs }),
+    ...(context.providerRequestStartAt === undefined
+      ? {}
+      : { providerRequestStartAt: context.providerRequestStartAt }),
+    ...(context.firstByteAt === undefined ? {} : { firstByteAt: context.firstByteAt }),
+    ...(context.firstTokenAt === undefined ? {} : { firstTokenAt: context.firstTokenAt }),
+    ...(context.responseCompletedAt === undefined
+      ? {}
+      : { responseCompletedAt: context.responseCompletedAt }),
+    ...(context.abortedAt === undefined ? {} : { abortedAt: context.abortedAt }),
+    ...(context.streamDurationMs === undefined
+      ? {}
+      : { streamDurationMs: context.streamDurationMs }),
     ...(context.contentPresent === undefined ? {} : { contentPresent: context.contentPresent }),
     ...(context.contentLength === undefined ? {} : { contentLength: context.contentLength }),
     ...(context.finishReason === undefined ? {} : { finishReason: context.finishReason }),
@@ -306,6 +324,12 @@ export function markGeoRequestOutcome(params: {
   source?: GeoResponseSource;
   modelStatus?: GeoModelStatus;
   modelLatencyMs?: number;
+  providerRequestStartAt?: number;
+  firstByteAt?: number;
+  firstTokenAt?: number;
+  responseCompletedAt?: number;
+  abortedAt?: number;
+  streamDurationMs?: number;
   contentPresent?: boolean;
   contentLength?: number;
   finishReason?: GeoModelFinishReason;
@@ -320,6 +344,18 @@ export function markGeoRequestOutcome(params: {
   if (params.source) context.source = params.source;
   if (params.modelStatus) context.modelStatus = params.modelStatus;
   if (params.modelLatencyMs !== undefined) context.modelLatencyMs = params.modelLatencyMs;
+  if (params.providerRequestStartAt !== undefined) {
+    context.providerRequestStartAt = params.providerRequestStartAt;
+  }
+  if (params.firstByteAt !== undefined) context.firstByteAt = params.firstByteAt;
+  if (params.firstTokenAt !== undefined) context.firstTokenAt = params.firstTokenAt;
+  if (params.responseCompletedAt !== undefined) {
+    context.responseCompletedAt = params.responseCompletedAt;
+  }
+  if (params.abortedAt !== undefined) context.abortedAt = params.abortedAt;
+  if (params.streamDurationMs !== undefined) {
+    context.streamDurationMs = params.streamDurationMs;
+  }
   if (params.contentPresent !== undefined) context.contentPresent = params.contentPresent;
   if (params.contentLength !== undefined) context.contentLength = params.contentLength;
   if (params.finishReason !== undefined) context.finishReason = params.finishReason;

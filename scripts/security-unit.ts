@@ -1100,6 +1100,12 @@ const sensitiveB1PipelineRecord = {
     source: "model",
     modelStatus: "success",
     modelLatencyMs: 900 + index,
+    providerRequestStartAt: 1_720_000_000_000 + index,
+    firstByteAt: 1_720_000_000_900 + index,
+    firstTokenAt: null,
+    responseCompletedAt: 1_720_000_000_950 + index,
+    abortedAt: null,
+    streamDurationMs: 50,
     contentPresent: true,
     contentLength: 300 + index,
     finishReason: "stop",
@@ -1165,21 +1171,27 @@ assert.deepEqual(Object.keys(b1CheckpointArtifact.records[0]).sort(), [
 ]);
 for (const request of b1CheckpointArtifact.records[0].requests) {
   assert.deepEqual(Object.keys(request).sort(), [
+    "abortedAt",
     "completionTokens",
     "contentLength",
     "contentPresent",
     "durationMs",
     "errorClassification",
     "finishReason",
+    "firstByteAt",
+    "firstTokenAt",
     "httpStatus",
     "modelLatencyMs",
     "modelStatus",
     "promptTokens",
+    "providerRequestStartAt",
     "reasoningTokens",
     "requestId",
+    "responseCompletedAt",
     "route",
     "runtimeLogStatus",
     "source",
+    "streamDurationMs",
     "totalTokens",
     "validationActionTypes",
     "validationFailureClassification",
@@ -1330,6 +1342,10 @@ const b1RuntimeLog = parseB1RuntimeLogMessage(
     source: "model",
     modelStatus: "success",
     modelLatencyMs: 987,
+    providerRequestStartAt: 1_720_000_000_000,
+    firstByteAt: 1_720_000_000_900,
+    responseCompletedAt: 1_720_000_000_987,
+    streamDurationMs: 87,
     contentPresent: true,
     contentLength: 4_096,
     finishReason: "length",
@@ -1354,6 +1370,12 @@ assert.deepEqual(b1RuntimeLog, {
   source: "model",
   modelStatus: "success",
   modelLatencyMs: 987,
+  providerRequestStartAt: 1_720_000_000_000,
+  firstByteAt: 1_720_000_000_900,
+  firstTokenAt: null,
+  responseCompletedAt: 1_720_000_000_987,
+  abortedAt: null,
+  streamDurationMs: 87,
   contentPresent: true,
   contentLength: 4_096,
   finishReason: "length",
@@ -1386,6 +1408,10 @@ const historicalBodyRecords = parseB1RuntimeLogHistoryBody(
               source: "fallback",
               modelStatus: "success",
               modelLatencyMs: 11_659,
+              providerRequestStartAt: 1_720_000_010_000,
+              firstByteAt: 1_720_000_021_600,
+              responseCompletedAt: 1_720_000_021_659,
+              streamDurationMs: 59,
               contentPresent: false,
               contentLength: 0,
               finishReason: "length",
@@ -1413,6 +1439,15 @@ assert.equal(historicalBodyRecords.length, 1);
 assert.equal(historicalBodyRecords[0]?.finishReason, "length");
 assert.equal(historicalBodyRecords[0]?.contentPresent, false);
 assert.equal(historicalBodyRecords[0]?.contentLength, 0);
+assert.equal(
+  historicalBodyRecords[0]?.providerRequestStartAt,
+  1_720_000_010_000,
+);
+assert.equal(historicalBodyRecords[0]?.firstByteAt, 1_720_000_021_600);
+assert.equal(historicalBodyRecords[0]?.firstTokenAt, null);
+assert.equal(historicalBodyRecords[0]?.responseCompletedAt, 1_720_000_021_659);
+assert.equal(historicalBodyRecords[0]?.abortedAt, null);
+assert.equal(historicalBodyRecords[0]?.streamDurationMs, 59);
 assert.equal(historicalBodyRecords[0]?.promptTokens, 2_300);
 assert.equal(historicalBodyRecords[0]?.completionTokens, 1_200);
 assert.equal(historicalBodyRecords[0]?.reasoningTokens, 1_200);
@@ -1470,6 +1505,10 @@ const delayedRuntimeRecords = [
       source: "model",
       modelStatus: "success",
       modelLatencyMs: 1_200,
+      providerRequestStartAt: 10,
+      firstByteAt: 1_210,
+      responseCompletedAt: 1_260,
+      streamDurationMs: 50,
       durationMs: 1_500,
       prompt: b1SensitiveSentinels[1],
       evidence: b1SensitiveSentinels[2],
@@ -1783,19 +1822,25 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
 });
   for (const record of delayedRuntimeCollection.records.values()) {
     assert.deepEqual(Object.keys(record).sort(), [
+      "abortedAt",
       "completionTokens",
       "contentLength",
       "contentPresent",
       "durationMs",
       "finishReason",
+      "firstByteAt",
+      "firstTokenAt",
       "modelLatencyMs",
       "modelStatus",
       "promptTokens",
+      "providerRequestStartAt",
       "reasoningTokens",
       "requestId",
+      "responseCompletedAt",
       "route",
       "source",
       "status",
+      "streamDurationMs",
       "totalTokens",
       "validationActionTypes",
       "validationFailureClassification",
@@ -1832,6 +1877,8 @@ const historicalBackfillRecord = parseB1RuntimeLogMessage(
     source: "fallback",
     modelStatus: "timeout",
     modelLatencyMs: 12_001,
+    providerRequestStartAt: 1_720_000_030_000,
+    abortedAt: 1_720_000_042_001,
     durationMs: 12_025,
   }),
 );
@@ -1850,6 +1897,15 @@ const wrongRouteHistoricalRecord = parseB1RuntimeLogMessage(
 if (!historicalBackfillRecord || !wrongRouteHistoricalRecord) {
   throw new Error("Historical Runtime Log fixtures must be valid.");
 }
+assert.equal(
+  historicalBackfillRecord.providerRequestStartAt,
+  1_720_000_030_000,
+);
+assert.equal(historicalBackfillRecord.firstByteAt, null);
+assert.equal(historicalBackfillRecord.firstTokenAt, null);
+assert.equal(historicalBackfillRecord.responseCompletedAt, null);
+assert.equal(historicalBackfillRecord.abortedAt, 1_720_000_042_001);
+assert.equal(historicalBackfillRecord.streamDurationMs, null);
 let markHistoricalStreamReady: (() => void) | undefined;
 const historicalStreamReady = new Promise<void>((resolvePromise) => {
   markHistoricalStreamReady = resolvePromise;
@@ -2122,6 +2178,12 @@ function runtimeRecordForCall(call: B1CallRecord): B1RuntimeLogRecord {
     source: call.source ?? "model",
     modelStatus: "success",
     modelLatencyMs: Math.max(0, call.durationMs - 100),
+    providerRequestStartAt: 1_720_000_100_000,
+    firstByteAt: 1_720_000_100_100,
+    firstTokenAt: null,
+    responseCompletedAt: 1_720_000_100_200,
+    abortedAt: null,
+    streamDurationMs: 100,
     finishReason: "stop",
     completionTokens: 100,
     durationMs: call.durationMs,
@@ -2784,6 +2846,12 @@ function createB15MockRuntimeCollector(
       source: call.source ?? "none",
       modelStatus: call.source === "model" ? "success" : "failed",
       modelLatencyMs: 90,
+      providerRequestStartAt: 1_720_000_200_000 + index,
+      firstByteAt: 1_720_000_200_040 + index,
+      firstTokenAt: null,
+      responseCompletedAt: 1_720_000_200_090 + index,
+      abortedAt: null,
+      streamDurationMs: 50,
       contentPresent: true,
       contentLength: 256,
       finishReason: "stop",
@@ -2906,21 +2974,33 @@ assert.deepEqual(passingB15.artifact.runtimeLogCollectorState, {
 });
 for (const record of passingB15.artifact.records) {
   assert.deepEqual(Object.keys(record).sort(), [
+    "abortedAt",
     "completionTokens",
     "contentLength",
     "contentPresent",
     "finishReason",
+    "firstByteAt",
+    "firstTokenAt",
     "latencyMs",
     "modelStatus",
     "promptTokens",
+    "providerRequestStartAt",
     "reasoningTokens",
     "requestId",
+    "responseCompletedAt",
     "route",
+    "streamDurationMs",
     "timeout",
     "totalTokens",
     "validationFieldPaths",
     "validationStage",
   ]);
+  assert.equal(typeof record.providerRequestStartAt, "number");
+  assert.equal(typeof record.firstByteAt, "number");
+  assert.equal(record.firstTokenAt, null);
+  assert.equal(typeof record.responseCompletedAt, "number");
+  assert.equal(record.abortedAt, null);
+  assert.equal(record.streamDurationMs, 50);
   assert.equal(record.contentPresent, true);
   assert.equal(record.contentLength, 256);
   assert.equal(record.promptTokens, 200);

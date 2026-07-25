@@ -46,7 +46,7 @@ export const B1_MODEL_CALLS_PER_PIPELINE = B1_PIPELINE_OPERATIONS.length;
 export const B1_STAGE_1_ARTICLE_COUNT = 10;
 export const B1_STAGE_2_ARTICLE_COUNT = 9;
 export const B1_DEFAULT_STAGE_2_ROUNDS = 2;
-export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v4";
+export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v5";
 
 const B1_MODEL_STATUSES = [
   "not-requested",
@@ -215,6 +215,12 @@ export interface B1CallRecord {
   source: Exclude<B1ResponseSource, "none"> | null;
   modelStatus: B1ModelStatus | null;
   modelLatencyMs: number | null;
+  providerRequestStartAt?: number | null;
+  firstByteAt?: number | null;
+  firstTokenAt?: number | null;
+  responseCompletedAt?: number | null;
+  abortedAt?: number | null;
+  streamDurationMs?: number | null;
   contentPresent?: boolean | null;
   contentLength?: number | null;
   finishReason?: B1ModelFinishReason | null;
@@ -281,6 +287,12 @@ interface B1PersistedCallRecord {
   source: Exclude<B1ResponseSource, "none"> | null;
   modelStatus: B1ModelStatus | null;
   modelLatencyMs: number | null;
+  providerRequestStartAt: number | null;
+  firstByteAt: number | null;
+  firstTokenAt: number | null;
+  responseCompletedAt: number | null;
+  abortedAt: number | null;
+  streamDurationMs: number | null;
   contentPresent: boolean | null;
   contentLength: number | null;
   finishReason: B1ModelFinishReason | null;
@@ -321,6 +333,12 @@ export interface B1RuntimeLogRecord {
   source: B1ResponseSource;
   modelStatus: B1ModelStatus;
   modelLatencyMs: number | null;
+  providerRequestStartAt?: number | null;
+  firstByteAt?: number | null;
+  firstTokenAt?: number | null;
+  responseCompletedAt?: number | null;
+  abortedAt?: number | null;
+  streamDurationMs?: number | null;
   contentPresent?: boolean | null;
   contentLength?: number | null;
   finishReason: B1ModelFinishReason | null;
@@ -1136,6 +1154,12 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
     source: normalizeSource(record.source),
     modelStatus: normalizeModelStatus(record.modelStatus),
     modelLatencyMs: normalizeDuration(record.modelLatencyMs),
+    providerRequestStartAt: normalizeDuration(record.providerRequestStartAt),
+    firstByteAt: normalizeDuration(record.firstByteAt),
+    firstTokenAt: normalizeDuration(record.firstTokenAt),
+    responseCompletedAt: normalizeDuration(record.responseCompletedAt),
+    abortedAt: normalizeDuration(record.abortedAt),
+    streamDurationMs: normalizeDuration(record.streamDurationMs),
     contentPresent: normalizeTelemetryBoolean(record.contentPresent),
     contentLength: normalizeTokenCount(record.contentLength),
     finishReason: normalizeModelFinishReason(record.finishReason),
@@ -1637,6 +1661,24 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
   const durationMs = normalizeDuration(value.durationMs);
   const modelLatencyMs =
     value.modelLatencyMs === undefined ? null : normalizeDuration(value.modelLatencyMs);
+  const providerRequestStartAt =
+    value.providerRequestStartAt === undefined
+      ? null
+      : normalizeDuration(value.providerRequestStartAt);
+  const firstByteAt =
+    value.firstByteAt === undefined ? null : normalizeDuration(value.firstByteAt);
+  const firstTokenAt =
+    value.firstTokenAt === undefined ? null : normalizeDuration(value.firstTokenAt);
+  const responseCompletedAt =
+    value.responseCompletedAt === undefined
+      ? null
+      : normalizeDuration(value.responseCompletedAt);
+  const abortedAt =
+    value.abortedAt === undefined ? null : normalizeDuration(value.abortedAt);
+  const streamDurationMs =
+    value.streamDurationMs === undefined
+      ? null
+      : normalizeDuration(value.streamDurationMs);
   const contentPresent =
     value.contentPresent === undefined ? null : normalizeTelemetryBoolean(value.contentPresent);
   const contentLength =
@@ -1660,6 +1702,12 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     !isOneOf(value.source, B1_RESPONSE_SOURCES) ||
     !isOneOf(value.modelStatus, B1_MODEL_STATUSES) ||
     (value.modelLatencyMs !== undefined && modelLatencyMs === null) ||
+    (value.providerRequestStartAt !== undefined && providerRequestStartAt === null) ||
+    (value.firstByteAt !== undefined && firstByteAt === null) ||
+    (value.firstTokenAt !== undefined && firstTokenAt === null) ||
+    (value.responseCompletedAt !== undefined && responseCompletedAt === null) ||
+    (value.abortedAt !== undefined && abortedAt === null) ||
+    (value.streamDurationMs !== undefined && streamDurationMs === null) ||
     (value.contentPresent !== undefined && contentPresent === null) ||
     (value.contentLength !== undefined && contentLength === null) ||
     (value.finishReason !== undefined && finishReason === null) ||
@@ -1706,6 +1754,12 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     source: value.source,
     modelStatus: value.modelStatus,
     modelLatencyMs,
+    providerRequestStartAt,
+    firstByteAt,
+    firstTokenAt,
+    responseCompletedAt,
+    abortedAt,
+    streamDurationMs,
     contentPresent,
     contentLength,
     finishReason,
@@ -2696,6 +2750,12 @@ function applyRuntimeLogRecords(
       source: runtime.source === "none" ? call.source : runtime.source,
       modelStatus: runtime.modelStatus,
       modelLatencyMs: runtime.modelLatencyMs,
+      providerRequestStartAt: runtime.providerRequestStartAt ?? null,
+      firstByteAt: runtime.firstByteAt ?? null,
+      firstTokenAt: runtime.firstTokenAt ?? null,
+      responseCompletedAt: runtime.responseCompletedAt ?? null,
+      abortedAt: runtime.abortedAt ?? null,
+      streamDurationMs: runtime.streamDurationMs ?? null,
       contentPresent: runtime.contentPresent ?? null,
       contentLength: runtime.contentLength ?? null,
       finishReason: runtime.finishReason,
@@ -3013,6 +3073,12 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       "source",
       "modelStatus",
       "modelLatencyMs",
+      "providerRequestStartAt",
+      "firstByteAt",
+      "firstTokenAt",
+      "responseCompletedAt",
+      "abortedAt",
+      "streamDurationMs",
       "contentPresent",
       "contentLength",
       "finishReason",
@@ -3041,6 +3107,24 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     value.modelStatus === null ? null : normalizeModelStatus(value.modelStatus);
   const modelLatencyMs =
     value.modelLatencyMs === null ? null : normalizeDuration(value.modelLatencyMs);
+  const providerRequestStartAt =
+    value.providerRequestStartAt === null
+      ? null
+      : normalizeDuration(value.providerRequestStartAt);
+  const firstByteAt =
+    value.firstByteAt === null ? null : normalizeDuration(value.firstByteAt);
+  const firstTokenAt =
+    value.firstTokenAt === null ? null : normalizeDuration(value.firstTokenAt);
+  const responseCompletedAt =
+    value.responseCompletedAt === null
+      ? null
+      : normalizeDuration(value.responseCompletedAt);
+  const abortedAt =
+    value.abortedAt === null ? null : normalizeDuration(value.abortedAt);
+  const streamDurationMs =
+    value.streamDurationMs === null
+      ? null
+      : normalizeDuration(value.streamDurationMs);
   const contentPresent =
     value.contentPresent === null ? null : normalizeTelemetryBoolean(value.contentPresent);
   const contentLength =
@@ -3081,6 +3165,12 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     (value.source !== null && source === null) ||
     (value.modelStatus !== null && modelStatus === null) ||
     (value.modelLatencyMs !== null && modelLatencyMs === null) ||
+    (value.providerRequestStartAt !== null && providerRequestStartAt === null) ||
+    (value.firstByteAt !== null && firstByteAt === null) ||
+    (value.firstTokenAt !== null && firstTokenAt === null) ||
+    (value.responseCompletedAt !== null && responseCompletedAt === null) ||
+    (value.abortedAt !== null && abortedAt === null) ||
+    (value.streamDurationMs !== null && streamDurationMs === null) ||
     (value.contentPresent !== null && contentPresent === null) ||
     (value.contentLength !== null && contentLength === null) ||
     (value.finishReason !== null && finishReason === null) ||
@@ -3109,6 +3199,12 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     source,
     modelStatus,
     modelLatencyMs,
+    providerRequestStartAt,
+    firstByteAt,
+    firstTokenAt,
+    responseCompletedAt,
+    abortedAt,
+    streamDurationMs,
     contentPresent,
     contentLength,
     finishReason,
@@ -3133,6 +3229,12 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     source: persisted.source,
     modelStatus: persisted.modelStatus,
     modelLatencyMs: persisted.modelLatencyMs,
+    providerRequestStartAt: persisted.providerRequestStartAt,
+    firstByteAt: persisted.firstByteAt,
+    firstTokenAt: persisted.firstTokenAt,
+    responseCompletedAt: persisted.responseCompletedAt,
+    abortedAt: persisted.abortedAt,
+    streamDurationMs: persisted.streamDurationMs,
     contentPresent: persisted.contentPresent,
     contentLength: persisted.contentLength,
     finishReason: persisted.finishReason,

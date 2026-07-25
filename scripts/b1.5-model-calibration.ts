@@ -25,7 +25,7 @@ import {
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
-export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v7";
+export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v8";
 export const B15_REQUIRED_NODE_VERSION = "v22.23.1";
 export const B15_REQUIRED_CORPUS_SHA256 =
   "6d3115d362c762f9f6ba1235ca897230405f07834235173b940181d5765d72f3";
@@ -91,6 +91,12 @@ const ARTIFACT_RECORD_KEYS = [
   "timeout",
   "validationStage",
   "validationFieldPaths",
+  "providerRequestStartAt",
+  "firstByteAt",
+  "firstTokenAt",
+  "responseCompletedAt",
+  "abortedAt",
+  "streamDurationMs",
   "contentPresent",
   "contentLength",
   "finishReason",
@@ -221,6 +227,12 @@ export interface B15InternalCall {
   runtimeSource: B15Source | null;
   modelStatus: B15ModelStatus | null;
   modelLatencyMs: number | null;
+  providerRequestStartAt: number | null;
+  firstByteAt: number | null;
+  firstTokenAt: number | null;
+  responseCompletedAt: number | null;
+  abortedAt: number | null;
+  streamDurationMs: number | null;
   contentPresent: boolean | null;
   contentLength: number | null;
   validationStage: B15ValidationStage | null;
@@ -290,6 +302,12 @@ export interface B15ArtifactRecord {
   timeout: boolean;
   validationStage: B15ValidationStage | null;
   validationFieldPaths: string[];
+  providerRequestStartAt: number | null;
+  firstByteAt: number | null;
+  firstTokenAt: number | null;
+  responseCompletedAt: number | null;
+  abortedAt: number | null;
+  streamDurationMs: number | null;
   contentPresent: boolean | null;
   contentLength: number | null;
   finishReason: B15FinishReason | null;
@@ -576,6 +594,12 @@ function callFromTransport(
     runtimeSource: null,
     modelStatus: null,
     modelLatencyMs: null,
+    providerRequestStartAt: null,
+    firstByteAt: null,
+    firstTokenAt: null,
+    responseCompletedAt: null,
+    abortedAt: null,
+    streamDurationMs: null,
     contentPresent: null,
     contentLength: null,
     validationStage: null,
@@ -839,6 +863,12 @@ function mergeRuntimeLogs(
       runtimeSource: runtime.source === "none" ? null : runtime.source,
       modelStatus: runtime.modelStatus,
       modelLatencyMs: runtime.modelLatencyMs,
+      providerRequestStartAt: runtime.providerRequestStartAt ?? null,
+      firstByteAt: runtime.firstByteAt ?? null,
+      firstTokenAt: runtime.firstTokenAt ?? null,
+      responseCompletedAt: runtime.responseCompletedAt ?? null,
+      abortedAt: runtime.abortedAt ?? null,
+      streamDurationMs: runtime.streamDurationMs ?? null,
       contentPresent: runtime.contentPresent ?? null,
       contentLength: runtime.contentLength ?? null,
       validationStage: runtime.validationStage,
@@ -989,6 +1019,12 @@ function artifactRecord(call: B15InternalCall): B15ArtifactRecord {
           /^\$(?:\.[A-Za-z_][A-Za-z0-9_]*|\[\d+\])*$/.test(path),
       )
       .slice(0, 20),
+    providerRequestStartAt: call.providerRequestStartAt,
+    firstByteAt: call.firstByteAt,
+    firstTokenAt: call.firstTokenAt,
+    responseCompletedAt: call.responseCompletedAt,
+    abortedAt: call.abortedAt,
+    streamDurationMs: call.streamDurationMs,
     contentPresent: call.contentPresent,
     contentLength: call.contentLength,
     finishReason: call.finishReason,
