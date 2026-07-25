@@ -15,6 +15,10 @@ import {
   buildContentDraftPrompts,
   CONTENT_DRAFT_MAX_TOKENS,
 } from "../lib/ai/content-draft-prompt.ts";
+import {
+  analyzeJsonParseFailure,
+  cleanModelJson,
+} from "../lib/ai/json.ts";
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
 import { normalizeDiagnosticModelOutput } from "../lib/ai/diagnostic-output.ts";
 import { normalizePatchModelOutput } from "../lib/ai/patch-output.ts";
@@ -148,6 +152,63 @@ assert.match(modelAdapterSource, /response_format:\s*\{ type: "json_object" \}/)
 assert.doesNotMatch(modelAdapterSource, /json_schema/);
 assert.equal(normalizeGeoModelFinishReason("length"), "length");
 assert.equal(normalizeGeoModelFinishReason("provider-specific"), "unknown");
+
+const jsonParseSensitiveSentinel = "JSON_PARSE_SENTINEL_MUST_NOT_PERSIST";
+const fencedInvalidJson = `  \`\`\`json
+Here is the JSON:
+{"recommendation":"${jsonParseSensitiveSentinel}",}
+{"second":true}
+\`\`\`  `;
+let fencedParseError: unknown;
+try {
+  JSON.parse(cleanModelJson(fencedInvalidJson));
+} catch (error) {
+  fencedParseError = error;
+}
+const fencedParseTelemetry = analyzeJsonParseFailure(
+  fencedInvalidJson,
+  fencedParseError,
+);
+assert.deepEqual(fencedParseTelemetry, {
+  responseLength: fencedInvalidJson.length,
+  trimmedLength: fencedInvalidJson.trim().length,
+  firstCharType: "backtick",
+  lastCharType: "backtick",
+  startsWithCodeFence: true,
+  endsWithCodeFence: true,
+  parserErrorName: "SyntaxError",
+  parserErrorPosition:
+    typeof fencedParseTelemetry.parserErrorPosition === "number"
+      ? fencedParseTelemetry.parserErrorPosition
+      : null,
+  containsMultipleTopLevelValues: true,
+  hasLeadingNonWhitespaceText: true,
+  hasTrailingNonWhitespaceText: false,
+});
+assert.equal(typeof fencedParseTelemetry.parserErrorPosition, "number");
+assert.doesNotMatch(
+  JSON.stringify(fencedParseTelemetry),
+  new RegExp(jsonParseSensitiveSentinel),
+);
+const trailingTextInput = '{"valid":true} trailing text';
+let trailingTextError: unknown;
+try {
+  JSON.parse(trailingTextInput);
+} catch (error) {
+  trailingTextError = error;
+}
+const trailingTextTelemetry = analyzeJsonParseFailure(
+  trailingTextInput,
+  trailingTextError,
+);
+assert.equal(trailingTextTelemetry.hasLeadingNonWhitespaceText, false);
+assert.equal(trailingTextTelemetry.hasTrailingNonWhitespaceText, true);
+assert.equal(trailingTextTelemetry.containsMultipleTopLevelValues, false);
+assert.equal(
+  analyzeJsonParseFailure("", new SyntaxError("Unexpected end of JSON input"))
+    .firstCharType,
+  "none",
+);
 
 const normalizedHash = await createAnalysisHash({
   title: "  测试标题  ",
@@ -1122,6 +1183,17 @@ const sensitiveB1PipelineRecord = {
       index === 5 ? "schema_validation_failed" : null,
     validationFieldPaths: index === 5 ? ["$.actions[0].type"] : [],
     validationActionTypes: index === 5 ? ["faq", "unknown"] : [],
+    responseLength: null,
+    trimmedLength: null,
+    firstCharType: null,
+    lastCharType: null,
+    startsWithCodeFence: null,
+    endsWithCodeFence: null,
+    parserErrorName: null,
+    parserErrorPosition: null,
+    containsMultipleTopLevelValues: null,
+    hasLeadingNonWhitespaceText: null,
+    hasTrailingNonWhitespaceText: null,
     modelPayload: b1SensitiveSentinels[3],
     fullResponse: b1SensitiveSentinels[4],
     validationIssueMessage: b1SensitiveSentinels[1],
@@ -1173,26 +1245,37 @@ for (const request of b1CheckpointArtifact.records[0].requests) {
   assert.deepEqual(Object.keys(request).sort(), [
     "abortedAt",
     "completionTokens",
+    "containsMultipleTopLevelValues",
     "contentLength",
     "contentPresent",
     "durationMs",
+    "endsWithCodeFence",
     "errorClassification",
     "finishReason",
     "firstByteAt",
+    "firstCharType",
     "firstTokenAt",
+    "hasLeadingNonWhitespaceText",
+    "hasTrailingNonWhitespaceText",
     "httpStatus",
+    "lastCharType",
     "modelLatencyMs",
     "modelStatus",
+    "parserErrorName",
+    "parserErrorPosition",
     "promptTokens",
     "providerRequestStartAt",
     "reasoningTokens",
     "requestId",
     "responseCompletedAt",
+    "responseLength",
     "route",
     "runtimeLogStatus",
     "source",
+    "startsWithCodeFence",
     "streamDurationMs",
     "totalTokens",
+    "trimmedLength",
     "validationActionTypes",
     "validationFailureClassification",
     "validationFieldPaths",
@@ -1291,28 +1374,26 @@ try {
 }
 
 const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
-  stage: "schema_validation",
-  issueCount: 3,
-  failureClassification: "required_field_missing",
+  stage: "json_parse",
+  issueCount: 1,
+  failureClassification: "json_parse_failed",
   fieldPaths: [
-    ["actions", 0, "type"],
-    ["actions", 1, "evidence", "quote"],
+    [],
     ["invalid-segment", b1SensitiveSentinels[0]],
   ],
   actionTypes: ["faq", b1SensitiveSentinels[1], 42],
+  ...fencedParseTelemetry,
   prompt: b1SensitiveSentinels[1],
   evidence: b1SensitiveSentinels[2],
   response: b1SensitiveSentinels[4],
 });
 assert.deepEqual(sanitizedValidationTelemetry, {
-  validationStage: "schema_validation",
-  validationIssueCount: 3,
-  validationFailureClassification: "required_field_missing",
-  validationFieldPaths: [
-    "$.actions[0].type",
-    "$.actions[1].evidence.quote",
-  ],
+  validationStage: "json_parse",
+  validationIssueCount: 1,
+  validationFailureClassification: "json_parse_failed",
+  validationFieldPaths: ["$"],
   validationActionTypes: ["faq", "unknown", "non-string"],
+  ...fencedParseTelemetry,
 });
 assert.doesNotThrow(() =>
   markGeoValidationTelemetry({
@@ -1353,11 +1434,12 @@ const b1RuntimeLog = parseB1RuntimeLogMessage(
     completionTokens: 1_200,
     reasoningTokens: 1_100,
     totalTokens: 2_200,
-    validationStage: "schema_validation",
-    validationIssueCount: 2,
-    validationFailureClassification: "required_field_missing",
-    validationFieldPaths: ["$.actions[0].type"],
-    validationActionTypes: ["faq", "unknown"],
+    validationStage: "json_parse",
+    validationIssueCount: 1,
+    validationFailureClassification: "json_parse_failed",
+    validationFieldPaths: ["$"],
+    validationActionTypes: [],
+    ...fencedParseTelemetry,
     prompt: b1SensitiveSentinels[1],
     evidence: b1SensitiveSentinels[2],
     response: b1SensitiveSentinels[4],
@@ -1384,11 +1466,12 @@ assert.deepEqual(b1RuntimeLog, {
   reasoningTokens: 1_100,
   totalTokens: 2_200,
   durationMs: 1_234,
-  validationStage: "schema_validation",
-  validationIssueCount: 2,
-  validationFailureClassification: "required_field_missing",
-  validationFieldPaths: ["$.actions[0].type"],
-  validationActionTypes: ["faq", "unknown"],
+  validationStage: "json_parse",
+  validationIssueCount: 1,
+  validationFailureClassification: "json_parse_failed",
+  validationFieldPaths: ["$"],
+  validationActionTypes: [],
+  ...fencedParseTelemetry,
 });
 const serializedB1RuntimeLog = JSON.stringify(b1RuntimeLog);
 for (const sentinel of b1SensitiveSentinels) {
@@ -1824,24 +1907,35 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
     assert.deepEqual(Object.keys(record).sort(), [
       "abortedAt",
       "completionTokens",
+      "containsMultipleTopLevelValues",
       "contentLength",
       "contentPresent",
       "durationMs",
+      "endsWithCodeFence",
       "finishReason",
       "firstByteAt",
+      "firstCharType",
       "firstTokenAt",
+      "hasLeadingNonWhitespaceText",
+      "hasTrailingNonWhitespaceText",
+      "lastCharType",
       "modelLatencyMs",
       "modelStatus",
+      "parserErrorName",
+      "parserErrorPosition",
       "promptTokens",
       "providerRequestStartAt",
       "reasoningTokens",
       "requestId",
       "responseCompletedAt",
+      "responseLength",
       "route",
       "source",
+      "startsWithCodeFence",
       "status",
       "streamDurationMs",
       "totalTokens",
+      "trimmedLength",
       "validationActionTypes",
       "validationFailureClassification",
       "validationFieldPaths",
@@ -2865,6 +2959,17 @@ function createB15MockRuntimeCollector(
       validationFailureClassification: null,
       validationFieldPaths: [],
       validationActionTypes: [],
+      responseLength: null,
+      trimmedLength: null,
+      firstCharType: null,
+      lastCharType: null,
+      startsWithCodeFence: null,
+      endsWithCodeFence: null,
+      parserErrorName: null,
+      parserErrorPosition: null,
+      containsMultipleTopLevelValues: null,
+      hasLeadingNonWhitespaceText: null,
+      hasTrailingNonWhitespaceText: null,
       ...recordOverrides,
     });
     statuses.set(key, "matched");
@@ -2976,22 +3081,33 @@ for (const record of passingB15.artifact.records) {
   assert.deepEqual(Object.keys(record).sort(), [
     "abortedAt",
     "completionTokens",
+    "containsMultipleTopLevelValues",
     "contentLength",
     "contentPresent",
+    "endsWithCodeFence",
     "finishReason",
     "firstByteAt",
+    "firstCharType",
     "firstTokenAt",
+    "hasLeadingNonWhitespaceText",
+    "hasTrailingNonWhitespaceText",
+    "lastCharType",
     "latencyMs",
     "modelStatus",
+    "parserErrorName",
+    "parserErrorPosition",
     "promptTokens",
     "providerRequestStartAt",
     "reasoningTokens",
     "requestId",
     "responseCompletedAt",
+    "responseLength",
     "route",
+    "startsWithCodeFence",
     "streamDurationMs",
     "timeout",
     "totalTokens",
+    "trimmedLength",
     "validationFieldPaths",
     "validationStage",
   ]);
@@ -3001,6 +3117,17 @@ for (const record of passingB15.artifact.records) {
   assert.equal(typeof record.responseCompletedAt, "number");
   assert.equal(record.abortedAt, null);
   assert.equal(record.streamDurationMs, 50);
+  assert.equal(record.responseLength, null);
+  assert.equal(record.trimmedLength, null);
+  assert.equal(record.firstCharType, null);
+  assert.equal(record.lastCharType, null);
+  assert.equal(record.startsWithCodeFence, null);
+  assert.equal(record.endsWithCodeFence, null);
+  assert.equal(record.parserErrorName, null);
+  assert.equal(record.parserErrorPosition, null);
+  assert.equal(record.containsMultipleTopLevelValues, null);
+  assert.equal(record.hasLeadingNonWhitespaceText, null);
+  assert.equal(record.hasTrailingNonWhitespaceText, null);
   assert.equal(record.contentPresent, true);
   assert.equal(record.contentLength, 256);
   assert.equal(record.promptTokens, 200);

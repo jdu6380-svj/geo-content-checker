@@ -4,6 +4,14 @@ import { randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
 import type { NextRequest } from "next/server";
 
+import {
+  JSON_BOUNDARY_CHARACTER_TYPES,
+  JSON_PARSER_ERROR_NAMES,
+  type JsonBoundaryCharacterType,
+  type JsonParseFailureTelemetry,
+  type JsonParserErrorName,
+} from "../ai/json.ts";
+
 export type GeoResponseSource = "model" | "fallback" | "none";
 export type GeoModelStatus =
   | "not-requested"
@@ -71,7 +79,8 @@ type GeoValidationActionType =
   | "unknown"
   | "non-string";
 
-export interface GeoValidationTelemetryInput {
+export interface GeoValidationTelemetryInput
+  extends Partial<JsonParseFailureTelemetry> {
   stage: GeoValidationStage;
   issueCount: number;
   failureClassification?: GeoValidationFailureClassification;
@@ -85,6 +94,17 @@ export interface GeoValidationTelemetry {
   validationFailureClassification: GeoValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: GeoValidationActionType[];
+  responseLength?: number;
+  trimmedLength?: number;
+  firstCharType?: JsonBoundaryCharacterType;
+  lastCharType?: JsonBoundaryCharacterType;
+  startsWithCodeFence?: boolean;
+  endsWithCodeFence?: boolean;
+  parserErrorName?: JsonParserErrorName;
+  parserErrorPosition?: number | null;
+  containsMultipleTopLevelValues?: boolean;
+  hasLeadingNonWhitespaceText?: boolean;
+  hasTrailingNonWhitespaceText?: boolean;
 }
 
 interface GeoRequestContext {
@@ -113,6 +133,17 @@ interface GeoRequestContext {
   validationFailureClassification?: GeoValidationFailureClassification;
   validationFieldPaths?: string[];
   validationActionTypes?: GeoValidationActionType[];
+  responseLength?: number;
+  trimmedLength?: number;
+  firstCharType?: JsonBoundaryCharacterType;
+  lastCharType?: JsonBoundaryCharacterType;
+  startsWithCodeFence?: boolean;
+  endsWithCodeFence?: boolean;
+  parserErrorName?: JsonParserErrorName;
+  parserErrorPosition?: number | null;
+  containsMultipleTopLevelValues?: boolean;
+  hasLeadingNonWhitespaceText?: boolean;
+  hasTrailingNonWhitespaceText?: boolean;
 }
 
 type RouteHandler = (request: NextRequest) => Promise<Response>;
@@ -130,6 +161,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeProviderTokenCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function normalizeDiagnosticLength(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
     : undefined;
@@ -243,6 +280,30 @@ export function sanitizeGeoValidationTelemetry(
             )
           ? (value.failureClassification as GeoValidationFailureClassification)
           : null;
+    const responseLength = normalizeDiagnosticLength(value.responseLength);
+    const trimmedLength = normalizeDiagnosticLength(value.trimmedLength);
+    const parserErrorPosition =
+      value.parserErrorPosition === null
+        ? null
+        : normalizeDiagnosticLength(value.parserErrorPosition);
+    const firstCharType = JSON_BOUNDARY_CHARACTER_TYPES.includes(
+      value.firstCharType as JsonBoundaryCharacterType,
+    )
+      ? (value.firstCharType as JsonBoundaryCharacterType)
+      : undefined;
+    const lastCharType = JSON_BOUNDARY_CHARACTER_TYPES.includes(
+      value.lastCharType as JsonBoundaryCharacterType,
+    )
+      ? (value.lastCharType as JsonBoundaryCharacterType)
+      : undefined;
+    const parserErrorName = JSON_PARSER_ERROR_NAMES.includes(
+      value.parserErrorName as JsonParserErrorName,
+    )
+      ? (value.parserErrorName as JsonParserErrorName)
+      : undefined;
+    const hasJsonParseFailureTelemetry =
+      value.stage === "json_parse" &&
+      validationFailureClassification === "json_parse_failed";
 
     return {
       validationStage: value.stage as GeoValidationStage,
@@ -250,6 +311,53 @@ export function sanitizeGeoValidationTelemetry(
       validationFailureClassification,
       validationFieldPaths,
       validationActionTypes,
+      ...(!hasJsonParseFailureTelemetry || responseLength === undefined
+        ? {}
+        : { responseLength }),
+      ...(!hasJsonParseFailureTelemetry || trimmedLength === undefined
+        ? {}
+        : { trimmedLength }),
+      ...(!hasJsonParseFailureTelemetry || firstCharType === undefined
+        ? {}
+        : { firstCharType }),
+      ...(!hasJsonParseFailureTelemetry || lastCharType === undefined
+        ? {}
+        : { lastCharType }),
+      ...(!hasJsonParseFailureTelemetry ||
+      typeof value.startsWithCodeFence !== "boolean"
+        ? {}
+        : { startsWithCodeFence: value.startsWithCodeFence }),
+      ...(!hasJsonParseFailureTelemetry ||
+      typeof value.endsWithCodeFence !== "boolean"
+        ? {}
+        : { endsWithCodeFence: value.endsWithCodeFence }),
+      ...(!hasJsonParseFailureTelemetry || parserErrorName === undefined
+        ? {}
+        : { parserErrorName }),
+      ...(!hasJsonParseFailureTelemetry || parserErrorPosition === undefined
+        ? {}
+        : { parserErrorPosition }),
+      ...(!hasJsonParseFailureTelemetry ||
+      typeof value.containsMultipleTopLevelValues !== "boolean"
+        ? {}
+        : {
+            containsMultipleTopLevelValues:
+              value.containsMultipleTopLevelValues,
+          }),
+      ...(!hasJsonParseFailureTelemetry ||
+      typeof value.hasLeadingNonWhitespaceText !== "boolean"
+        ? {}
+        : {
+            hasLeadingNonWhitespaceText:
+              value.hasLeadingNonWhitespaceText,
+          }),
+      ...(!hasJsonParseFailureTelemetry ||
+      typeof value.hasTrailingNonWhitespaceText !== "boolean"
+        ? {}
+        : {
+            hasTrailingNonWhitespaceText:
+              value.hasTrailingNonWhitespaceText,
+          }),
     };
   } catch {
     return null;
@@ -307,6 +415,48 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
               }),
           validationFieldPaths: context.validationFieldPaths,
           validationActionTypes: context.validationActionTypes,
+          ...(context.responseLength === undefined
+            ? {}
+            : { responseLength: context.responseLength }),
+          ...(context.trimmedLength === undefined
+            ? {}
+            : { trimmedLength: context.trimmedLength }),
+          ...(context.firstCharType === undefined
+            ? {}
+            : { firstCharType: context.firstCharType }),
+          ...(context.lastCharType === undefined
+            ? {}
+            : { lastCharType: context.lastCharType }),
+          ...(context.startsWithCodeFence === undefined
+            ? {}
+            : { startsWithCodeFence: context.startsWithCodeFence }),
+          ...(context.endsWithCodeFence === undefined
+            ? {}
+            : { endsWithCodeFence: context.endsWithCodeFence }),
+          ...(context.parserErrorName === undefined
+            ? {}
+            : { parserErrorName: context.parserErrorName }),
+          ...(context.parserErrorPosition === undefined
+            ? {}
+            : { parserErrorPosition: context.parserErrorPosition }),
+          ...(context.containsMultipleTopLevelValues === undefined
+            ? {}
+            : {
+                containsMultipleTopLevelValues:
+                  context.containsMultipleTopLevelValues,
+              }),
+          ...(context.hasLeadingNonWhitespaceText === undefined
+            ? {}
+            : {
+                hasLeadingNonWhitespaceText:
+                  context.hasLeadingNonWhitespaceText,
+              }),
+          ...(context.hasTrailingNonWhitespaceText === undefined
+            ? {}
+            : {
+                hasTrailingNonWhitespaceText:
+                  context.hasTrailingNonWhitespaceText,
+              }),
         }),
   };
   const serialized = JSON.stringify(event);
@@ -379,6 +529,42 @@ export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput):
     }
     context.validationFieldPaths = telemetry.validationFieldPaths;
     context.validationActionTypes = telemetry.validationActionTypes;
+    if (telemetry.responseLength !== undefined) {
+      context.responseLength = telemetry.responseLength;
+    }
+    if (telemetry.trimmedLength !== undefined) {
+      context.trimmedLength = telemetry.trimmedLength;
+    }
+    if (telemetry.firstCharType !== undefined) {
+      context.firstCharType = telemetry.firstCharType;
+    }
+    if (telemetry.lastCharType !== undefined) {
+      context.lastCharType = telemetry.lastCharType;
+    }
+    if (telemetry.startsWithCodeFence !== undefined) {
+      context.startsWithCodeFence = telemetry.startsWithCodeFence;
+    }
+    if (telemetry.endsWithCodeFence !== undefined) {
+      context.endsWithCodeFence = telemetry.endsWithCodeFence;
+    }
+    if (telemetry.parserErrorName !== undefined) {
+      context.parserErrorName = telemetry.parserErrorName;
+    }
+    if (telemetry.parserErrorPosition !== undefined) {
+      context.parserErrorPosition = telemetry.parserErrorPosition;
+    }
+    if (telemetry.containsMultipleTopLevelValues !== undefined) {
+      context.containsMultipleTopLevelValues =
+        telemetry.containsMultipleTopLevelValues;
+    }
+    if (telemetry.hasLeadingNonWhitespaceText !== undefined) {
+      context.hasLeadingNonWhitespaceText =
+        telemetry.hasLeadingNonWhitespaceText;
+    }
+    if (telemetry.hasTrailingNonWhitespaceText !== undefined) {
+      context.hasTrailingNonWhitespaceText =
+        telemetry.hasTrailingNonWhitespaceText;
+    }
   } catch {
     // Validation telemetry must never affect the request path.
   }

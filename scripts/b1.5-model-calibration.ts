@@ -3,6 +3,10 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import type {
+  JsonBoundaryCharacterType,
+  JsonParserErrorName,
+} from "../lib/ai/json.ts";
 import {
   createNumberedParagraphs,
   requireB1RuntimeLogCollectorReady,
@@ -25,7 +29,7 @@ import {
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
-export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v8";
+export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v9";
 export const B15_REQUIRED_NODE_VERSION = "v22.23.1";
 export const B15_REQUIRED_CORPUS_SHA256 =
   "6d3115d362c762f9f6ba1235ca897230405f07834235173b940181d5765d72f3";
@@ -91,6 +95,17 @@ const ARTIFACT_RECORD_KEYS = [
   "timeout",
   "validationStage",
   "validationFieldPaths",
+  "responseLength",
+  "trimmedLength",
+  "firstCharType",
+  "lastCharType",
+  "startsWithCodeFence",
+  "endsWithCodeFence",
+  "parserErrorName",
+  "parserErrorPosition",
+  "containsMultipleTopLevelValues",
+  "hasLeadingNonWhitespaceText",
+  "hasTrailingNonWhitespaceText",
   "providerRequestStartAt",
   "firstByteAt",
   "firstTokenAt",
@@ -238,6 +253,17 @@ export interface B15InternalCall {
   validationStage: B15ValidationStage | null;
   validationFieldPaths: string[];
   validationFailureClassification: string | null;
+  responseLength: number | null;
+  trimmedLength: number | null;
+  firstCharType: JsonBoundaryCharacterType | null;
+  lastCharType: JsonBoundaryCharacterType | null;
+  startsWithCodeFence: boolean | null;
+  endsWithCodeFence: boolean | null;
+  parserErrorName: JsonParserErrorName | null;
+  parserErrorPosition: number | null;
+  containsMultipleTopLevelValues: boolean | null;
+  hasLeadingNonWhitespaceText: boolean | null;
+  hasTrailingNonWhitespaceText: boolean | null;
   finishReason: B15FinishReason | null;
   promptTokens: number | null;
   completionTokens: number | null;
@@ -302,6 +328,17 @@ export interface B15ArtifactRecord {
   timeout: boolean;
   validationStage: B15ValidationStage | null;
   validationFieldPaths: string[];
+  responseLength: number | null;
+  trimmedLength: number | null;
+  firstCharType: JsonBoundaryCharacterType | null;
+  lastCharType: JsonBoundaryCharacterType | null;
+  startsWithCodeFence: boolean | null;
+  endsWithCodeFence: boolean | null;
+  parserErrorName: JsonParserErrorName | null;
+  parserErrorPosition: number | null;
+  containsMultipleTopLevelValues: boolean | null;
+  hasLeadingNonWhitespaceText: boolean | null;
+  hasTrailingNonWhitespaceText: boolean | null;
   providerRequestStartAt: number | null;
   firstByteAt: number | null;
   firstTokenAt: number | null;
@@ -605,6 +642,17 @@ function callFromTransport(
     validationStage: null,
     validationFieldPaths: [],
     validationFailureClassification: null,
+    responseLength: null,
+    trimmedLength: null,
+    firstCharType: null,
+    lastCharType: null,
+    startsWithCodeFence: null,
+    endsWithCodeFence: null,
+    parserErrorName: null,
+    parserErrorPosition: null,
+    containsMultipleTopLevelValues: null,
+    hasLeadingNonWhitespaceText: null,
+    hasTrailingNonWhitespaceText: null,
     finishReason: null,
     promptTokens: null,
     completionTokens: null,
@@ -874,6 +922,20 @@ function mergeRuntimeLogs(
       validationStage: runtime.validationStage,
       validationFieldPaths: runtime.validationFieldPaths,
       validationFailureClassification: runtime.validationFailureClassification,
+      responseLength: runtime.responseLength ?? null,
+      trimmedLength: runtime.trimmedLength ?? null,
+      firstCharType: runtime.firstCharType ?? null,
+      lastCharType: runtime.lastCharType ?? null,
+      startsWithCodeFence: runtime.startsWithCodeFence ?? null,
+      endsWithCodeFence: runtime.endsWithCodeFence ?? null,
+      parserErrorName: runtime.parserErrorName ?? null,
+      parserErrorPosition: runtime.parserErrorPosition ?? null,
+      containsMultipleTopLevelValues:
+        runtime.containsMultipleTopLevelValues ?? null,
+      hasLeadingNonWhitespaceText:
+        runtime.hasLeadingNonWhitespaceText ?? null,
+      hasTrailingNonWhitespaceText:
+        runtime.hasTrailingNonWhitespaceText ?? null,
       finishReason: runtime.finishReason,
       promptTokens: runtime.promptTokens ?? null,
       completionTokens: runtime.completionTokens,
@@ -1019,6 +1081,17 @@ function artifactRecord(call: B15InternalCall): B15ArtifactRecord {
           /^\$(?:\.[A-Za-z_][A-Za-z0-9_]*|\[\d+\])*$/.test(path),
       )
       .slice(0, 20),
+    responseLength: call.responseLength,
+    trimmedLength: call.trimmedLength,
+    firstCharType: call.firstCharType,
+    lastCharType: call.lastCharType,
+    startsWithCodeFence: call.startsWithCodeFence,
+    endsWithCodeFence: call.endsWithCodeFence,
+    parserErrorName: call.parserErrorName,
+    parserErrorPosition: call.parserErrorPosition,
+    containsMultipleTopLevelValues: call.containsMultipleTopLevelValues,
+    hasLeadingNonWhitespaceText: call.hasLeadingNonWhitespaceText,
+    hasTrailingNonWhitespaceText: call.hasTrailingNonWhitespaceText,
     providerRequestStartAt: call.providerRequestStartAt,
     firstByteAt: call.firstByteAt,
     firstTokenAt: call.firstTokenAt,

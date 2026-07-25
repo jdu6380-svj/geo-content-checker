@@ -4,6 +4,12 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
+  JSON_BOUNDARY_CHARACTER_TYPES,
+  JSON_PARSER_ERROR_NAMES,
+  type JsonBoundaryCharacterType,
+  type JsonParserErrorName,
+} from "../lib/ai/json.ts";
+import {
   isVercelDeploymentProtectionRedirect,
   normalizePreviewUrl,
   resolveAutomationBypassSecret,
@@ -46,7 +52,7 @@ export const B1_MODEL_CALLS_PER_PIPELINE = B1_PIPELINE_OPERATIONS.length;
 export const B1_STAGE_1_ARTICLE_COUNT = 10;
 export const B1_STAGE_2_ARTICLE_COUNT = 9;
 export const B1_DEFAULT_STAGE_2_ROUNDS = 2;
-export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v5";
+export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v6";
 
 const B1_MODEL_STATUSES = [
   "not-requested",
@@ -236,6 +242,17 @@ export interface B1CallRecord {
   validationFailureClassification?: B1ValidationFailureClassification | null;
   validationFieldPaths?: string[];
   validationActionTypes?: B1ValidationActionType[];
+  responseLength?: number | null;
+  trimmedLength?: number | null;
+  firstCharType?: JsonBoundaryCharacterType | null;
+  lastCharType?: JsonBoundaryCharacterType | null;
+  startsWithCodeFence?: boolean | null;
+  endsWithCodeFence?: boolean | null;
+  parserErrorName?: JsonParserErrorName | null;
+  parserErrorPosition?: number | null;
+  containsMultipleTopLevelValues?: boolean | null;
+  hasLeadingNonWhitespaceText?: boolean | null;
+  hasTrailingNonWhitespaceText?: boolean | null;
 }
 
 export interface B1PipelineRecord {
@@ -308,6 +325,17 @@ interface B1PersistedCallRecord {
   validationFailureClassification: B1ValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: B1ValidationActionType[];
+  responseLength: number | null;
+  trimmedLength: number | null;
+  firstCharType: JsonBoundaryCharacterType | null;
+  lastCharType: JsonBoundaryCharacterType | null;
+  startsWithCodeFence: boolean | null;
+  endsWithCodeFence: boolean | null;
+  parserErrorName: JsonParserErrorName | null;
+  parserErrorPosition: number | null;
+  containsMultipleTopLevelValues: boolean | null;
+  hasLeadingNonWhitespaceText: boolean | null;
+  hasTrailingNonWhitespaceText: boolean | null;
 }
 
 interface B1PersistedPipelineRecord {
@@ -352,6 +380,17 @@ export interface B1RuntimeLogRecord {
   validationFailureClassification: B1ValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: B1ValidationActionType[];
+  responseLength?: number | null;
+  trimmedLength?: number | null;
+  firstCharType?: JsonBoundaryCharacterType | null;
+  lastCharType?: JsonBoundaryCharacterType | null;
+  startsWithCodeFence?: boolean | null;
+  endsWithCodeFence?: boolean | null;
+  parserErrorName?: JsonParserErrorName | null;
+  parserErrorPosition?: number | null;
+  containsMultipleTopLevelValues?: boolean | null;
+  hasLeadingNonWhitespaceText?: boolean | null;
+  hasTrailingNonWhitespaceText?: boolean | null;
 }
 
 export interface B1RuntimeLogConfig {
@@ -545,6 +584,18 @@ function normalizeTokenCount(value: unknown): number | null {
 
 function normalizeTelemetryBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
+}
+
+function normalizeJsonBoundaryCharacterType(
+  value: unknown,
+): JsonBoundaryCharacterType | null {
+  return isOneOf(value, JSON_BOUNDARY_CHARACTER_TYPES) ? value : null;
+}
+
+function normalizeJsonParserErrorName(
+  value: unknown,
+): JsonParserErrorName | null {
+  return isOneOf(value, JSON_PARSER_ERROR_NAMES) ? value : null;
 }
 
 function normalizeRuntimeLogStatus(value: unknown): B1RuntimeLogStatus | null {
@@ -1178,6 +1229,39 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
       : null,
     validationFieldPaths: hasValidationTelemetry ? validationFieldPaths : [],
     validationActionTypes: hasValidationTelemetry ? validationActionTypes : [],
+    responseLength: hasValidationTelemetry
+      ? normalizeTokenCount(record.responseLength)
+      : null,
+    trimmedLength: hasValidationTelemetry
+      ? normalizeTokenCount(record.trimmedLength)
+      : null,
+    firstCharType: hasValidationTelemetry
+      ? normalizeJsonBoundaryCharacterType(record.firstCharType)
+      : null,
+    lastCharType: hasValidationTelemetry
+      ? normalizeJsonBoundaryCharacterType(record.lastCharType)
+      : null,
+    startsWithCodeFence: hasValidationTelemetry
+      ? normalizeTelemetryBoolean(record.startsWithCodeFence)
+      : null,
+    endsWithCodeFence: hasValidationTelemetry
+      ? normalizeTelemetryBoolean(record.endsWithCodeFence)
+      : null,
+    parserErrorName: hasValidationTelemetry
+      ? normalizeJsonParserErrorName(record.parserErrorName)
+      : null,
+    parserErrorPosition: hasValidationTelemetry
+      ? normalizeTokenCount(record.parserErrorPosition)
+      : null,
+    containsMultipleTopLevelValues: hasValidationTelemetry
+      ? normalizeTelemetryBoolean(record.containsMultipleTopLevelValues)
+      : null,
+    hasLeadingNonWhitespaceText: hasValidationTelemetry
+      ? normalizeTelemetryBoolean(record.hasLeadingNonWhitespaceText)
+      : null,
+    hasTrailingNonWhitespaceText: hasValidationTelemetry
+      ? normalizeTelemetryBoolean(record.hasTrailingNonWhitespaceText)
+      : null,
   };
   return {
     ...persisted,
@@ -1693,6 +1777,46 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     value.reasoningTokens === undefined ? null : normalizeTokenCount(value.reasoningTokens);
   const totalTokens =
     value.totalTokens === undefined ? null : normalizeTokenCount(value.totalTokens);
+  const responseLength =
+    value.responseLength === undefined ? null : normalizeTokenCount(value.responseLength);
+  const trimmedLength =
+    value.trimmedLength === undefined ? null : normalizeTokenCount(value.trimmedLength);
+  const firstCharType =
+    value.firstCharType === undefined
+      ? null
+      : normalizeJsonBoundaryCharacterType(value.firstCharType);
+  const lastCharType =
+    value.lastCharType === undefined
+      ? null
+      : normalizeJsonBoundaryCharacterType(value.lastCharType);
+  const startsWithCodeFence =
+    value.startsWithCodeFence === undefined
+      ? null
+      : normalizeTelemetryBoolean(value.startsWithCodeFence);
+  const endsWithCodeFence =
+    value.endsWithCodeFence === undefined
+      ? null
+      : normalizeTelemetryBoolean(value.endsWithCodeFence);
+  const parserErrorName =
+    value.parserErrorName === undefined
+      ? null
+      : normalizeJsonParserErrorName(value.parserErrorName);
+  const parserErrorPosition =
+    value.parserErrorPosition === undefined || value.parserErrorPosition === null
+      ? null
+      : normalizeTokenCount(value.parserErrorPosition);
+  const containsMultipleTopLevelValues =
+    value.containsMultipleTopLevelValues === undefined
+      ? null
+      : normalizeTelemetryBoolean(value.containsMultipleTopLevelValues);
+  const hasLeadingNonWhitespaceText =
+    value.hasLeadingNonWhitespaceText === undefined
+      ? null
+      : normalizeTelemetryBoolean(value.hasLeadingNonWhitespaceText);
+  const hasTrailingNonWhitespaceText =
+    value.hasTrailingNonWhitespaceText === undefined
+      ? null
+      : normalizeTelemetryBoolean(value.hasTrailingNonWhitespaceText);
   if (
     requestId === null ||
     typeof value.route !== "string" ||
@@ -1714,7 +1838,23 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     (value.promptTokens !== undefined && promptTokens === null) ||
     (value.completionTokens !== undefined && completionTokens === null) ||
     (value.reasoningTokens !== undefined && reasoningTokens === null) ||
-    (value.totalTokens !== undefined && totalTokens === null)
+    (value.totalTokens !== undefined && totalTokens === null) ||
+    (value.responseLength !== undefined && responseLength === null) ||
+    (value.trimmedLength !== undefined && trimmedLength === null) ||
+    (value.firstCharType !== undefined && firstCharType === null) ||
+    (value.lastCharType !== undefined && lastCharType === null) ||
+    (value.startsWithCodeFence !== undefined && startsWithCodeFence === null) ||
+    (value.endsWithCodeFence !== undefined && endsWithCodeFence === null) ||
+    (value.parserErrorName !== undefined && parserErrorName === null) ||
+    (value.parserErrorPosition !== undefined &&
+      value.parserErrorPosition !== null &&
+      parserErrorPosition === null) ||
+    (value.containsMultipleTopLevelValues !== undefined &&
+      containsMultipleTopLevelValues === null) ||
+    (value.hasLeadingNonWhitespaceText !== undefined &&
+      hasLeadingNonWhitespaceText === null) ||
+    (value.hasTrailingNonWhitespaceText !== undefined &&
+      hasTrailingNonWhitespaceText === null)
   ) {
     return null;
   }
@@ -1775,6 +1915,27 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
       : null,
     validationFieldPaths: hasValidValidationTelemetry ? validationFieldPaths : [],
     validationActionTypes: hasValidValidationTelemetry ? validationActionTypes : [],
+    responseLength: hasValidValidationTelemetry ? responseLength : null,
+    trimmedLength: hasValidValidationTelemetry ? trimmedLength : null,
+    firstCharType: hasValidValidationTelemetry ? firstCharType : null,
+    lastCharType: hasValidValidationTelemetry ? lastCharType : null,
+    startsWithCodeFence: hasValidValidationTelemetry
+      ? startsWithCodeFence
+      : null,
+    endsWithCodeFence: hasValidValidationTelemetry ? endsWithCodeFence : null,
+    parserErrorName: hasValidValidationTelemetry ? parserErrorName : null,
+    parserErrorPosition: hasValidValidationTelemetry
+      ? parserErrorPosition
+      : null,
+    containsMultipleTopLevelValues: hasValidValidationTelemetry
+      ? containsMultipleTopLevelValues
+      : null,
+    hasLeadingNonWhitespaceText: hasValidValidationTelemetry
+      ? hasLeadingNonWhitespaceText
+      : null,
+    hasTrailingNonWhitespaceText: hasValidValidationTelemetry
+      ? hasTrailingNonWhitespaceText
+      : null,
   };
 }
 
@@ -2771,6 +2932,20 @@ function applyRuntimeLogRecords(
       validationFailureClassification: runtime.validationFailureClassification,
       validationFieldPaths: runtime.validationFieldPaths,
       validationActionTypes: runtime.validationActionTypes,
+      responseLength: runtime.responseLength ?? null,
+      trimmedLength: runtime.trimmedLength ?? null,
+      firstCharType: runtime.firstCharType ?? null,
+      lastCharType: runtime.lastCharType ?? null,
+      startsWithCodeFence: runtime.startsWithCodeFence ?? null,
+      endsWithCodeFence: runtime.endsWithCodeFence ?? null,
+      parserErrorName: runtime.parserErrorName ?? null,
+      parserErrorPosition: runtime.parserErrorPosition ?? null,
+      containsMultipleTopLevelValues:
+        runtime.containsMultipleTopLevelValues ?? null,
+      hasLeadingNonWhitespaceText:
+        runtime.hasLeadingNonWhitespaceText ?? null,
+      hasTrailingNonWhitespaceText:
+        runtime.hasTrailingNonWhitespaceText ?? null,
     };
   });
 }
@@ -3094,6 +3269,17 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       "validationFailureClassification",
       "validationFieldPaths",
       "validationActionTypes",
+      "responseLength",
+      "trimmedLength",
+      "firstCharType",
+      "lastCharType",
+      "startsWithCodeFence",
+      "endsWithCodeFence",
+      "parserErrorName",
+      "parserErrorPosition",
+      "containsMultipleTopLevelValues",
+      "hasLeadingNonWhitespaceText",
+      "hasTrailingNonWhitespaceText",
     ]) ||
     value.route !== B1_OPERATION_ROUTES[operation]
   ) {
@@ -3153,6 +3339,46 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       : normalizeValidationFailureClassification(value.validationFailureClassification);
   const validationFieldPaths = normalizeValidationFieldPaths(value.validationFieldPaths);
   const validationActionTypes = normalizeValidationActionTypes(value.validationActionTypes);
+  const responseLength =
+    value.responseLength === null ? null : normalizeTokenCount(value.responseLength);
+  const trimmedLength =
+    value.trimmedLength === null ? null : normalizeTokenCount(value.trimmedLength);
+  const firstCharType =
+    value.firstCharType === null
+      ? null
+      : normalizeJsonBoundaryCharacterType(value.firstCharType);
+  const lastCharType =
+    value.lastCharType === null
+      ? null
+      : normalizeJsonBoundaryCharacterType(value.lastCharType);
+  const startsWithCodeFence =
+    value.startsWithCodeFence === null
+      ? null
+      : normalizeTelemetryBoolean(value.startsWithCodeFence);
+  const endsWithCodeFence =
+    value.endsWithCodeFence === null
+      ? null
+      : normalizeTelemetryBoolean(value.endsWithCodeFence);
+  const parserErrorName =
+    value.parserErrorName === null
+      ? null
+      : normalizeJsonParserErrorName(value.parserErrorName);
+  const parserErrorPosition =
+    value.parserErrorPosition === null
+      ? null
+      : normalizeTokenCount(value.parserErrorPosition);
+  const containsMultipleTopLevelValues =
+    value.containsMultipleTopLevelValues === null
+      ? null
+      : normalizeTelemetryBoolean(value.containsMultipleTopLevelValues);
+  const hasLeadingNonWhitespaceText =
+    value.hasLeadingNonWhitespaceText === null
+      ? null
+      : normalizeTelemetryBoolean(value.hasLeadingNonWhitespaceText);
+  const hasTrailingNonWhitespaceText =
+    value.hasTrailingNonWhitespaceText === null
+      ? null
+      : normalizeTelemetryBoolean(value.hasTrailingNonWhitespaceText);
   const errorClassification =
     value.errorClassification === null
       ? null
@@ -3178,6 +3404,20 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     (value.completionTokens !== null && completionTokens === null) ||
     (value.reasoningTokens !== null && reasoningTokens === null) ||
     (value.totalTokens !== null && totalTokens === null) ||
+    (value.responseLength !== null && responseLength === null) ||
+    (value.trimmedLength !== null && trimmedLength === null) ||
+    (value.firstCharType !== null && firstCharType === null) ||
+    (value.lastCharType !== null && lastCharType === null) ||
+    (value.startsWithCodeFence !== null && startsWithCodeFence === null) ||
+    (value.endsWithCodeFence !== null && endsWithCodeFence === null) ||
+    (value.parserErrorName !== null && parserErrorName === null) ||
+    (value.parserErrorPosition !== null && parserErrorPosition === null) ||
+    (value.containsMultipleTopLevelValues !== null &&
+      containsMultipleTopLevelValues === null) ||
+    (value.hasLeadingNonWhitespaceText !== null &&
+      hasLeadingNonWhitespaceText === null) ||
+    (value.hasTrailingNonWhitespaceText !== null &&
+      hasTrailingNonWhitespaceText === null) ||
     durationMs === null ||
     runtimeLogStatus === null ||
     validationFieldPaths === null ||
@@ -3220,6 +3460,17 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     validationFailureClassification,
     validationFieldPaths,
     validationActionTypes,
+    responseLength,
+    trimmedLength,
+    firstCharType,
+    lastCharType,
+    startsWithCodeFence,
+    endsWithCodeFence,
+    parserErrorName,
+    parserErrorPosition,
+    containsMultipleTopLevelValues,
+    hasLeadingNonWhitespaceText,
+    hasTrailingNonWhitespaceText,
   };
   return {
     operation,
@@ -3250,6 +3501,20 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     validationFailureClassification: persisted.validationFailureClassification,
     validationFieldPaths: persisted.validationFieldPaths,
     validationActionTypes: persisted.validationActionTypes,
+    responseLength: persisted.responseLength,
+    trimmedLength: persisted.trimmedLength,
+    firstCharType: persisted.firstCharType,
+    lastCharType: persisted.lastCharType,
+    startsWithCodeFence: persisted.startsWithCodeFence,
+    endsWithCodeFence: persisted.endsWithCodeFence,
+    parserErrorName: persisted.parserErrorName,
+    parserErrorPosition: persisted.parserErrorPosition,
+    containsMultipleTopLevelValues:
+      persisted.containsMultipleTopLevelValues,
+    hasLeadingNonWhitespaceText:
+      persisted.hasLeadingNonWhitespaceText,
+    hasTrailingNonWhitespaceText:
+      persisted.hasTrailingNonWhitespaceText,
   };
 }
 

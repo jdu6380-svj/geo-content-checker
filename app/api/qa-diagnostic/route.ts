@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { normalizeDiagnosticModelOutput } from "@/lib/ai/diagnostic-output";
+import { analyzeJsonParseFailure } from "@/lib/ai/json";
 import { callOpenAICompatibleModel, ModelCallError } from "@/lib/ai/openai-compatible";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
 import { validateDiagnosticEvidence } from "@/lib/geo/evidence";
@@ -170,6 +171,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           issueCount: 1,
           failureClassification: "json_parse_failed",
           fieldPaths: [[]],
+          ...analyzeJsonParseFailure(raw, error),
         });
         throw error;
       }
