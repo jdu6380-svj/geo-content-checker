@@ -25,7 +25,7 @@ import {
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
-export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v5";
+export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v6";
 export const B15_REQUIRED_NODE_VERSION = "v22.23.1";
 export const B15_REQUIRED_CORPUS_SHA256 =
   "6d3115d362c762f9f6ba1235ca897230405f07834235173b940181d5765d72f3";
@@ -112,6 +112,8 @@ const FORBIDDEN_ARTIFACT_KEYS = new Set([
 ]);
 const QUESTION_PREDICTION_BASELINE_PER_ROUND = 10;
 const CALL_DELAY_MS = 1_500;
+const RUNTIME_LOG_READINESS_TIMEOUT_MS = 15_000;
+const RUNTIME_LOG_RECORD_TIMEOUT_MS = 60_000;
 const INFRASTRUCTURE_ISSUE_CODES = [
   "analysis-session-unavailable",
   "artifact-integrity-failure",
@@ -122,6 +124,9 @@ const INFRASTRUCTURE_ISSUE_CODES = [
   "preview-drift-or-health-failure",
   "protection-blocked",
   "rate-limited",
+  "runtime-log-disconnected",
+  "runtime-log-not-ready",
+  "runtime-log-timeout",
   "runner-interrupted",
   "transport-route-mismatch",
   "unknown-infrastructure-failure",
@@ -144,6 +149,17 @@ type B15TransportOutcome =
   | "invalid-response"
   | "protection-blocked";
 type B15StopReason = "complete" | "module-gate" | "infrastructure";
+type B15InfrastructureIssueCode = (typeof INFRASTRUCTURE_ISSUE_CODES)[number];
+
+class B15RuntimeTelemetryFailure extends Error {
+  readonly issue: B15InfrastructureIssueCode;
+
+  constructor(issue: B15InfrastructureIssueCode) {
+    super(issue);
+    this.name = "B15RuntimeTelemetryFailure";
+    this.issue = issue;
+  }
+}
 
 export type B15ResultClassification = "PASS" | "BLOCKED" | "INCONCLUSIVE";
 
@@ -572,6 +588,25 @@ export async function runB15CalibrationFlow({
   const sessions: B15Session[] = [];
   const infrastructureIssues: string[] = [];
 
+  const requireCollectorConnection = async (timeoutMs: number): Promise<void> => {
+    const readiness = await runtimeLogCollector.waitForLiveConnection(timeoutMs);
+    if (readiness === "connected") return;
+    throw new B15RuntimeTelemetryFailure(
+      readiness === "timeout" ? "runtime-log-not-ready" : "runtime-log-disconnected",
+    );
+  };
+  const requireRuntimeRecord = async (call: B15InternalCall): Promise<void> => {
+    const result = await runtimeLogCollector.waitForRecord(
+      b1CollectorRecord(call),
+      RUNTIME_LOG_RECORD_TIMEOUT_MS,
+    );
+    if (result === "matched") return;
+    throw new B15RuntimeTelemetryFailure(
+      result === "collector-unavailable"
+        ? "runtime-log-disconnected"
+        : "runtime-log-timeout",
+    );
+  };
   const invoke = async (
     session: B15Session,
     module: B15Module,
@@ -580,9 +615,10 @@ export async function runB15CalibrationFlow({
     const route: B15Route = module === "diagnose"
       ? "/api/qa-diagnostic"
       : module === "scoring"
-        ? "/api/evaluate-scoring"
+      ? "/api/evaluate-scoring"
         : "/api/generate-patches";
     await wait(CALL_DELAY_MS);
+    await requireCollectorConnection(0);
     const result = await transport.request({
       route,
       method: "POST",
@@ -597,6 +633,8 @@ export async function runB15CalibrationFlow({
     return result;
   };
 
+  try {
+    await requireCollectorConnection(RUNTIME_LOG_READINESS_TIMEOUT_MS);
   for (const round of [1, 2] as const) {
     const roundCalls: B15InternalCall[] = [];
     for (const article of articles) {
@@ -644,6 +682,7 @@ export async function runB15CalibrationFlow({
           infrastructureIssues.push(result.outcome);
           return { calls, stopReason: "infrastructure", infrastructureIssues };
         }
+        await requireRuntimeRecord(call);
         if (result.source === "model") session.diagnostics.push(result.payload);
       }
     }
@@ -674,6 +713,7 @@ export async function runB15CalibrationFlow({
         infrastructureIssues.push(result.outcome);
         return { calls, stopReason: "infrastructure", infrastructureIssues };
       }
+      await requireRuntimeRecord(call);
     }
     if (roundCalls.length !== 10 || sourceModelCount(roundCalls) < 9) {
       return { calls, stopReason: "module-gate", infrastructureIssues };
@@ -719,6 +759,7 @@ export async function runB15CalibrationFlow({
       infrastructureIssues.push(result.outcome);
       return { calls, stopReason: "infrastructure", infrastructureIssues };
     }
+    await requireRuntimeRecord(call);
   }
   if (adviceCalls.length !== 20 || sourceModelCount(adviceCalls) < 18) {
     return { calls, stopReason: "module-gate", infrastructureIssues };
@@ -743,9 +784,16 @@ export async function runB15CalibrationFlow({
       infrastructureIssues.push(result.outcome);
       return { calls, stopReason: "infrastructure", infrastructureIssues };
     }
+    await requireRuntimeRecord(call);
   }
 
   return { calls, stopReason: "complete", infrastructureIssues };
+  } catch (error) {
+    if (!(error instanceof B15RuntimeTelemetryFailure)) throw error;
+    infrastructureIssues.push(error.issue);
+    runtimeLogCollector.close();
+    return { calls, stopReason: "infrastructure", infrastructureIssues };
+  }
 }
 
 function runtimeLogKey(requestId: string, route: string): string {
@@ -975,7 +1023,7 @@ export function buildB15CalibrationArtifact(
   const runtimeTelemetryComplete = calls.every(
     (call) =>
       call.requestId !== null &&
-      (call.runtimeLogStatus === "matched" || call.runtimeLogStatus === "delayed-ingestion") &&
+      call.runtimeLogStatus === "matched" &&
       call.modelStatus !== null &&
       call.runtimeHttpStatus === call.httpStatus &&
       call.runtimeSource === call.source &&
@@ -984,7 +1032,11 @@ export function buildB15CalibrationArtifact(
         call.modelStatus === "success" &&
         call.validationStage === null
       ),
-  );
+  ) &&
+    collection.collectorState.collectorDisconnectedAt === null &&
+    collection.collectorState.disconnectReason === null &&
+    collection.collectorState.matchedCount === calls.length &&
+    collection.collectorState.unmatchedCount === 0;
   const moduleGatePass =
     diagnoseRound1.pass &&
     diagnoseRound2.pass &&

@@ -60,6 +60,7 @@ import {
   B1_TELEMETRY_SCHEMA_VERSION,
   buildAnonymousB1Report,
   buildB1CheckpointArtifact,
+  buildB1RuntimeLogStreamUrl,
   contentDraftFactsArePreserved,
   contentDraftStructureIsPreserved,
   diagnosticEvidenceIsLiteral,
@@ -1418,6 +1419,14 @@ const delayedRuntimeConfig: B1RuntimeLogConfig = {
   teamId: "team_preview",
   token: "B1_SENTINEL_SECRET",
 };
+const runtimeLogStreamUrl = buildB1RuntimeLogStreamUrl(delayedRuntimeConfig);
+assert.equal(
+  runtimeLogStreamUrl.pathname,
+  `/v3/deployments/${delayedRuntimeConfig.deploymentId}/events`,
+);
+assert.equal(runtimeLogStreamUrl.searchParams.get("teamId"), delayedRuntimeConfig.teamId);
+assert.equal([...runtimeLogStreamUrl.searchParams.keys()].length, 1);
+assert.doesNotMatch(runtimeLogStreamUrl.href, /prj_preview|B1_SENTINEL_SECRET/);
 let delayedRuntimeClock = 100;
 let emitDelayedRuntimeRecord:
   | ((record: NonNullable<(typeof delayedRuntimeRecords)[number]>) => void)
@@ -1449,10 +1458,19 @@ const delayedRuntimeCollector = startB1RuntimeLogCollector(
 await delayedRuntimeReady;
 assert.equal(await delayedRuntimeCollector.waitForLiveConnection(10), "connected");
 for (const call of delayedRuntimeCalls) delayedRuntimeCollector.register(call);
+const exactRuntimeRecordWait = delayedRuntimeCollector.waitForRecord(
+  delayedRuntimeCalls[0],
+  100,
+);
 emitDelayedRuntimeRecord?.(delayedRuntimeRecords[0] as NonNullable<(typeof delayedRuntimeRecords)[number]>);
 delayedRuntimeClock = 200;
 emitDelayedRuntimeRecord?.(delayedRuntimeRecords[1] as NonNullable<(typeof delayedRuntimeRecords)[number]>);
 emitDelayedRuntimeRecord?.(delayedRuntimeRecords[2] as NonNullable<(typeof delayedRuntimeRecords)[number]>);
+assert.equal(await exactRuntimeRecordWait, "matched");
+assert.equal(
+  await delayedRuntimeCollector.waitForRecord(delayedRuntimeCalls[2], 0),
+  "timeout",
+);
 const delayedRuntimeCollection = await delayedRuntimeCollector.finish(150);
 assert.deepEqual([...delayedRuntimeCollection.statuses.values()], [
   "matched",
@@ -1465,6 +1483,11 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
   liveSuccessfulConnections: 1,
   liveInterruptions: 0,
   historicalBackfill: "complete",
+  collectorReadyAt: 100,
+  collectorDisconnectedAt: null,
+  disconnectReason: null,
+  matchedCount: 2,
+  unmatchedCount: 1,
 });
 for (const record of delayedRuntimeCollection.records.values()) {
     assert.deepEqual(Object.keys(record).sort(), [
@@ -1530,21 +1553,18 @@ const wrongRouteHistoricalRecord = parseB1RuntimeLogMessage(
 if (!historicalBackfillRecord || !wrongRouteHistoricalRecord) {
   throw new Error("Historical Runtime Log fixtures must be valid.");
 }
-let historicalStreamConnections = 0;
-let markSecondHistoricalConnection: (() => void) | undefined;
-const secondHistoricalConnection = new Promise<void>((resolvePromise) => {
-  markSecondHistoricalConnection = resolvePromise;
+let markHistoricalStreamReady: (() => void) | undefined;
+const historicalStreamReady = new Promise<void>((resolvePromise) => {
+  markHistoricalStreamReady = resolvePromise;
 });
 const historicalBackfillCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
     maxDrainMs: 0,
-    reconnectDelayMs: 0,
+    now: () => 300,
     stream: async (_config, signal, handlers) => {
       handlers.connected();
-      historicalStreamConnections += 1;
-      if (historicalStreamConnections === 1) return;
-      markSecondHistoricalConnection?.();
+      markHistoricalStreamReady?.();
       await new Promise<void>((resolvePromise) => {
         signal.addEventListener("abort", () => resolvePromise(), { once: true });
       });
@@ -1557,7 +1577,7 @@ const historicalBackfillCollector = startB1RuntimeLogCollector(
     },
   },
 );
-await secondHistoricalConnection;
+await historicalStreamReady;
 historicalBackfillCollector.register(historicalBackfillCall);
 const historicalBackfillCollection = await historicalBackfillCollector.finish();
 assert.deepEqual(
@@ -1569,10 +1589,15 @@ assert.equal(
   historicalBackfillCall.route,
 );
 assert.deepEqual(historicalBackfillCollection.collectorState, {
-  liveConnectionAttempts: 2,
-  liveSuccessfulConnections: 2,
-  liveInterruptions: 1,
+  liveConnectionAttempts: 1,
+  liveSuccessfulConnections: 1,
+  liveInterruptions: 0,
   historicalBackfill: "complete",
+  collectorReadyAt: 300,
+  collectorDisconnectedAt: null,
+  disconnectReason: null,
+  matchedCount: 1,
+  unmatchedCount: 0,
 });
 
 let delayedHistoryPollCount = 0;
@@ -1664,6 +1689,11 @@ assert.deepEqual(unavailableRuntimeCollection.collectorState, {
   liveSuccessfulConnections: 0,
   liveInterruptions: 0,
   historicalBackfill: "unavailable",
+  collectorReadyAt: null,
+  collectorDisconnectedAt: null,
+  disconnectReason: "config-unavailable",
+  matchedCount: 0,
+  unmatchedCount: 1,
 });
 
 const unconnectedRuntimeCollector = startB1RuntimeLogCollector(
@@ -1684,37 +1714,52 @@ await assert.rejects(
 unconnectedRuntimeCollector.close();
 assert.equal(await unavailableRuntimeCollector.waitForLiveConnection(10), "unavailable");
 
-let readinessStreamAttempts = 0;
-let markFirstReadinessConnection: (() => void) | undefined;
-let markSecondReadinessAttempt: (() => void) | undefined;
-const firstReadinessConnection = new Promise<void>((resolvePromise) => {
-  markFirstReadinessConnection = resolvePromise;
-});
-const secondReadinessAttempt = new Promise<void>((resolvePromise) => {
-  markSecondReadinessAttempt = resolvePromise;
+let interruptedRuntimeClock = 400;
+let markInterruptedRuntimeReady: (() => void) | undefined;
+let disconnectInterruptedRuntime: (() => void) | undefined;
+const interruptedRuntimeReady = new Promise<void>((resolvePromise) => {
+  markInterruptedRuntimeReady = resolvePromise;
 });
 const interruptedReadinessCollector = startB1RuntimeLogCollector(
   Promise.resolve(delayedRuntimeConfig),
   {
-    reconnectDelayMs: 0,
-    stream: async (_config, signal, handlers) => {
-      readinessStreamAttempts += 1;
-      if (readinessStreamAttempts === 1) {
-        handlers.connected();
-        markFirstReadinessConnection?.();
-        return;
-      }
-      markSecondReadinessAttempt?.();
+    maxDrainMs: 0,
+    now: () => interruptedRuntimeClock,
+    stream: async (_config, _signal, handlers) => {
+      handlers.connected();
+      markInterruptedRuntimeReady?.();
       await new Promise<void>((resolvePromise) => {
-        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+        disconnectInterruptedRuntime = resolvePromise;
       });
     },
   },
 );
-await firstReadinessConnection;
-await secondReadinessAttempt;
-assert.equal(await interruptedReadinessCollector.waitForLiveConnection(1), "timeout");
-interruptedReadinessCollector.close();
+await interruptedRuntimeReady;
+assert.equal(await interruptedReadinessCollector.waitForLiveConnection(10), "connected");
+interruptedReadinessCollector.register(historicalBackfillCall);
+const interruptedRecordWait = interruptedReadinessCollector.waitForRecord(
+  historicalBackfillCall,
+  100,
+);
+interruptedRuntimeClock = 450;
+disconnectInterruptedRuntime?.();
+assert.equal(await interruptedRecordWait, "collector-unavailable");
+const interruptedRuntimeCollection = await interruptedReadinessCollector.finish();
+assert.deepEqual(
+  [...interruptedRuntimeCollection.statuses.values()],
+  ["collector-unavailable"],
+);
+assert.deepEqual(interruptedRuntimeCollection.collectorState, {
+  liveConnectionAttempts: 1,
+  liveSuccessfulConnections: 1,
+  liveInterruptions: 1,
+  historicalBackfill: "unavailable",
+  collectorReadyAt: 400,
+  collectorDisconnectedAt: 450,
+  disconnectReason: "stream-ended",
+  matchedCount: 0,
+  unmatchedCount: 1,
+});
 
 let markHistoryFailureReady: (() => void) | undefined;
 const historyFailureReady = new Promise<void>((resolvePromise) => {
@@ -1728,6 +1773,7 @@ const historyFailureCollector = startB1RuntimeLogCollector(
     historyPollIntervalMs: 0,
     historyStablePollCount: 2,
     historyStabilityMs: 0,
+    now: () => 500,
     stream: async (_config, signal, handlers) => {
       handlers.connected();
       markHistoryFailureReady?.();
@@ -1745,7 +1791,7 @@ historyFailureCollector.register(historicalBackfillCall);
 const historyFailureCollection = await historyFailureCollector.finish();
 assert.deepEqual(
   [...historyFailureCollection.statuses.values()],
-  ["collector-unavailable"],
+  ["true-missing"],
 );
 assert.equal(historyFailureCollection.records.size, 0);
 assert.deepEqual(historyFailureCollection.collectorState, {
@@ -1753,6 +1799,11 @@ assert.deepEqual(historyFailureCollection.collectorState, {
   liveSuccessfulConnections: 1,
   liveInterruptions: 0,
   historicalBackfill: "unavailable",
+  collectorReadyAt: 500,
+  collectorDisconnectedAt: null,
+  disconnectReason: null,
+  matchedCount: 0,
+  unmatchedCount: 1,
 });
 assert.doesNotMatch(
   JSON.stringify(historyFailureCollection),
@@ -2053,66 +2104,98 @@ interface B15MockRuntimeDecision extends Partial<B1RuntimeLogRecord> {
 
 function createB15MockRuntimeCollector(
   override?: (call: B1CallRecord, index: number) => B15MockRuntimeDecision,
+  readiness: "connected" | "unavailable" | "timeout" = "connected",
 ): B1RuntimeLogCollector {
   const records = new Map<string, B1RuntimeLogRecord>();
   const statuses = new Map<string, B1RuntimeLogStatus>();
+  const registeredKeys = new Set<string>();
   let registered = 0;
+  let closed = false;
+  let disconnected = false;
+  const register = (call: B1CallRecord) => {
+    if (!call.requestId) return;
+    const key = `${call.requestId}\n${call.route}`;
+    if (registeredKeys.has(key)) return;
+    registeredKeys.add(key);
+    const index = registered;
+    registered += 1;
+    const decision = override?.(call, index) ?? {};
+    const { unavailable, ...recordOverrides } = decision;
+    if (unavailable) {
+      disconnected = true;
+      statuses.set(key, "collector-unavailable");
+      return;
+    }
+    records.set(key, {
+      requestId: call.requestId,
+      route: call.route,
+      status: call.status ?? 200,
+      source: call.source ?? "none",
+      modelStatus: call.source === "model" ? "success" : "failed",
+      modelLatencyMs: 90,
+      finishReason: "stop",
+      completionTokens: 100,
+      durationMs: call.durationMs,
+      validationStage: null,
+      validationIssueCount: null,
+      validationFailureClassification: null,
+      validationFieldPaths: [],
+      validationActionTypes: [],
+      ...recordOverrides,
+    });
+    statuses.set(key, "matched");
+  };
   return {
-    register(call) {
-      const index = registered;
-      registered += 1;
-      if (!call.requestId) return;
-      const key = `${call.requestId}\n${call.route}`;
-      const decision = override?.(call, index) ?? {};
-      const { unavailable, ...recordOverrides } = decision;
-      if (unavailable) {
-        statuses.set(key, "collector-unavailable");
-        return;
-      }
-      records.set(key, {
-        requestId: call.requestId,
-        route: call.route,
-        status: call.status ?? 200,
-        source: call.source ?? "none",
-        modelStatus: call.source === "model" ? "success" : "failed",
-        modelLatencyMs: 90,
-        finishReason: "stop",
-        completionTokens: 100,
-        durationMs: call.durationMs,
-        validationStage: null,
-        validationIssueCount: null,
-        validationFailureClassification: null,
-        validationFieldPaths: [],
-        validationActionTypes: [],
-        ...recordOverrides,
-      });
-      statuses.set(key, "matched");
-    },
+    register,
     async waitForLiveConnection() {
-      return "connected" as const;
+      if (closed || disconnected) return "unavailable" as const;
+      return readiness;
+    },
+    async waitForRecord(call) {
+      register(call);
+      if (!call.requestId) return "not-applicable" as const;
+      const status = statuses.get(`${call.requestId}\n${call.route}`);
+      if (status === "matched") return "matched" as const;
+      if (status === "collector-unavailable") return "collector-unavailable" as const;
+      return "timeout" as const;
     },
     async finish() {
+      const matchedCount = [...statuses.values()].filter(
+        (status) => status === "matched",
+      ).length;
       return {
         records,
         statuses,
         collectorState: {
           liveConnectionAttempts: 1,
-          liveSuccessfulConnections: 1,
-          liveInterruptions: 0,
-          historicalBackfill: "not-needed" as const,
+          liveSuccessfulConnections: readiness === "connected" ? 1 : 0,
+          liveInterruptions: disconnected ? 1 : 0,
+          historicalBackfill:
+            registeredKeys.size > matchedCount ? "unavailable" as const : "not-needed" as const,
+          collectorReadyAt: readiness === "connected" ? 1 : null,
+          collectorDisconnectedAt: disconnected ? 2 : null,
+          disconnectReason: disconnected ? "stream-error" as const : null,
+          matchedCount,
+          unmatchedCount: registeredKeys.size - matchedCount,
         },
       };
     },
-    close() {},
+    close() {
+      closed = true;
+    },
   };
 }
 
 async function runB15MockCalibration(
   transportOptions: B15MockTransportOptions = {},
   runtimeOverride?: (call: B1CallRecord, index: number) => B15MockRuntimeDecision,
+  runtimeReadiness: "connected" | "unavailable" | "timeout" = "connected",
 ) {
   const { transport, state } = createB15MockTransport(transportOptions);
-  const runtimeLogCollector = createB15MockRuntimeCollector(runtimeOverride);
+  const runtimeLogCollector = createB15MockRuntimeCollector(
+    runtimeOverride,
+    runtimeReadiness,
+  );
   const flow = await runB15CalibrationFlow({
     articles: b1Fixture,
     transport,
@@ -2148,6 +2231,11 @@ assert.deepEqual(passingB15.artifact.runtimeLogCollectorState, {
   liveSuccessfulConnections: 1,
   liveInterruptions: 0,
   historicalBackfill: "not-needed",
+  collectorReadyAt: 1,
+  collectorDisconnectedAt: null,
+  disconnectReason: null,
+  matchedCount: B15_EXPECTED_MODEL_REQUESTS,
+  unmatchedCount: 0,
 });
 for (const record of passingB15.artifact.records) {
   assert.deepEqual(Object.keys(record).sort(), [
@@ -2249,8 +2337,29 @@ const unavailableRuntimeB15 = await runB15MockCalibration(
   {},
   (_call, index) => index === 0 ? { unavailable: true } : {},
 );
+assert.equal(unavailableRuntimeB15.state.diagnose, 1);
+assert.equal(unavailableRuntimeB15.flow.calls.length, 1);
+assert.equal(unavailableRuntimeB15.flow.calls[0]?.source, "model");
+assert.deepEqual(unavailableRuntimeB15.flow.infrastructureIssues, [
+  "runtime-log-disconnected",
+]);
 assert.equal(unavailableRuntimeB15.artifact.runtimeLogStatus["collector-unavailable"], 1);
+assert.equal(unavailableRuntimeB15.artifact.modules.diagnose.round1.sourceModel, 1);
 assert.equal(unavailableRuntimeB15.artifact.result, "INCONCLUSIVE");
+
+const notReadyRuntimeB15 = await runB15MockCalibration({}, undefined, "timeout");
+assert.deepEqual(notReadyRuntimeB15.state, {
+  sessions: 0,
+  diagnose: 0,
+  scoring: 0,
+  advice: 0,
+  contentDraft: 0,
+});
+assert.equal(notReadyRuntimeB15.flow.calls.length, 0);
+assert.deepEqual(notReadyRuntimeB15.flow.infrastructureIssues, [
+  "runtime-log-not-ready",
+]);
+assert.equal(notReadyRuntimeB15.artifact.result, "INCONCLUSIVE");
 
 const mismatchedRuntimeB15 = await runB15MockCalibration(
   {},
