@@ -129,7 +129,7 @@ const diagnosticRouteSource = readFileSync(
 );
 assert.match(diagnosticRouteSource, /temperature:\s*0/);
 assert.match(diagnosticRouteSource, /timeoutMs:\s*17_000/);
-assert.match(diagnosticRouteSource, /maxTokens:\s*1_400/);
+assert.match(diagnosticRouteSource, /maxTokens:\s*1_800/);
 assert.match(diagnosticRouteSource, /顶层字段必须且只能各出现一次/);
 assert.match(diagnosticRouteSource, /question、recommendation、answerability/);
 const patchesRouteSource = readFileSync(
