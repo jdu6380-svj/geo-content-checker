@@ -101,6 +101,7 @@ import {
   buildB15CalibrationArtifact,
   classifyB15Calibration,
   createB15CalibrationDirectory,
+  createB15FetchTransport,
   createB15RunId,
   parseB15Arguments,
   resolveB15CalibrationDirectory,
@@ -2787,8 +2788,140 @@ for (const article of b1Fixture) {
 }
 assert.deepEqual(b15QuestionTypeCounts, [6, 6, 6, 6, 6]);
 
+const b15HttpFailureSensitiveBody =
+  "B15_HTTP_FAILURE_RESPONSE_BODY_MUST_NOT_PERSIST";
+const b15HttpFailureRequestId = crypto.randomUUID();
+const originalB15Fetch = globalThis.fetch;
+try {
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        error: "INTERNAL_ERROR",
+        message: b15HttpFailureSensitiveBody,
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Server-Timing":
+            'app;dur=123.4;desc="sensitive-description",custom-secret;dur=7.5',
+          "X-Request-ID": b15HttpFailureRequestId,
+        },
+      },
+    );
+  const routeFailure = await createB15FetchTransport(
+    "https://preview.example.test",
+    "bypass-secret",
+  ).request({
+    route: "/api/qa-diagnostic",
+    method: "POST",
+    body: {},
+    expectModelSource: true,
+  });
+  assert.equal(routeFailure.outcome, "http-error");
+  assert.equal(routeFailure.httpStatus, 500);
+  assert.equal(routeFailure.requestId, b15HttpFailureRequestId);
+  assert.equal(routeFailure.xRequestId, b15HttpFailureRequestId);
+  assert.equal(routeFailure.responseContentType, "application/json");
+  assert.equal(
+    routeFailure.responseLength,
+    JSON.stringify({
+      error: "INTERNAL_ERROR",
+      message: b15HttpFailureSensitiveBody,
+    }).length,
+  );
+  assert.equal(routeFailure.serverTiming, "app;dur=123.4,other-2;dur=7.5");
+  assert.equal(routeFailure.errorBoundaryCategory, "A. route handler error");
+  assert.equal(
+    (routeFailure.payload as { error?: unknown }).error,
+    "INTERNAL_ERROR",
+  );
+  assert.doesNotMatch(JSON.stringify(routeFailure), /sensitive-description|custom-secret/);
+
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        error: "RATE_LIMITED",
+        message: b15HttpFailureSensitiveBody,
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": b15HttpFailureRequestId,
+        },
+      },
+    );
+  const providerFailure = await createB15FetchTransport(
+    "https://preview.example.test",
+    "bypass-secret",
+  ).request({
+    route: "/api/qa-diagnostic",
+    method: "POST",
+    body: {},
+    expectModelSource: true,
+  });
+  assert.equal(providerFailure.outcome, "rate-limited");
+  assert.equal(
+    providerFailure.errorBoundaryCategory,
+    "B. upstream provider error",
+  );
+  assert.equal(
+    (providerFailure.payload as { error?: unknown }).error,
+    "RATE_LIMITED",
+  );
+
+  globalThis.fetch = async () =>
+    new Response(b15HttpFailureSensitiveBody, {
+      status: 502,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Vercel-Error": "FUNCTION_INVOCATION_FAILED",
+      },
+    });
+  const gatewayFailure = await createB15FetchTransport(
+    "https://preview.example.test",
+    "bypass-secret",
+  ).request({
+    route: "/api/qa-diagnostic",
+    method: "POST",
+    body: {},
+    expectModelSource: true,
+  });
+  assert.equal(gatewayFailure.outcome, "http-error");
+  assert.equal(gatewayFailure.requestId, null);
+  assert.equal(gatewayFailure.responseContentType, "text/html");
+  assert.equal(
+    gatewayFailure.errorBoundaryCategory,
+    "C. platform gateway error",
+  );
+  assert.equal(gatewayFailure.payload, null);
+
+  globalThis.fetch = async () => {
+    throw new TypeError(b15HttpFailureSensitiveBody);
+  };
+  const networkFailure = await createB15FetchTransport(
+    "https://preview.example.test",
+    "bypass-secret",
+  ).request({
+    route: "/api/qa-diagnostic",
+    method: "POST",
+    body: {},
+    expectModelSource: true,
+  });
+  assert.equal(networkFailure.outcome, "network-error");
+  assert.equal(networkFailure.httpStatus, null);
+  assert.equal(networkFailure.responseLength, null);
+  assert.equal(networkFailure.errorBoundaryCategory, "D. client/network error");
+  assert.equal(networkFailure.payload, null);
+  assert.doesNotMatch(JSON.stringify(networkFailure), new RegExp(b15HttpFailureSensitiveBody));
+} finally {
+  globalThis.fetch = originalB15Fetch;
+}
+
 interface B15MockTransportOptions {
   diagnoseFallbackIndexes?: number[];
+  diagnoseHttpFailureIndex?: number;
   contentFallbackIndexes?: number[];
 }
 
@@ -2821,6 +2954,7 @@ function createB15MockTransport(options: B15MockTransportOptions = {}): {
   state: B15MockTransportState;
 } {
   const diagnoseFallbackIndexes = new Set(options.diagnoseFallbackIndexes ?? []);
+  const diagnoseHttpFailureIndex = options.diagnoseHttpFailureIndex;
   const contentFallbackIndexes = new Set(options.contentFallbackIndexes ?? []);
   const state: B15MockTransportState = {
     sessions: 0,
@@ -2850,6 +2984,22 @@ function createB15MockTransport(options: B15MockTransportOptions = {}): {
       if (input.route === "/api/qa-diagnostic") {
         const callIndex = state.diagnose;
         state.diagnose += 1;
+        if (callIndex === diagnoseHttpFailureIndex) {
+          return {
+            route: input.route,
+            outcome: "http-error",
+            httpStatus: 500,
+            requestId: b15HttpFailureRequestId,
+            source: null,
+            latencyMs: 20_270,
+            responseContentType: "application/json",
+            responseLength: 137,
+            xRequestId: b15HttpFailureRequestId,
+            serverTiming: "app;dur=20200",
+            errorBoundaryCategory: "A. route handler error",
+            payload: null,
+          };
+        }
         const source = diagnoseFallbackIndexes.has(callIndex) ? "fallback" : "model";
         const paragraphs = Array.isArray(body.numbered_paragraphs)
           ? body.numbered_paragraphs as Array<{ id: string; text: string }>
@@ -3085,12 +3235,14 @@ for (const record of passingB15.artifact.records) {
     "contentLength",
     "contentPresent",
     "endsWithCodeFence",
+    "errorBoundaryCategory",
     "finishReason",
     "firstByteAt",
     "firstCharType",
     "firstTokenAt",
     "hasLeadingNonWhitespaceText",
     "hasTrailingNonWhitespaceText",
+    "httpStatus",
     "lastCharType",
     "latencyMs",
     "modelStatus",
@@ -3101,8 +3253,10 @@ for (const record of passingB15.artifact.records) {
     "reasoningTokens",
     "requestId",
     "responseCompletedAt",
+    "responseContentType",
     "responseLength",
     "route",
+    "serverTiming",
     "startsWithCodeFence",
     "streamDurationMs",
     "timeout",
@@ -3110,7 +3264,13 @@ for (const record of passingB15.artifact.records) {
     "trimmedLength",
     "validationFieldPaths",
     "validationStage",
+    "xRequestId",
   ]);
+  assert.equal(record.httpStatus, null);
+  assert.equal(record.responseContentType, null);
+  assert.equal(record.xRequestId, null);
+  assert.equal(record.serverTiming, null);
+  assert.equal(record.errorBoundaryCategory, null);
   assert.equal(typeof record.providerRequestStartAt, "number");
   assert.equal(typeof record.firstByteAt, "number");
   assert.equal(record.firstTokenAt, null);
@@ -3156,6 +3316,60 @@ const serializedPassingB15Artifact = serializeB15CalibrationArtifact(
 assert.doesNotMatch(
   serializedPassingB15Artifact,
   /"(?:title|content|question|prompt|evidence|payload|response|secret|token)"\s*:/,
+);
+
+const inconclusiveHttpFailureB15 = await runB15MockCalibration({
+  diagnoseHttpFailureIndex: 0,
+});
+assert.equal(inconclusiveHttpFailureB15.artifact.result, "INCONCLUSIVE");
+assert.equal(inconclusiveHttpFailureB15.flow.stopReason, "infrastructure");
+assert.deepEqual(inconclusiveHttpFailureB15.flow.infrastructureIssues, [
+  "http-error",
+]);
+assert.equal(inconclusiveHttpFailureB15.artifact.records.length, 1);
+assert.deepEqual(inconclusiveHttpFailureB15.artifact.records[0], {
+  requestId: b15HttpFailureRequestId,
+  route: "/api/qa-diagnostic",
+  httpStatus: 500,
+  responseContentType: "application/json",
+  xRequestId: b15HttpFailureRequestId,
+  serverTiming: "app;dur=20200",
+  errorBoundaryCategory: "A. route handler error",
+  modelStatus: "failed",
+  latencyMs: 90,
+  timeout: false,
+  validationStage: null,
+  validationFieldPaths: [],
+  responseLength: 137,
+  trimmedLength: null,
+  firstCharType: null,
+  lastCharType: null,
+  startsWithCodeFence: null,
+  endsWithCodeFence: null,
+  parserErrorName: null,
+  parserErrorPosition: null,
+  containsMultipleTopLevelValues: null,
+  hasLeadingNonWhitespaceText: null,
+  hasTrailingNonWhitespaceText: null,
+  providerRequestStartAt: 1_720_000_200_000,
+  firstByteAt: 1_720_000_200_040,
+  firstTokenAt: null,
+  responseCompletedAt: 1_720_000_200_090,
+  abortedAt: null,
+  streamDurationMs: 50,
+  contentPresent: true,
+  contentLength: 256,
+  finishReason: "stop",
+  promptTokens: 200,
+  completionTokens: 100,
+  reasoningTokens: 50,
+  totalTokens: 300,
+});
+assert.doesNotMatch(
+  serializeB15CalibrationArtifact(inconclusiveHttpFailureB15.artifact, [
+    b15HttpFailureSensitiveBody,
+  ]),
+  new RegExp(b15HttpFailureSensitiveBody),
 );
 
 const blockedDiagnoseB15 = await runB15MockCalibration(

@@ -29,7 +29,7 @@ import {
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
-export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v9";
+export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v10";
 export const B15_REQUIRED_NODE_VERSION = "v22.23.1";
 export const B15_REQUIRED_CORPUS_SHA256 =
   "6d3115d362c762f9f6ba1235ca897230405f07834235173b940181d5765d72f3";
@@ -87,9 +87,21 @@ const VALIDATION_STAGES = [
   "reference_validation",
   "evidence_validation",
 ] as const;
+const HTTP_ERROR_BOUNDARY_CATEGORIES = [
+  "A. route handler error",
+  "B. upstream provider error",
+  "C. platform gateway error",
+  "D. client/network error",
+  "E. unknown",
+] as const;
 const ARTIFACT_RECORD_KEYS = [
   "requestId",
   "route",
+  "httpStatus",
+  "responseContentType",
+  "xRequestId",
+  "serverTiming",
+  "errorBoundaryCategory",
   "modelStatus",
   "latencyMs",
   "timeout",
@@ -166,6 +178,8 @@ type B15Source = "model" | "fallback";
 type B15ModelStatus = (typeof MODEL_STATUSES)[number];
 type B15FinishReason = (typeof FINISH_REASONS)[number];
 type B15ValidationStage = (typeof VALIDATION_STAGES)[number];
+type B15HttpErrorBoundaryCategory =
+  (typeof HTTP_ERROR_BOUNDARY_CATEGORIES)[number];
 type B15TransportOutcome =
   | "success"
   | "rate-limited"
@@ -220,6 +234,11 @@ export interface B15TransportResult {
   source: B15Source | null;
   latencyMs: number;
   payload: unknown;
+  responseContentType?: string | null;
+  responseLength?: number | null;
+  xRequestId?: string | null;
+  serverTiming?: string | null;
+  errorBoundaryCategory?: B15HttpErrorBoundaryCategory | null;
 }
 
 export interface B15CalibrationTransport {
@@ -235,6 +254,10 @@ export interface B15InternalCall {
   requestId: string | null;
   source: B15Source | null;
   requestLatencyMs: number;
+  responseContentType: string | null;
+  xRequestId: string | null;
+  serverTiming: string | null;
+  errorBoundaryCategory: B15HttpErrorBoundaryCategory | null;
   evidenceChecks: number;
   evidencePasses: number;
   runtimeLogStatus: B1RuntimeLogStatus;
@@ -323,6 +346,11 @@ export interface B15GateEvaluationInput {
 export interface B15ArtifactRecord {
   requestId: string | null;
   route: B15Route;
+  httpStatus: number | null;
+  responseContentType: string | null;
+  xRequestId: string | null;
+  serverTiming: string | null;
+  errorBoundaryCategory: B15HttpErrorBoundaryCategory | null;
   modelStatus: B15ModelStatus | null;
   latencyMs: number | null;
   timeout: boolean;
@@ -624,6 +652,22 @@ function callFromTransport(
     requestId: result.requestId,
     source: result.source,
     requestLatencyMs: result.latencyMs,
+    responseContentType:
+      module === "diagnose" && result.outcome !== "success"
+        ? result.responseContentType ?? null
+        : null,
+    xRequestId:
+      module === "diagnose" && result.outcome !== "success"
+        ? sanitizedXRequestId(result.xRequestId ?? result.requestId)
+        : null,
+    serverTiming:
+      module === "diagnose" && result.outcome !== "success"
+        ? result.serverTiming ?? null
+        : null,
+    errorBoundaryCategory:
+      module === "diagnose" && result.outcome !== "success"
+        ? result.errorBoundaryCategory ?? "E. unknown"
+        : null,
     evidenceChecks: evidence.checks,
     evidencePasses: evidence.passes,
     runtimeLogStatus: result.requestId ? "collector-unavailable" : "not-applicable",
@@ -642,7 +686,10 @@ function callFromTransport(
     validationStage: null,
     validationFieldPaths: [],
     validationFailureClassification: null,
-    responseLength: null,
+    responseLength:
+      module === "diagnose" && result.outcome !== "success"
+        ? result.responseLength ?? null
+        : null,
     trimmedLength: null,
     firstCharType: null,
     lastCharType: null,
@@ -922,7 +969,7 @@ function mergeRuntimeLogs(
       validationStage: runtime.validationStage,
       validationFieldPaths: runtime.validationFieldPaths,
       validationFailureClassification: runtime.validationFailureClassification,
-      responseLength: runtime.responseLength ?? null,
+      responseLength: runtime.responseLength ?? call.responseLength,
       trimmedLength: runtime.trimmedLength ?? null,
       firstCharType: runtime.firstCharType ?? null,
       lastCharType: runtime.lastCharType ?? null,
@@ -1070,6 +1117,14 @@ function artifactRecord(call: B15InternalCall): B15ArtifactRecord {
   return {
     requestId,
     route: call.route,
+    httpStatus:
+      call.module === "diagnose" && call.outcome !== "success"
+        ? call.httpStatus
+        : null,
+    responseContentType: call.responseContentType,
+    xRequestId: call.xRequestId,
+    serverTiming: call.serverTiming,
+    errorBoundaryCategory: call.errorBoundaryCategory,
     modelStatus: call.modelStatus,
     latencyMs: Number.isFinite(latencyMs) && latencyMs >= 0 ? Math.round(latencyMs) : null,
     timeout: callIsTimeout(call),
@@ -1304,6 +1359,98 @@ function normalizedRequestId(value: string | null): string | null {
     : null;
 }
 
+function sanitizedXRequestId(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(normalized)
+    ? normalized
+    : null;
+}
+
+function normalizedResponseContentType(value: string | null): string | null {
+  if (!value) return null;
+  const mediaType = value.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return /^[a-z0-9!#$&^_.+-]{1,64}\/[a-z0-9!#$&^_.+-]{1,64}$/.test(mediaType)
+    ? mediaType
+    : null;
+}
+
+function sanitizedServerTiming(value: string | null): string | null {
+  if (!value) return null;
+  const allowedMetricNames = new Set([
+    "app",
+    "cdn",
+    "compute",
+    "edge",
+    "function",
+    "gateway",
+    "origin",
+    "proxy",
+    "total",
+    "vercel",
+  ]);
+  const metrics = value
+    .split(",")
+    .flatMap((entry, index) => {
+      const [rawName, ...parameters] = entry.split(";");
+      const rawNormalizedName = rawName?.trim().toLowerCase() ?? "";
+      const name = allowedMetricNames.has(rawNormalizedName)
+        ? rawNormalizedName
+        : `other-${index + 1}`;
+      const durationParameter = parameters
+        .map((parameter) => parameter.trim())
+        .find((parameter) => /^dur=\d+(?:\.\d{1,3})?$/.test(parameter));
+      return [durationParameter ? `${name};${durationParameter}` : name];
+    })
+    .slice(0, 8);
+  return metrics.length ? metrics.join(",") : null;
+}
+
+function publicErrorCode(responseText: string | null): string | null {
+  if (!responseText || responseText.length > 65_536) return null;
+  try {
+    const payload: unknown = JSON.parse(responseText);
+    return isRecord(payload) &&
+        typeof payload.error === "string" &&
+        /^[A-Z][A-Z0-9_]{0,63}$/.test(payload.error)
+      ? payload.error
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function httpErrorBoundaryCategory(params: {
+  outcome: B15TransportOutcome;
+  httpStatus: number | null;
+  xRequestId: string | null;
+  errorCode: string | null;
+  platformGatewaySignal: boolean;
+}): B15HttpErrorBoundaryCategory | null {
+  if (params.outcome === "network-error" || params.outcome === "client-timeout") {
+    return "D. client/network error";
+  }
+  if (params.outcome === "success" || params.outcome === "invalid-response") {
+    return null;
+  }
+  if (params.errorCode === "RATE_LIMITED") {
+    return "B. upstream provider error";
+  }
+  if (
+    params.outcome === "protection-blocked" ||
+    params.platformGatewaySignal
+  ) {
+    return "C. platform gateway error";
+  }
+  if (normalizedRequestId(params.xRequestId) !== null) {
+    return "A. route handler error";
+  }
+  if (params.httpStatus !== null && params.httpStatus >= 500) {
+    return "C. platform gateway error";
+  }
+  return "E. unknown";
+}
+
 export function createB15FetchTransport(
   baseUrl: string,
   bypassSecret: string,
@@ -1330,46 +1477,59 @@ export function createB15FetchTransport(
           ),
         );
         const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));
-        const requestId = normalizedRequestId(response.headers.get("x-request-id"));
-        if (
-          isVercelDeploymentProtectionRedirect(
-            response.status,
-            response.headers.get("location"),
-          )
-        ) {
+        const xRequestId = sanitizedXRequestId(
+          response.headers.get("x-request-id"),
+        );
+        const requestId = normalizedRequestId(xRequestId);
+        const responseContentType = normalizedResponseContentType(
+          response.headers.get("content-type"),
+        );
+        const serverTiming = sanitizedServerTiming(
+          response.headers.get("server-timing"),
+        );
+        const protectionBlocked = isVercelDeploymentProtectionRedirect(
+          response.status,
+          response.headers.get("location"),
+        );
+        if (protectionBlocked || !response.ok) {
+          const responseText = await response.text().catch(() => null);
+          const errorCode = publicErrorCode(responseText);
+          let payload: unknown = null;
+          if (responseText !== null) {
+            try {
+              payload = JSON.parse(responseText);
+            } catch {
+              payload = null;
+            }
+          }
+          const outcome: B15TransportOutcome = protectionBlocked
+            ? "protection-blocked"
+            : response.status === 429
+              ? "rate-limited"
+              : "http-error";
           return {
             route: input.route,
-            outcome: "protection-blocked",
+            outcome,
             httpStatus: response.status,
             requestId,
             source: null,
             latencyMs,
-            payload: null,
+            responseContentType,
+            responseLength: responseText?.length ?? null,
+            xRequestId,
+            serverTiming,
+            errorBoundaryCategory: httpErrorBoundaryCategory({
+              outcome,
+              httpStatus: response.status,
+              xRequestId,
+              errorCode,
+              platformGatewaySignal:
+                response.headers.has("x-vercel-error"),
+            }),
+            payload,
           };
         }
         const payload = await response.json().catch(() => null);
-        if (response.status === 429) {
-          return {
-            route: input.route,
-            outcome: "rate-limited",
-            httpStatus: response.status,
-            requestId,
-            source: null,
-            latencyMs,
-            payload,
-          };
-        }
-        if (!response.ok) {
-          return {
-            route: input.route,
-            outcome: "http-error",
-            httpStatus: response.status,
-            requestId,
-            source: null,
-            latencyMs,
-            payload,
-          };
-        }
         if (!isRecord(payload)) {
           return {
             route: input.route,
@@ -1417,6 +1577,21 @@ export function createB15FetchTransport(
           requestId: null,
           source: null,
           latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+          responseContentType: null,
+          responseLength: null,
+          xRequestId: null,
+          serverTiming: null,
+          errorBoundaryCategory: httpErrorBoundaryCategory({
+            outcome:
+              error instanceof Error &&
+                (error.name === "AbortError" || error.name === "TimeoutError")
+                ? "client-timeout"
+                : "network-error",
+            httpStatus: null,
+            xRequestId: null,
+            errorCode: null,
+            platformGatewaySignal: false,
+          }),
           payload: null,
         };
       }
