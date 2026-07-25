@@ -155,6 +155,7 @@ type B1ModelFinishReason = (typeof B1_MODEL_FINISH_REASONS)[number];
 export type B1RuntimeLogStatus = (typeof B1_RUNTIME_LOG_STATUSES)[number];
 export type B1RuntimeLogDisconnectReason =
   (typeof B1_RUNTIME_LOG_DISCONNECT_REASONS)[number];
+export type B1RuntimeLogCollectorMode = "live" | "degraded" | "unavailable";
 export type B1RuntimeLogMatchResult =
   | "matched"
   | "collector-unavailable"
@@ -331,6 +332,10 @@ interface B1RuntimeLogCollectorOptions {
   maxDrainMs?: number;
   reconnectDelayMs?: number;
   readinessStabilityMs?: number;
+  recordPoll?: B1RuntimeLogPoll;
+  recordPollIntervalMs?: number;
+  recordPollRequestTimeoutMs?: number;
+  recordPollStartDelayMs?: number;
   stream?: B1RuntimeLogStream;
   history?: B1RuntimeLogHistory;
   historyTimeoutMs?: number;
@@ -347,9 +352,27 @@ type B1RuntimeLogStream = (
   signal: AbortSignal,
   handlers: {
     connected: () => void;
-    record: (record: B1RuntimeLogRecord) => void;
+    record: (record: B1RuntimeLogRecord, generatedAtMs?: number | null) => void;
   },
 ) => Promise<void>;
+
+export interface B1RuntimeLogPollQuery {
+  requestId: string;
+  route: string;
+  sinceMs: number;
+  untilMs: number;
+}
+
+export interface B1RuntimeLogPollRecord {
+  record: B1RuntimeLogRecord;
+  generatedAtMs: number | null;
+}
+
+type B1RuntimeLogPoll = (
+  config: B1RuntimeLogConfig,
+  query: B1RuntimeLogPollQuery,
+  signal: AbortSignal,
+) => Promise<B1RuntimeLogPollRecord[]>;
 
 type B1RuntimeLogHistory = (
   config: B1RuntimeLogConfig,
@@ -358,9 +381,13 @@ type B1RuntimeLogHistory = (
 ) => Promise<B1RuntimeLogRecord[]>;
 
 export interface B1RuntimeLogCollectorState {
+  collectorMode: B1RuntimeLogCollectorMode;
   liveConnectionAttempts: number;
   liveSuccessfulConnections: number;
   liveInterruptions: number;
+  boundedPollAttempts: number;
+  boundedPollFailures: number;
+  boundedPollMatches: number;
   historicalBackfill: "not-needed" | "complete" | "unavailable";
   collectorReadyAt: number | null;
   collectorDisconnectedAt: number | null;
@@ -369,9 +396,20 @@ export interface B1RuntimeLogCollectorState {
   unmatchedCount: number;
 }
 
+export interface B1RuntimeLogTiming {
+  requestCompletedAtMs: number;
+  runtimeLogGeneratedAtMs: number | null;
+  collectorReceivedAtMs: number;
+  requestIdMatchedAtMs: number;
+  generationLatencyMs: number | null;
+  deliveryLatencyMs: number | null;
+  matchLatencyMs: number;
+}
+
 export interface B1RuntimeLogCollectionResult {
   records: Map<string, B1RuntimeLogRecord>;
   statuses: Map<string, B1RuntimeLogStatus>;
+  timings?: Map<string, B1RuntimeLogTiming>;
   collectorState: B1RuntimeLogCollectorState;
 }
 
@@ -1786,12 +1824,93 @@ export function buildB1RuntimeLogStreamUrl(
   return endpoint;
 }
 
+export function buildB1RuntimeLogPollUrl(
+  config: Pick<B1RuntimeLogConfig, "deploymentId" | "projectId" | "teamId">,
+  query: B1RuntimeLogPollQuery,
+): URL {
+  const endpoint = new URL("https://vercel.com/api/logs/request-logs");
+  endpoint.searchParams.set("projectId", config.projectId);
+  endpoint.searchParams.set("ownerId", config.teamId);
+  endpoint.searchParams.set("teamId", config.teamId);
+  endpoint.searchParams.set("deploymentId", config.deploymentId);
+  endpoint.searchParams.set("page", "0");
+  endpoint.searchParams.set("startDate", String(Math.max(0, query.sinceMs)));
+  endpoint.searchParams.set("endDate", String(Math.max(query.sinceMs, query.untilMs)));
+  endpoint.searchParams.set("search", query.requestId);
+  return endpoint;
+}
+
+function runtimeLogGeneratedAtMs(value: unknown): number | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.timestampInMs === "number" &&
+    Number.isFinite(value.timestampInMs) &&
+    value.timestampInMs >= 0
+  ) {
+    return Math.round(value.timestampInMs);
+  }
+  if (typeof value.timestamp === "string") {
+    const parsed = Date.parse(value.timestamp);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+async function pollRuntimeLogs(
+  config: B1RuntimeLogConfig,
+  query: B1RuntimeLogPollQuery,
+  signal: AbortSignal,
+): Promise<B1RuntimeLogPollRecord[]> {
+  const endpoint = buildB1RuntimeLogPollUrl(config, query);
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "User-Agent": "geo-content-checker-b1-validation",
+      },
+      redirect: "manual",
+      signal,
+    });
+  } catch {
+    if (signal.aborted) return [];
+    throw new B1RuntimeLogStreamFailure("network-error");
+  }
+  if (!response.ok) {
+    throw new B1RuntimeLogStreamFailure("http-error");
+  }
+  const payload: unknown = await response.json().catch(() => null);
+  const matches = parseB1RuntimeLogPollPayload(payload, query);
+  if (matches === null) {
+    throw new B1RuntimeLogStreamFailure("invalid-response");
+  }
+  return matches;
+}
+
+export function parseB1RuntimeLogPollPayload(
+  payload: unknown,
+  query: Pick<B1RuntimeLogPollQuery, "requestId" | "route">,
+): B1RuntimeLogPollRecord[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.rows)) return null;
+  const matches: B1RuntimeLogPollRecord[] = [];
+  for (const row of payload.rows) {
+    const records = new Map<string, B1RuntimeLogRecord>();
+    collectRuntimeLogRecords(row, records);
+    const generatedAtMs = runtimeLogGeneratedAtMs(row);
+    for (const record of records.values()) {
+      if (record.requestId !== query.requestId || record.route !== query.route) continue;
+      matches.push({ record, generatedAtMs });
+    }
+  }
+  return matches;
+}
+
 async function consumeRuntimeLogStream(
   config: B1RuntimeLogConfig,
   signal: AbortSignal,
   handlers: {
     connected: () => void;
-    record: (record: B1RuntimeLogRecord) => void;
+    record: (record: B1RuntimeLogRecord, generatedAtMs?: number | null) => void;
   },
 ): Promise<void> {
   const endpoint = buildB1RuntimeLogStreamUrl(config);
@@ -1807,7 +1926,8 @@ async function consumeRuntimeLogStream(
     }
     const records = new Map<string, B1RuntimeLogRecord>();
     collectRuntimeLogRecords(event, records);
-    for (const record of records.values()) handlers.record(record);
+    const generatedAtMs = runtimeLogGeneratedAtMs(event);
+    for (const record of records.values()) handlers.record(record, generatedAtMs);
   };
 
   let response: Response;
@@ -1883,6 +2003,18 @@ export function startB1RuntimeLogCollector(
     0,
     options.readinessStabilityMs ?? 2_000,
   );
+  const recordPollIntervalMs = Math.max(
+    1,
+    options.recordPollIntervalMs ?? 500,
+  );
+  const recordPollRequestTimeoutMs = Math.max(
+    1,
+    options.recordPollRequestTimeoutMs ?? 5_000,
+  );
+  const recordPollStartDelayMs = Math.max(
+    0,
+    options.recordPollStartDelayMs ?? 500,
+  );
   const historyTimeoutMs = Math.max(0, options.historyTimeoutMs ?? 60_000);
   const historyPollIntervalMs = Math.max(0, options.historyPollIntervalMs ?? 5_000);
   const historyPollWindowMs = Math.max(1, options.historyPollWindowMs ?? 10_000);
@@ -1895,6 +2027,8 @@ export function startB1RuntimeLogCollector(
     options.historyStabilityMs ?? historyTimeoutMs,
   );
   const stream = options.stream ?? consumeRuntimeLogStream;
+  const recordPoll =
+    options.recordPoll ?? (options.stream === undefined ? pollRuntimeLogs : undefined);
   const history = options.history;
   const wait = options.wait ?? ((milliseconds: number) =>
     new Promise<void>((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
@@ -1906,13 +2040,23 @@ export function startB1RuntimeLogCollector(
       registeredAt: number;
       requestStartedAt: number;
       liveConnectionGeneration: number | null;
+      lastSuccessfulPollAt: number | null;
+      pollCoverageComplete: boolean;
+      waitTimedOutAt: number | null;
     }
   >();
   const observations = new Map<
     string,
-    { record: B1RuntimeLogRecord; observedAt: number; origin: "live" | "history" }
+    {
+      record: B1RuntimeLogRecord;
+      generatedAtMs: number | null;
+      observedAt: number;
+      origin: "live" | "poll" | "history";
+    }
   >();
+  const timings = new Map<string, B1RuntimeLogTiming>();
   let terminalUnavailable = false;
+  let degradedMode = false;
   let stopped = false;
   let resolvedConfig: B1RuntimeLogConfig | null = null;
   let activeController: AbortController | null = null;
@@ -1920,6 +2064,9 @@ export function startB1RuntimeLogCollector(
   let liveConnectionAttempts = 0;
   let liveSuccessfulConnections = 0;
   let liveInterruptions = 0;
+  let boundedPollAttempts = 0;
+  let boundedPollFailures = 0;
+  let boundedPollMatches = 0;
   let liveConnectionGeneration = 0;
   let liveConnectionStartedAt: number | null = null;
   let liveConnected = false;
@@ -1931,30 +2078,12 @@ export function startB1RuntimeLogCollector(
   const liveConnectionWaiters = new Set<
     (readiness: "connected" | "unavailable") => void
   >();
-  const recordWaiters = new Map<
-    string,
-    Set<(result: B1RuntimeLogMatchResult) => void>
-  >();
 
   const settleLiveConnectionWaiters = (
     readiness: "connected" | "unavailable",
   ) => {
     for (const resolveWaiter of liveConnectionWaiters) resolveWaiter(readiness);
     liveConnectionWaiters.clear();
-  };
-
-  const settleRecordWaiters = (
-    key: string,
-    result: B1RuntimeLogMatchResult,
-  ) => {
-    const waiters = recordWaiters.get(key);
-    if (!waiters) return;
-    for (const resolveWaiter of waiters) resolveWaiter(result);
-    recordWaiters.delete(key);
-  };
-
-  const settleAllRecordWaiters = (result: B1RuntimeLogMatchResult) => {
-    for (const key of recordWaiters.keys()) settleRecordWaiters(key, result);
   };
 
   const clearReadinessTimer = () => {
@@ -1969,12 +2098,78 @@ export function startB1RuntimeLogCollector(
   ) => {
     clearReadinessTimer();
     terminalUnavailable = true;
+    degradedMode = false;
     liveConnected = false;
     liveStable = false;
     disconnectReason = reason;
     if (disconnectedAt !== null) collectorDisconnectedAt = disconnectedAt;
     settleLiveConnectionWaiters("unavailable");
-    settleAllRecordWaiters("collector-unavailable");
+  };
+
+  const pollingFallbackAvailable = () =>
+    recordPoll !== undefined && resolvedConfig !== null;
+
+  const collectorOperational = () =>
+    !terminalUnavailable &&
+    !stopped &&
+    (
+      (liveConnected && liveStable) ||
+      (degradedMode && pollingFallbackAvailable())
+    );
+
+  const markRealtimeDegraded = (
+    reason: B1RuntimeLogDisconnectReason,
+    disconnectedAt: number,
+  ) => {
+    clearReadinessTimer();
+    degradedMode = true;
+    liveConnected = false;
+    liveStable = false;
+    disconnectReason = reason;
+    collectorDisconnectedAt = disconnectedAt;
+    settleLiveConnectionWaiters("connected");
+  };
+
+  const observeRecord = (
+    record: B1RuntimeLogRecord,
+    origin: "live" | "poll" | "history",
+    generatedAtMs: number | null = null,
+  ): boolean => {
+    const key = runtimeLogKey(record.requestId, record.route);
+    if (observations.has(key)) return false;
+    observations.set(key, {
+      record,
+      generatedAtMs,
+      observedAt: now(),
+      origin,
+    });
+    if (observations.size > 1_024) {
+      const oldestKey = observations.keys().next().value;
+      if (typeof oldestKey === "string") observations.delete(oldestKey);
+    }
+    return true;
+  };
+
+  const recordTiming = (key: string, matchedAtMs: number) => {
+    if (timings.has(key)) return;
+    const expectation = expected.get(key);
+    const observation = observations.get(key);
+    if (!expectation || !observation) return;
+    timings.set(key, {
+      requestCompletedAtMs: expectation.registeredAt,
+      runtimeLogGeneratedAtMs: observation.generatedAtMs,
+      collectorReceivedAtMs: observation.observedAt,
+      requestIdMatchedAtMs: matchedAtMs,
+      generationLatencyMs:
+        observation.generatedAtMs === null
+          ? null
+          : Math.max(0, observation.generatedAtMs - expectation.registeredAt),
+      deliveryLatencyMs:
+        observation.generatedAtMs === null
+          ? null
+          : Math.max(0, observation.observedAt - observation.generatedAtMs),
+      matchLatencyMs: Math.max(0, matchedAtMs - expectation.registeredAt),
+    });
   };
 
   const registerCall = (call: B1CallRecord): string | null => {
@@ -1996,6 +2191,9 @@ export function startB1RuntimeLogCollector(
         liveConnectionStartedAt <= requestStartedAt
           ? liveConnectionGeneration
           : null,
+      lastSuccessfulPollAt: null,
+      pollCoverageComplete: false,
+      waitTimedOutAt: null,
     });
     return key;
   };
@@ -2029,6 +2227,7 @@ export function startB1RuntimeLogCollector(
             liveConnectionStartedAt = now();
             liveConnected = true;
             liveStable = false;
+            degradedMode = false;
             const markStable = () => {
               readinessTimer = null;
               if (
@@ -2049,14 +2248,8 @@ export function startB1RuntimeLogCollector(
               readinessTimer = setTimeout(markStable, readinessStabilityMs);
             }
           },
-          record: (record) => {
-            const key = runtimeLogKey(record.requestId, record.route);
-            observations.set(key, { record, observedAt: now(), origin: "live" });
-            settleRecordWaiters(key, "matched");
-            if (observations.size > 1_024) {
-              const oldestKey = observations.keys().next().value;
-              if (typeof oldestKey === "string") observations.delete(oldestKey);
-            }
+          record: (record, generatedAtMs) => {
+            observeRecord(record, "live", generatedAtMs ?? null);
           },
         });
         attemptDisconnectReason = "stream-ended";
@@ -2070,9 +2263,14 @@ export function startB1RuntimeLogCollector(
 
       if (stopped || controller.signal.aborted) break;
       if (connectionEstablished) {
+        const wasStable = liveStable;
         liveInterruptions += 1;
         liveConnectionGeneration += 1;
         liveConnectionStartedAt = null;
+        if (wasStable && pollingFallbackAvailable()) {
+          markRealtimeDegraded(attemptDisconnectReason, now());
+          break;
+        }
         markCollectorUnavailable(attemptDisconnectReason, now());
         break;
       }
@@ -2100,7 +2298,7 @@ export function startB1RuntimeLogCollector(
     },
     async waitForLiveConnection(timeoutMs = 15_000) {
       if (terminalUnavailable || stopped) return "unavailable";
-      if (liveConnected && liveStable) return "connected";
+      if (collectorOperational()) return "connected";
       const boundedTimeoutMs = Math.max(0, Math.floor(timeoutMs));
       return new Promise<"connected" | "unavailable" | "timeout">((resolvePromise) => {
         const resolveReadiness = (readiness: "connected" | "unavailable") => {
@@ -2123,25 +2321,106 @@ export function startB1RuntimeLogCollector(
         return "collector-unavailable";
       }
       if (!key) return "not-applicable";
-      if (observations.has(key)) return "matched";
-      if (terminalUnavailable || stopped || !liveConnected || !liveStable) {
+      if (observations.has(key)) {
+        recordTiming(key, now());
+        return "matched";
+      }
+      if (!collectorOperational()) {
         return "collector-unavailable";
       }
 
       const boundedTimeoutMs = Math.max(0, Math.floor(timeoutMs));
-      return new Promise<B1RuntimeLogMatchResult>((resolvePromise) => {
-        const resolveMatch = (result: B1RuntimeLogMatchResult) => {
-          clearTimeout(timeout);
-          const waiters = recordWaiters.get(key);
-          waiters?.delete(resolveMatch);
-          if (waiters?.size === 0) recordWaiters.delete(key);
-          resolvePromise(result);
-        };
-        const timeout = setTimeout(() => resolveMatch("timeout"), boundedTimeoutMs);
-        const waiters = recordWaiters.get(key) ?? new Set();
-        waiters.add(resolveMatch);
-        recordWaiters.set(key, waiters);
-      });
+      const deadline = now() + boundedTimeoutMs;
+      let nextPollAt = now() + recordPollStartDelayMs;
+      while (true) {
+        if (observations.has(key)) {
+          recordTiming(key, now());
+          return "matched";
+        }
+        if (!collectorOperational()) {
+          return "collector-unavailable";
+        }
+        const currentTime = now();
+        if (currentTime >= deadline) {
+          const expectation = expected.get(key);
+          if (expectation) {
+            expectation.waitTimedOutAt = currentTime;
+            expectation.pollCoverageComplete =
+              expectation.lastSuccessfulPollAt !== null &&
+              currentTime - expectation.lastSuccessfulPollAt <=
+                Math.max(1_000, recordPollIntervalMs * 2);
+          }
+          return "timeout";
+        }
+
+        if (recordPoll && resolvedConfig && currentTime >= nextPollAt) {
+          boundedPollAttempts += 1;
+          const pollController = new AbortController();
+          const pollTimeout = setTimeout(
+            () => pollController.abort(),
+            recordPollRequestTimeoutMs,
+          );
+          try {
+            const expectation = expected.get(key);
+            if (expectation) {
+              expectation.pollCoverageComplete = false;
+            }
+            const polled = await recordPoll(
+              resolvedConfig,
+              {
+                requestId: normalizeRequestId(call.requestId) as string,
+                route: call.route,
+                sinceMs: Math.max(
+                  0,
+                  (expectation?.requestStartedAt ?? currentTime) - 20_000,
+                ),
+                untilMs: Math.max(currentTime, now()),
+              },
+              pollController.signal,
+            );
+            if (pollController.signal.aborted) {
+              boundedPollFailures += 1;
+            } else {
+              if (expectation) expectation.lastSuccessfulPollAt = now();
+              for (const item of polled) {
+                if (
+                  item.record.requestId !== normalizeRequestId(call.requestId) ||
+                  item.record.route !== call.route
+                ) {
+                  continue;
+                }
+                if (observeRecord(item.record, "poll", item.generatedAtMs)) {
+                  boundedPollMatches += 1;
+                }
+              }
+            }
+          } catch {
+            boundedPollFailures += 1;
+          } finally {
+            clearTimeout(pollTimeout);
+          }
+          if (observations.has(key)) {
+            recordTiming(key, now());
+            return "matched";
+          }
+          nextPollAt = now() + recordPollIntervalMs;
+          continue;
+        }
+
+        const untilNextPoll = recordPoll
+          ? Math.max(1, nextPollAt - currentTime)
+          : 100;
+        const waitMs = Math.max(
+          1,
+          Math.min(100, deadline - currentTime, untilNextPoll),
+        );
+        try {
+          await wait(waitMs);
+        } catch {
+          markCollectorUnavailable("wait-failed");
+          return "collector-unavailable";
+        }
+      }
     },
     async finish(batchCompletedAt = now()) {
       if (finishedResult) return finishedResult;
@@ -2150,7 +2429,10 @@ export function startB1RuntimeLogCollector(
       try {
         const deadline = now() + maxDrainMs;
         const allMatched = () =>
-          [...expected.keys()].every((key) => observations.has(key));
+          [...expected.entries()].every(
+            ([key, expectation]) =>
+              observations.has(key) || expectation.waitTimedOutAt !== null,
+          );
         while (
           expected.size > 0 &&
           !allMatched() &&
@@ -2216,11 +2498,7 @@ export function startB1RuntimeLogCollector(
               for (const record of historicalRecords) {
                 const key = runtimeLogKey(record.requestId, record.route);
                 if (!expected.has(key)) continue;
-                observations.set(key, {
-                  record,
-                  observedAt: now(),
-                  origin: "history",
-                });
+                observeRecord(record, "history");
               }
 
               const matchedKeys = [...expected.keys()]
@@ -2264,12 +2542,19 @@ export function startB1RuntimeLogCollector(
         }
       }
 
+      const collectorMode: B1RuntimeLogCollectorMode =
+        terminalUnavailable || closedBeforeFinish
+          ? "unavailable"
+          : degradedMode && pollingFallbackAvailable()
+            ? "degraded"
+            : liveConnected && liveStable
+              ? "live"
+              : "unavailable";
       stopped = true;
       clearReadinessTimer();
       activeController?.abort();
       liveConnected = false;
       liveStable = false;
-      settleAllRecordWaiters("collector-unavailable");
       await streamRunner;
 
       const records = new Map<string, B1RuntimeLogRecord>();
@@ -2277,6 +2562,7 @@ export function startB1RuntimeLogCollector(
       for (const [key, expectation] of expected) {
         const observation = observations.get(key);
         if (observation) {
+          recordTiming(key, now());
           records.set(key, observation.record);
           statuses.set(
             key,
@@ -2293,7 +2579,10 @@ export function startB1RuntimeLogCollector(
             expectation.registeredAt <= batchCompletedAt;
           statuses.set(
             key,
-            hasContinuousLiveCoverage && !terminalUnavailable && !closedBeforeFinish
+            (
+              expectation.pollCoverageComplete ||
+              (hasContinuousLiveCoverage && !terminalUnavailable && !closedBeforeFinish)
+            )
               ? "true-missing"
               : "collector-unavailable",
           );
@@ -2301,13 +2590,18 @@ export function startB1RuntimeLogCollector(
       }
 
       const matchedCount = records.size;
-      finishedResult = {
+      const result: B1RuntimeLogCollectionResult = {
         records,
         statuses,
+        timings,
         collectorState: {
+          collectorMode,
           liveConnectionAttempts,
           liveSuccessfulConnections,
           liveInterruptions,
+          boundedPollAttempts,
+          boundedPollFailures,
+          boundedPollMatches,
           historicalBackfill,
           collectorReadyAt,
           collectorDisconnectedAt,
@@ -2316,7 +2610,8 @@ export function startB1RuntimeLogCollector(
           unmatchedCount: Math.max(0, expected.size - matchedCount),
         },
       };
-      return finishedResult;
+      finishedResult = result;
+      return result;
     },
     close() {
       stopped = true;
@@ -2325,7 +2620,6 @@ export function startB1RuntimeLogCollector(
       liveConnected = false;
       liveStable = false;
       settleLiveConnectionWaiters("unavailable");
-      settleAllRecordWaiters("collector-unavailable");
       void streamRunner;
     },
   };

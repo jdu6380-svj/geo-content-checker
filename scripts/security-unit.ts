@@ -60,6 +60,7 @@ import {
   B1_TELEMETRY_SCHEMA_VERSION,
   buildAnonymousB1Report,
   buildB1CheckpointArtifact,
+  buildB1RuntimeLogPollUrl,
   buildB1RuntimeLogStreamUrl,
   contentDraftFactsArePreserved,
   contentDraftStructureIsPreserved,
@@ -68,6 +69,7 @@ import {
   parseB1CheckpointArtifact,
   parseB1RuntimeLogHistoryBody,
   parseB1RuntimeLogMessage,
+  parseB1RuntimeLogPollPayload,
   parseB1Arguments,
   requireB1RuntimeLogCollectorReady,
   resolveB1CampaignDirectory,
@@ -126,7 +128,7 @@ const diagnosticRouteSource = readFileSync(
   "utf8",
 );
 assert.match(diagnosticRouteSource, /temperature:\s*0/);
-assert.match(diagnosticRouteSource, /timeoutMs:\s*15_000/);
+assert.match(diagnosticRouteSource, /timeoutMs:\s*17_000/);
 assert.match(diagnosticRouteSource, /maxTokens:\s*1_400/);
 assert.match(diagnosticRouteSource, /顶层字段必须且只能各出现一次/);
 assert.match(diagnosticRouteSource, /question、recommendation、answerability/);
@@ -1428,6 +1430,199 @@ assert.equal(runtimeLogStreamUrl.searchParams.get("format"), "lines");
 assert.equal(runtimeLogStreamUrl.searchParams.get("teamId"), delayedRuntimeConfig.teamId);
 assert.equal([...runtimeLogStreamUrl.searchParams.keys()].length, 2);
 assert.doesNotMatch(runtimeLogStreamUrl.href, /B1_SENTINEL_SECRET/);
+const runtimeLogPollUrl = buildB1RuntimeLogPollUrl(delayedRuntimeConfig, {
+  requestId: delayedRuntimeCalls[0].requestId as string,
+  route: delayedRuntimeCalls[0].route,
+  sinceMs: 1_000,
+  untilMs: 2_000,
+});
+assert.equal(runtimeLogPollUrl.pathname, "/api/logs/request-logs");
+assert.equal(runtimeLogPollUrl.searchParams.get("projectId"), delayedRuntimeConfig.projectId);
+assert.equal(runtimeLogPollUrl.searchParams.get("ownerId"), delayedRuntimeConfig.teamId);
+assert.equal(runtimeLogPollUrl.searchParams.get("teamId"), delayedRuntimeConfig.teamId);
+assert.equal(
+  runtimeLogPollUrl.searchParams.get("deploymentId"),
+  delayedRuntimeConfig.deploymentId,
+);
+assert.equal(
+  runtimeLogPollUrl.searchParams.get("search"),
+  delayedRuntimeCalls[0].requestId,
+);
+assert.equal(runtimeLogPollUrl.searchParams.get("startDate"), "1000");
+assert.equal(runtimeLogPollUrl.searchParams.get("endDate"), "2000");
+assert.doesNotMatch(runtimeLogPollUrl.href, /B1_SENTINEL_SECRET/);
+const parsedRuntimeLogPollPayload = parseB1RuntimeLogPollPayload(
+  {
+    rows: [
+      {
+        timestampInMs: 1_500,
+        message: JSON.stringify({
+          event: "geo_api_request",
+          requestId: delayedRuntimeCalls[0].requestId,
+          route: "/api/predict-questions",
+          status: 200,
+          source: "model",
+          modelStatus: "success",
+          modelLatencyMs: 1_200,
+          durationMs: 1_500,
+        }),
+      },
+      {
+        timestampInMs: 1_600,
+        message: JSON.stringify({
+          event: "geo_api_request",
+          requestId: delayedRuntimeCalls[0].requestId,
+          route: delayedRuntimeCalls[0].route,
+          status: 200,
+          source: "model",
+          modelStatus: "success",
+          modelLatencyMs: 1_200,
+          durationMs: 1_500,
+        }),
+      },
+    ],
+  },
+  {
+    requestId: delayedRuntimeCalls[0].requestId as string,
+    route: delayedRuntimeCalls[0].route,
+  },
+);
+assert.equal(parsedRuntimeLogPollPayload?.length, 1);
+assert.equal(parsedRuntimeLogPollPayload?.[0]?.record.route, delayedRuntimeCalls[0].route);
+assert.equal(parsedRuntimeLogPollPayload?.[0]?.generatedAtMs, 1_600);
+assert.equal(
+  parseB1RuntimeLogPollPayload([], {
+    requestId: delayedRuntimeCalls[0].requestId as string,
+    route: delayedRuntimeCalls[0].route,
+  }),
+  null,
+);
+
+const boundedPollCall = delayedRuntimeCalls[0];
+const boundedPollRecord = delayedRuntimeRecords[0];
+if (!boundedPollCall?.requestId || !boundedPollRecord) {
+  throw new Error("Bounded Runtime Log polling fixtures must be valid.");
+}
+const boundedPollRuntimeRecord: B1RuntimeLogRecord = boundedPollRecord;
+
+async function runBoundedRuntimeLogDelay(
+  deliveryDelayMs: 500 | 2_000 | 5_000,
+): Promise<void> {
+  let clock = 10_000;
+  const requestCompletedAtMs = clock;
+  let pollAttempts = 0;
+  let markStreamReady: (() => void) | undefined;
+  const streamReady = new Promise<void>((resolvePromise) => {
+    markStreamReady = resolvePromise;
+  });
+  const collector = startB1RuntimeLogCollector(
+    Promise.resolve(delayedRuntimeConfig),
+    {
+      maxDrainMs: 0,
+      readinessStabilityMs: 0,
+      now: () => clock,
+      wait: async (milliseconds) => {
+        clock += milliseconds;
+      },
+      stream: async (_config, signal, handlers) => {
+        handlers.connected();
+        markStreamReady?.();
+        await new Promise<void>((resolvePromise) => {
+          signal.addEventListener("abort", () => resolvePromise(), { once: true });
+        });
+      },
+      recordPollStartDelayMs: 500,
+      recordPollIntervalMs: 500,
+      recordPollRequestTimeoutMs: 1_000,
+      recordPoll: async (config, query, signal) => {
+        pollAttempts += 1;
+        assert.equal(signal.aborted, false);
+        assert.equal(config.deploymentId, delayedRuntimeConfig.deploymentId);
+        assert.equal(query.requestId, boundedPollCall.requestId);
+        assert.equal(query.route, boundedPollCall.route);
+        assert.ok(query.sinceMs <= requestCompletedAtMs);
+        assert.ok(query.untilMs >= requestCompletedAtMs);
+        if (clock - requestCompletedAtMs < deliveryDelayMs) return [];
+        return [{
+          record: boundedPollRuntimeRecord,
+          generatedAtMs: requestCompletedAtMs + 100,
+        }];
+      },
+    },
+  );
+  await streamReady;
+  assert.equal(await collector.waitForLiveConnection(10), "connected");
+  collector.register(boundedPollCall);
+  assert.equal(
+    await collector.waitForRecord(boundedPollCall, 6_000),
+    "matched",
+  );
+  const collection = await collector.finish(clock);
+  const key = `${boundedPollCall.requestId}\n${boundedPollCall.route}`;
+  const timing = collection.timings?.get(key);
+  assert.equal(collection.statuses.get(key), "matched");
+  assert.equal(collection.collectorState.boundedPollAttempts, pollAttempts);
+  assert.equal(collection.collectorState.boundedPollFailures, 0);
+  assert.equal(collection.collectorState.boundedPollMatches, 1);
+  assert.equal(timing?.requestCompletedAtMs, requestCompletedAtMs);
+  assert.equal(timing?.runtimeLogGeneratedAtMs, requestCompletedAtMs + 100);
+  assert.equal(
+    timing?.collectorReceivedAtMs,
+    requestCompletedAtMs + deliveryDelayMs,
+  );
+  assert.equal(
+    timing?.requestIdMatchedAtMs,
+    requestCompletedAtMs + deliveryDelayMs,
+  );
+  assert.equal(timing?.generationLatencyMs, 100);
+  assert.equal(timing?.deliveryLatencyMs, deliveryDelayMs - 100);
+  assert.equal(timing?.matchLatencyMs, deliveryDelayMs);
+}
+
+await runBoundedRuntimeLogDelay(500);
+await runBoundedRuntimeLogDelay(2_000);
+await runBoundedRuntimeLogDelay(5_000);
+
+let neverArrivesClock = 20_000;
+let markNeverArrivesReady: (() => void) | undefined;
+const neverArrivesReady = new Promise<void>((resolvePromise) => {
+  markNeverArrivesReady = resolvePromise;
+});
+const neverArrivesCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    readinessStabilityMs: 0,
+    now: () => neverArrivesClock,
+    wait: async (milliseconds) => {
+      neverArrivesClock += milliseconds;
+    },
+    stream: async (_config, signal, handlers) => {
+      handlers.connected();
+      markNeverArrivesReady?.();
+      await new Promise<void>((resolvePromise) => {
+        signal.addEventListener("abort", () => resolvePromise(), { once: true });
+      });
+    },
+    recordPollStartDelayMs: 500,
+    recordPollIntervalMs: 500,
+    recordPollRequestTimeoutMs: 1_000,
+    recordPoll: async () => [],
+  },
+);
+await neverArrivesReady;
+assert.equal(await neverArrivesCollector.waitForLiveConnection(10), "connected");
+neverArrivesCollector.register(boundedPollCall);
+assert.equal(
+  await neverArrivesCollector.waitForRecord(boundedPollCall, 5_500),
+  "timeout",
+);
+const neverArrivesCollection = await neverArrivesCollector.finish(neverArrivesClock);
+assert.deepEqual([...neverArrivesCollection.statuses.values()], ["true-missing"]);
+assert.equal(neverArrivesCollection.collectorState.boundedPollMatches, 0);
+assert.ok(neverArrivesCollection.collectorState.boundedPollAttempts > 0);
+assert.equal(neverArrivesCollection.timings?.size, 0);
+
 let delayedRuntimeClock = 100;
 let emitDelayedRuntimeRecord:
   | ((record: NonNullable<(typeof delayedRuntimeRecords)[number]>) => void)
@@ -1481,9 +1676,13 @@ assert.deepEqual([...delayedRuntimeCollection.statuses.values()], [
 ]);
 assert.equal(delayedRuntimeCollection.records.size, 2);
 assert.deepEqual(delayedRuntimeCollection.collectorState, {
+  collectorMode: "live",
   liveConnectionAttempts: 1,
   liveSuccessfulConnections: 1,
   liveInterruptions: 0,
+  boundedPollAttempts: 0,
+  boundedPollFailures: 0,
+  boundedPollMatches: 0,
   historicalBackfill: "complete",
   collectorReadyAt: 100,
   collectorDisconnectedAt: null,
@@ -1592,9 +1791,13 @@ assert.equal(
   historicalBackfillCall.route,
 );
 assert.deepEqual(historicalBackfillCollection.collectorState, {
+  collectorMode: "live",
   liveConnectionAttempts: 1,
   liveSuccessfulConnections: 1,
   liveInterruptions: 0,
+  boundedPollAttempts: 0,
+  boundedPollFailures: 0,
+  boundedPollMatches: 0,
   historicalBackfill: "complete",
   collectorReadyAt: 300,
   collectorDisconnectedAt: null,
@@ -1689,9 +1892,13 @@ assert.deepEqual(
 );
 assert.equal(unavailableRuntimeCollection.records.size, 0);
 assert.deepEqual(unavailableRuntimeCollection.collectorState, {
+  collectorMode: "unavailable",
   liveConnectionAttempts: 0,
   liveSuccessfulConnections: 0,
   liveInterruptions: 0,
+  boundedPollAttempts: 0,
+  boundedPollFailures: 0,
+  boundedPollMatches: 0,
   historicalBackfill: "unavailable",
   collectorReadyAt: null,
   collectorDisconnectedAt: null,
@@ -1737,9 +1944,13 @@ assert.equal(
 );
 const immediateCloseCollection = await immediateCloseCollector.finish();
 assert.deepEqual(immediateCloseCollection.collectorState, {
+  collectorMode: "unavailable",
   liveConnectionAttempts: 1,
   liveSuccessfulConnections: 1,
   liveInterruptions: 1,
+  boundedPollAttempts: 0,
+  boundedPollFailures: 0,
+  boundedPollMatches: 0,
   historicalBackfill: "not-needed",
   collectorReadyAt: null,
   collectorDisconnectedAt: 351,
@@ -1803,6 +2014,219 @@ assert.equal(
   await stableStreamCollector.waitForLiveConnection(10),
   "unavailable",
 );
+
+function runtimeRecordForCall(call: B1CallRecord): B1RuntimeLogRecord {
+  if (!call.requestId) {
+    throw new Error("Runtime Log lifecycle fixtures require request IDs.");
+  }
+  return {
+    requestId: call.requestId,
+    route: call.route,
+    status: call.status ?? 200,
+    source: call.source ?? "model",
+    modelStatus: "success",
+    modelLatencyMs: Math.max(0, call.durationMs - 100),
+    finishReason: "stop",
+    completionTokens: 100,
+    durationMs: call.durationMs,
+    validationStage: null,
+    validationIssueCount: null,
+    validationFailureClassification: null,
+    validationFieldPaths: [],
+    validationActionTypes: [],
+  };
+}
+
+let normalEofClock = 30_000;
+let markNormalEofReady: (() => void) | undefined;
+let endNormalEofStream: (() => void) | undefined;
+const normalEofReady = new Promise<void>((resolvePromise) => {
+  markNormalEofReady = resolvePromise;
+});
+const normalEofCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    readinessStabilityMs: 0,
+    now: () => normalEofClock,
+    wait: async (milliseconds) => {
+      normalEofClock += milliseconds;
+    },
+    stream: async (_config, _signal, handlers) => {
+      handlers.connected();
+      markNormalEofReady?.();
+      await new Promise<void>((resolvePromise) => {
+        endNormalEofStream = resolvePromise;
+      });
+    },
+    recordPollStartDelayMs: 500,
+    recordPollIntervalMs: 500,
+    recordPoll: async (_config, query) => [{
+      record: runtimeRecordForCall(delayedRuntimeCalls[0]),
+      generatedAtMs: query.sinceMs + 20_000,
+    }],
+  },
+);
+await normalEofReady;
+assert.equal(await normalEofCollector.waitForLiveConnection(10), "connected");
+endNormalEofStream?.();
+await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 0));
+assert.equal(await normalEofCollector.waitForLiveConnection(0), "connected");
+assert.equal(
+  await normalEofCollector.waitForRecord(delayedRuntimeCalls[0], 2_000),
+  "matched",
+);
+const normalEofCollection = await normalEofCollector.finish(normalEofClock);
+assert.equal(normalEofCollection.collectorState.collectorMode, "degraded");
+assert.equal(normalEofCollection.collectorState.disconnectReason, "stream-ended");
+assert.equal(normalEofCollection.collectorState.matchedCount, 1);
+assert.equal(normalEofCollection.collectorState.unmatchedCount, 0);
+
+let midstreamClock = 40_000;
+let markMidstreamReady: (() => void) | undefined;
+let endMidstreamStream: (() => void) | undefined;
+let midstreamPolls = 0;
+const midstreamReady = new Promise<void>((resolvePromise) => {
+  markMidstreamReady = resolvePromise;
+});
+const midstreamCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    readinessStabilityMs: 0,
+    now: () => midstreamClock,
+    wait: async (milliseconds) => {
+      midstreamClock += milliseconds;
+    },
+    stream: async (_config, _signal, handlers) => {
+      handlers.connected();
+      markMidstreamReady?.();
+      await new Promise<void>((resolvePromise) => {
+        endMidstreamStream = resolvePromise;
+      });
+    },
+    recordPollStartDelayMs: 500,
+    recordPollIntervalMs: 500,
+    recordPoll: async () => {
+      midstreamPolls += 1;
+      if (midstreamPolls === 1) {
+        endMidstreamStream?.();
+        await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 0));
+        return [];
+      }
+      return [{
+        record: runtimeRecordForCall(delayedRuntimeCalls[1]),
+        generatedAtMs: midstreamClock,
+      }];
+    },
+  },
+);
+await midstreamReady;
+assert.equal(await midstreamCollector.waitForLiveConnection(10), "connected");
+assert.equal(
+  await midstreamCollector.waitForRecord(delayedRuntimeCalls[1], 2_000),
+  "matched",
+);
+const midstreamCollection = await midstreamCollector.finish(midstreamClock);
+assert.equal(midstreamPolls, 2);
+assert.equal(midstreamCollection.collectorState.collectorMode, "degraded");
+assert.equal(midstreamCollection.collectorState.disconnectReason, "stream-ended");
+assert.equal(midstreamCollection.collectorState.boundedPollMatches, 1);
+
+let eofTimeoutClock = 50_000;
+let markEofTimeoutReady: (() => void) | undefined;
+let endEofTimeoutStream: (() => void) | undefined;
+const eofTimeoutReady = new Promise<void>((resolvePromise) => {
+  markEofTimeoutReady = resolvePromise;
+});
+const eofTimeoutCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    readinessStabilityMs: 0,
+    now: () => eofTimeoutClock,
+    wait: async (milliseconds) => {
+      eofTimeoutClock += milliseconds;
+    },
+    stream: async (_config, _signal, handlers) => {
+      handlers.connected();
+      markEofTimeoutReady?.();
+      await new Promise<void>((resolvePromise) => {
+        endEofTimeoutStream = resolvePromise;
+      });
+    },
+    recordPollStartDelayMs: 500,
+    recordPollIntervalMs: 500,
+    recordPoll: async () => [],
+  },
+);
+await eofTimeoutReady;
+assert.equal(await eofTimeoutCollector.waitForLiveConnection(10), "connected");
+endEofTimeoutStream?.();
+await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 0));
+assert.equal(
+  await eofTimeoutCollector.waitForRecord(delayedRuntimeCalls[2], 1_500),
+  "timeout",
+);
+const eofTimeoutCollection = await eofTimeoutCollector.finish(eofTimeoutClock);
+assert.equal(eofTimeoutCollection.collectorState.collectorMode, "degraded");
+assert.deepEqual([...eofTimeoutCollection.statuses.values()], ["true-missing"]);
+
+let concurrentClock = 60_000;
+let markConcurrentReady: (() => void) | undefined;
+let endConcurrentStream: (() => void) | undefined;
+const concurrentReady = new Promise<void>((resolvePromise) => {
+  markConcurrentReady = resolvePromise;
+});
+const concurrentCalls = delayedRuntimeCalls.map((call, index) => ({
+  ...call,
+  requestId: `00000000-0000-4000-8000-${String(101 + index).padStart(12, "0")}`,
+}));
+const concurrentCollector = startB1RuntimeLogCollector(
+  Promise.resolve(delayedRuntimeConfig),
+  {
+    maxDrainMs: 0,
+    readinessStabilityMs: 0,
+    now: () => concurrentClock,
+    wait: async (milliseconds) => {
+      concurrentClock += milliseconds;
+    },
+    stream: async (_config, _signal, handlers) => {
+      handlers.connected();
+      markConcurrentReady?.();
+      await new Promise<void>((resolvePromise) => {
+        endConcurrentStream = resolvePromise;
+      });
+    },
+    recordPollStartDelayMs: 0,
+    recordPollIntervalMs: 500,
+    recordPoll: async (_config, query) => {
+      await Promise.resolve();
+      const call = concurrentCalls.find(
+        (candidate) =>
+          candidate.requestId === query.requestId && candidate.route === query.route,
+      );
+      return call
+        ? [{ record: runtimeRecordForCall(call), generatedAtMs: concurrentClock }]
+        : [];
+    },
+  },
+);
+await concurrentReady;
+assert.equal(await concurrentCollector.waitForLiveConnection(10), "connected");
+endConcurrentStream?.();
+await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 0));
+assert.deepEqual(
+  await Promise.all(
+    concurrentCalls.map((call) => concurrentCollector.waitForRecord(call, 2_000)),
+  ),
+  ["matched", "matched", "matched"],
+);
+const concurrentCollection = await concurrentCollector.finish(concurrentClock);
+assert.equal(concurrentCollection.collectorState.collectorMode, "degraded");
+assert.equal(concurrentCollection.collectorState.matchedCount, 3);
+assert.equal(concurrentCollection.collectorState.unmatchedCount, 0);
+assert.equal(concurrentCollection.collectorState.boundedPollMatches, 3);
 
 let reconnectAttempts = 0;
 const reconnectFailureCollector = startB1RuntimeLogCollector(
@@ -1872,9 +2296,13 @@ assert.deepEqual(
   ["collector-unavailable"],
 );
 assert.deepEqual(interruptedRuntimeCollection.collectorState, {
+  collectorMode: "unavailable",
   liveConnectionAttempts: 1,
   liveSuccessfulConnections: 1,
   liveInterruptions: 1,
+  boundedPollAttempts: 0,
+  boundedPollFailures: 0,
+  boundedPollMatches: 0,
   historicalBackfill: "unavailable",
   collectorReadyAt: 400,
   collectorDisconnectedAt: 450,
@@ -1918,9 +2346,13 @@ assert.deepEqual(
 );
 assert.equal(historyFailureCollection.records.size, 0);
 assert.deepEqual(historyFailureCollection.collectorState, {
+  collectorMode: "live",
   liveConnectionAttempts: 1,
   liveSuccessfulConnections: 1,
   liveInterruptions: 0,
+  boundedPollAttempts: 0,
+  boundedPollFailures: 0,
+  boundedPollMatches: 0,
   historicalBackfill: "unavailable",
   collectorReadyAt: 500,
   collectorDisconnectedAt: null,
@@ -2290,9 +2722,16 @@ function createB15MockRuntimeCollector(
         records,
         statuses,
         collectorState: {
+          collectorMode:
+            closed || disconnected || readiness !== "connected"
+              ? "unavailable" as const
+              : "live" as const,
           liveConnectionAttempts: 1,
           liveSuccessfulConnections: readiness === "connected" ? 1 : 0,
           liveInterruptions: disconnected ? 1 : 0,
+          boundedPollAttempts: 0,
+          boundedPollFailures: 0,
+          boundedPollMatches: 0,
           historicalBackfill:
             registeredKeys.size > matchedCount ? "unavailable" as const : "not-needed" as const,
           collectorReadyAt: readiness === "connected" ? 1 : null,
@@ -2350,9 +2789,13 @@ assert.equal(passingB15.artifact.overall.round1.sourceModel, 70);
 assert.equal(passingB15.artifact.overall.round2.sourceModel, 70);
 assert.equal(passingB15.artifact.runtimeLogStatus.matched, B15_EXPECTED_MODEL_REQUESTS);
 assert.deepEqual(passingB15.artifact.runtimeLogCollectorState, {
+  collectorMode: "live",
   liveConnectionAttempts: 1,
   liveSuccessfulConnections: 1,
   liveInterruptions: 0,
+  boundedPollAttempts: 0,
+  boundedPollFailures: 0,
+  boundedPollMatches: 0,
   historicalBackfill: "not-needed",
   collectorReadyAt: 1,
   collectorDisconnectedAt: null,

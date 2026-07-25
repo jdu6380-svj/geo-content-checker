@@ -1033,8 +1033,7 @@ export function buildB15CalibrationArtifact(
         call.validationStage === null
       ),
   ) &&
-    collection.collectorState.collectorDisconnectedAt === null &&
-    collection.collectorState.disconnectReason === null &&
+    collection.collectorState.collectorMode !== "unavailable" &&
     collection.collectorState.matchedCount === calls.length &&
     collection.collectorState.unmatchedCount === 0;
   const moduleGatePass =
