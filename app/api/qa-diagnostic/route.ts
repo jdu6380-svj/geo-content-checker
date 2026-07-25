@@ -24,7 +24,7 @@ import {
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
 export const runtime = "nodejs";
-export const maxDuration = 20;
+export const maxDuration = 25;
 
 const RISK_PATTERN = /保证|一定|绝对|全部|所有人|全网最|百分之百|彻底解决|必然|永久/;
 const STOP_PHRASES = ["这篇文章", "文章", "是否", "什么", "哪些", "如何", "为什么", "有没有", "读者"];
