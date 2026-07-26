@@ -6,8 +6,10 @@ import type { NextRequest } from "next/server";
 
 import {
   JSON_BOUNDARY_CHARACTER_TYPES,
+  JSON_ERROR_CATEGORIES,
   JSON_PARSER_ERROR_NAMES,
   type JsonBoundaryCharacterType,
+  type JsonErrorCategory,
   type JsonParseFailureTelemetry,
   type JsonParserErrorName,
 } from "../ai/json.ts";
@@ -102,6 +104,7 @@ export interface GeoValidationTelemetry {
   endsWithCodeFence?: boolean;
   parserErrorName?: JsonParserErrorName;
   parserErrorPosition?: number | null;
+  jsonErrorCategory?: JsonErrorCategory;
   containsMultipleTopLevelValues?: boolean;
   hasLeadingNonWhitespaceText?: boolean;
   hasTrailingNonWhitespaceText?: boolean;
@@ -141,6 +144,7 @@ interface GeoRequestContext {
   endsWithCodeFence?: boolean;
   parserErrorName?: JsonParserErrorName;
   parserErrorPosition?: number | null;
+  jsonErrorCategory?: JsonErrorCategory;
   containsMultipleTopLevelValues?: boolean;
   hasLeadingNonWhitespaceText?: boolean;
   hasTrailingNonWhitespaceText?: boolean;
@@ -301,6 +305,11 @@ export function sanitizeGeoValidationTelemetry(
     )
       ? (value.parserErrorName as JsonParserErrorName)
       : undefined;
+    const jsonErrorCategory = JSON_ERROR_CATEGORIES.includes(
+      value.jsonErrorCategory as JsonErrorCategory,
+    )
+      ? (value.jsonErrorCategory as JsonErrorCategory)
+      : undefined;
     const hasJsonParseFailureTelemetry =
       value.stage === "json_parse" &&
       validationFailureClassification === "json_parse_failed";
@@ -337,6 +346,9 @@ export function sanitizeGeoValidationTelemetry(
       ...(!hasJsonParseFailureTelemetry || parserErrorPosition === undefined
         ? {}
         : { parserErrorPosition }),
+      ...(!hasJsonParseFailureTelemetry || jsonErrorCategory === undefined
+        ? {}
+        : { jsonErrorCategory }),
       ...(!hasJsonParseFailureTelemetry ||
       typeof value.containsMultipleTopLevelValues !== "boolean"
         ? {}
@@ -439,6 +451,9 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
           ...(context.parserErrorPosition === undefined
             ? {}
             : { parserErrorPosition: context.parserErrorPosition }),
+          ...(context.jsonErrorCategory === undefined
+            ? {}
+            : { jsonErrorCategory: context.jsonErrorCategory }),
           ...(context.containsMultipleTopLevelValues === undefined
             ? {}
             : {
@@ -552,6 +567,9 @@ export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput):
     }
     if (telemetry.parserErrorPosition !== undefined) {
       context.parserErrorPosition = telemetry.parserErrorPosition;
+    }
+    if (telemetry.jsonErrorCategory !== undefined) {
+      context.jsonErrorCategory = telemetry.jsonErrorCategory;
     }
     if (telemetry.containsMultipleTopLevelValues !== undefined) {
       context.containsMultipleTopLevelValues =

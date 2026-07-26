@@ -18,6 +18,7 @@ import {
 import {
   analyzeJsonParseFailure,
   cleanModelJson,
+  JSON_ERROR_CATEGORIES,
 } from "../lib/ai/json.ts";
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
 import { normalizeDiagnosticModelOutput } from "../lib/ai/diagnostic-output.ts";
@@ -153,6 +154,14 @@ assert.match(modelAdapterSource, /response_format:\s*\{ type: "json_object" \}/)
 assert.doesNotMatch(modelAdapterSource, /json_schema/);
 assert.equal(normalizeGeoModelFinishReason("length"), "length");
 assert.equal(normalizeGeoModelFinishReason("provider-specific"), "unknown");
+assert.deepEqual(JSON_ERROR_CATEGORIES, [
+  "unterminated_string",
+  "invalid_escape",
+  "unexpected_token",
+  "unexpected_end",
+  "invalid_character",
+  "other",
+]);
 
 const jsonParseSensitiveSentinel = "JSON_PARSE_SENTINEL_MUST_NOT_PERSIST";
 const fencedInvalidJson = `  \`\`\`json
@@ -182,6 +191,7 @@ assert.deepEqual(fencedParseTelemetry, {
     typeof fencedParseTelemetry.parserErrorPosition === "number"
       ? fencedParseTelemetry.parserErrorPosition
       : null,
+  jsonErrorCategory: "unexpected_token",
   containsMultipleTopLevelValues: true,
   hasLeadingNonWhitespaceText: true,
   hasTrailingNonWhitespaceText: false,
@@ -205,10 +215,41 @@ const trailingTextTelemetry = analyzeJsonParseFailure(
 assert.equal(trailingTextTelemetry.hasLeadingNonWhitespaceText, false);
 assert.equal(trailingTextTelemetry.hasTrailingNonWhitespaceText, true);
 assert.equal(trailingTextTelemetry.containsMultipleTopLevelValues, false);
+assert.equal(trailingTextTelemetry.jsonErrorCategory, "invalid_character");
 assert.equal(
   analyzeJsonParseFailure("", new SyntaxError("Unexpected end of JSON input"))
     .firstCharType,
   "none",
+);
+assert.equal(
+  analyzeJsonParseFailure("{}", new SyntaxError("Unterminated string in JSON at position 1"))
+    .jsonErrorCategory,
+  "unterminated_string",
+);
+assert.equal(
+  analyzeJsonParseFailure("{}", new SyntaxError("Bad escaped character in JSON at position 1"))
+    .jsonErrorCategory,
+  "invalid_escape",
+);
+assert.equal(
+  analyzeJsonParseFailure("{}", new SyntaxError("Unexpected token x in JSON at position 1"))
+    .jsonErrorCategory,
+  "unexpected_token",
+);
+assert.equal(
+  analyzeJsonParseFailure("{}", new SyntaxError("Unexpected end of JSON input"))
+    .jsonErrorCategory,
+  "unexpected_end",
+);
+assert.equal(
+  analyzeJsonParseFailure("{}", new SyntaxError("Bad control character in string literal"))
+    .jsonErrorCategory,
+  "invalid_character",
+);
+assert.equal(
+  analyzeJsonParseFailure("{}", new SyntaxError("Unclassified parser failure"))
+    .jsonErrorCategory,
+  "other",
 );
 
 const normalizedHash = await createAnalysisHash({
@@ -1192,6 +1233,7 @@ const sensitiveB1PipelineRecord = {
     endsWithCodeFence: null,
     parserErrorName: null,
     parserErrorPosition: null,
+    jsonErrorCategory: null,
     containsMultipleTopLevelValues: null,
     hasLeadingNonWhitespaceText: null,
     hasTrailingNonWhitespaceText: null,
@@ -1259,6 +1301,7 @@ for (const request of b1CheckpointArtifact.records[0].requests) {
     "hasLeadingNonWhitespaceText",
     "hasTrailingNonWhitespaceText",
     "httpStatus",
+    "jsonErrorCategory",
     "lastCharType",
     "modelLatencyMs",
     "modelStatus",
@@ -1388,6 +1431,17 @@ const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
   evidence: b1SensitiveSentinels[2],
   response: b1SensitiveSentinels[4],
 });
+const invalidJsonErrorCategoryTelemetry = sanitizeGeoValidationTelemetry({
+  stage: "json_parse",
+  issueCount: 1,
+  failureClassification: "json_parse_failed",
+  ...fencedParseTelemetry,
+  jsonErrorCategory: b1SensitiveSentinels[0] as "other",
+});
+assert.equal(
+  Object.hasOwn(invalidJsonErrorCategoryTelemetry ?? {}, "jsonErrorCategory"),
+  false,
+);
 assert.deepEqual(sanitizedValidationTelemetry, {
   validationStage: "json_parse",
   validationIssueCount: 1,
@@ -1919,6 +1973,7 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
       "firstTokenAt",
       "hasLeadingNonWhitespaceText",
       "hasTrailingNonWhitespaceText",
+      "jsonErrorCategory",
       "lastCharType",
       "modelLatencyMs",
       "modelStatus",
@@ -3117,6 +3172,7 @@ function createB15MockRuntimeCollector(
       endsWithCodeFence: null,
       parserErrorName: null,
       parserErrorPosition: null,
+      jsonErrorCategory: null,
       containsMultipleTopLevelValues: null,
       hasLeadingNonWhitespaceText: null,
       hasTrailingNonWhitespaceText: null,
@@ -3243,6 +3299,7 @@ for (const record of passingB15.artifact.records) {
     "hasLeadingNonWhitespaceText",
     "hasTrailingNonWhitespaceText",
     "httpStatus",
+    "jsonErrorCategory",
     "lastCharType",
     "latencyMs",
     "modelStatus",
@@ -3285,6 +3342,7 @@ for (const record of passingB15.artifact.records) {
   assert.equal(record.endsWithCodeFence, null);
   assert.equal(record.parserErrorName, null);
   assert.equal(record.parserErrorPosition, null);
+  assert.equal(record.jsonErrorCategory, null);
   assert.equal(record.containsMultipleTopLevelValues, null);
   assert.equal(record.hasLeadingNonWhitespaceText, null);
   assert.equal(record.hasTrailingNonWhitespaceText, null);
@@ -3348,6 +3406,7 @@ assert.deepEqual(inconclusiveHttpFailureB15.artifact.records[0], {
   endsWithCodeFence: null,
   parserErrorName: null,
   parserErrorPosition: null,
+  jsonErrorCategory: null,
   containsMultipleTopLevelValues: null,
   hasLeadingNonWhitespaceText: null,
   hasTrailingNonWhitespaceText: null,

@@ -5,8 +5,10 @@ import { pathToFileURL } from "node:url";
 
 import {
   JSON_BOUNDARY_CHARACTER_TYPES,
+  JSON_ERROR_CATEGORIES,
   JSON_PARSER_ERROR_NAMES,
   type JsonBoundaryCharacterType,
+  type JsonErrorCategory,
   type JsonParserErrorName,
 } from "../lib/ai/json.ts";
 import {
@@ -52,7 +54,7 @@ export const B1_MODEL_CALLS_PER_PIPELINE = B1_PIPELINE_OPERATIONS.length;
 export const B1_STAGE_1_ARTICLE_COUNT = 10;
 export const B1_STAGE_2_ARTICLE_COUNT = 9;
 export const B1_DEFAULT_STAGE_2_ROUNDS = 2;
-export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v6";
+export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v7";
 
 const B1_MODEL_STATUSES = [
   "not-requested",
@@ -250,6 +252,7 @@ export interface B1CallRecord {
   endsWithCodeFence?: boolean | null;
   parserErrorName?: JsonParserErrorName | null;
   parserErrorPosition?: number | null;
+  jsonErrorCategory?: JsonErrorCategory | null;
   containsMultipleTopLevelValues?: boolean | null;
   hasLeadingNonWhitespaceText?: boolean | null;
   hasTrailingNonWhitespaceText?: boolean | null;
@@ -333,6 +336,7 @@ interface B1PersistedCallRecord {
   endsWithCodeFence: boolean | null;
   parserErrorName: JsonParserErrorName | null;
   parserErrorPosition: number | null;
+  jsonErrorCategory: JsonErrorCategory | null;
   containsMultipleTopLevelValues: boolean | null;
   hasLeadingNonWhitespaceText: boolean | null;
   hasTrailingNonWhitespaceText: boolean | null;
@@ -388,6 +392,7 @@ export interface B1RuntimeLogRecord {
   endsWithCodeFence?: boolean | null;
   parserErrorName?: JsonParserErrorName | null;
   parserErrorPosition?: number | null;
+  jsonErrorCategory?: JsonErrorCategory | null;
   containsMultipleTopLevelValues?: boolean | null;
   hasLeadingNonWhitespaceText?: boolean | null;
   hasTrailingNonWhitespaceText?: boolean | null;
@@ -596,6 +601,10 @@ function normalizeJsonParserErrorName(
   value: unknown,
 ): JsonParserErrorName | null {
   return isOneOf(value, JSON_PARSER_ERROR_NAMES) ? value : null;
+}
+
+function normalizeJsonErrorCategory(value: unknown): JsonErrorCategory | null {
+  return isOneOf(value, JSON_ERROR_CATEGORIES) ? value : null;
 }
 
 function normalizeRuntimeLogStatus(value: unknown): B1RuntimeLogStatus | null {
@@ -1253,6 +1262,9 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
     parserErrorPosition: hasValidationTelemetry
       ? normalizeTokenCount(record.parserErrorPosition)
       : null,
+    jsonErrorCategory: hasValidationTelemetry
+      ? normalizeJsonErrorCategory(record.jsonErrorCategory)
+      : null,
     containsMultipleTopLevelValues: hasValidationTelemetry
       ? normalizeTelemetryBoolean(record.containsMultipleTopLevelValues)
       : null,
@@ -1805,6 +1817,10 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     value.parserErrorPosition === undefined || value.parserErrorPosition === null
       ? null
       : normalizeTokenCount(value.parserErrorPosition);
+  const jsonErrorCategory =
+    value.jsonErrorCategory === undefined
+      ? null
+      : normalizeJsonErrorCategory(value.jsonErrorCategory);
   const containsMultipleTopLevelValues =
     value.containsMultipleTopLevelValues === undefined
       ? null
@@ -1849,6 +1865,7 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     (value.parserErrorPosition !== undefined &&
       value.parserErrorPosition !== null &&
       parserErrorPosition === null) ||
+    (value.jsonErrorCategory !== undefined && jsonErrorCategory === null) ||
     (value.containsMultipleTopLevelValues !== undefined &&
       containsMultipleTopLevelValues === null) ||
     (value.hasLeadingNonWhitespaceText !== undefined &&
@@ -1927,6 +1944,7 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     parserErrorPosition: hasValidValidationTelemetry
       ? parserErrorPosition
       : null,
+    jsonErrorCategory: hasValidValidationTelemetry ? jsonErrorCategory : null,
     containsMultipleTopLevelValues: hasValidValidationTelemetry
       ? containsMultipleTopLevelValues
       : null,
@@ -2940,6 +2958,7 @@ function applyRuntimeLogRecords(
       endsWithCodeFence: runtime.endsWithCodeFence ?? null,
       parserErrorName: runtime.parserErrorName ?? null,
       parserErrorPosition: runtime.parserErrorPosition ?? null,
+      jsonErrorCategory: runtime.jsonErrorCategory ?? null,
       containsMultipleTopLevelValues:
         runtime.containsMultipleTopLevelValues ?? null,
       hasLeadingNonWhitespaceText:
@@ -3277,6 +3296,7 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       "endsWithCodeFence",
       "parserErrorName",
       "parserErrorPosition",
+      "jsonErrorCategory",
       "containsMultipleTopLevelValues",
       "hasLeadingNonWhitespaceText",
       "hasTrailingNonWhitespaceText",
@@ -3367,6 +3387,10 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     value.parserErrorPosition === null
       ? null
       : normalizeTokenCount(value.parserErrorPosition);
+  const jsonErrorCategory =
+    value.jsonErrorCategory === null
+      ? null
+      : normalizeJsonErrorCategory(value.jsonErrorCategory);
   const containsMultipleTopLevelValues =
     value.containsMultipleTopLevelValues === null
       ? null
@@ -3412,6 +3436,7 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     (value.endsWithCodeFence !== null && endsWithCodeFence === null) ||
     (value.parserErrorName !== null && parserErrorName === null) ||
     (value.parserErrorPosition !== null && parserErrorPosition === null) ||
+    (value.jsonErrorCategory !== null && jsonErrorCategory === null) ||
     (value.containsMultipleTopLevelValues !== null &&
       containsMultipleTopLevelValues === null) ||
     (value.hasLeadingNonWhitespaceText !== null &&
@@ -3468,6 +3493,7 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     endsWithCodeFence,
     parserErrorName,
     parserErrorPosition,
+    jsonErrorCategory,
     containsMultipleTopLevelValues,
     hasLeadingNonWhitespaceText,
     hasTrailingNonWhitespaceText,
@@ -3509,6 +3535,7 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     endsWithCodeFence: persisted.endsWithCodeFence,
     parserErrorName: persisted.parserErrorName,
     parserErrorPosition: persisted.parserErrorPosition,
+    jsonErrorCategory: persisted.jsonErrorCategory,
     containsMultipleTopLevelValues:
       persisted.containsMultipleTopLevelValues,
     hasLeadingNonWhitespaceText:

@@ -25,6 +25,17 @@ export const JSON_PARSER_ERROR_NAMES = [
 
 export type JsonParserErrorName = (typeof JSON_PARSER_ERROR_NAMES)[number];
 
+export const JSON_ERROR_CATEGORIES = [
+  "unterminated_string",
+  "invalid_escape",
+  "unexpected_token",
+  "unexpected_end",
+  "invalid_character",
+  "other",
+] as const;
+
+export type JsonErrorCategory = (typeof JSON_ERROR_CATEGORIES)[number];
+
 export interface JsonParseFailureTelemetry {
   responseLength: number;
   trimmedLength: number;
@@ -34,6 +45,7 @@ export interface JsonParseFailureTelemetry {
   endsWithCodeFence: boolean;
   parserErrorName: JsonParserErrorName;
   parserErrorPosition: number | null;
+  jsonErrorCategory: JsonErrorCategory;
   containsMultipleTopLevelValues: boolean;
   hasLeadingNonWhitespaceText: boolean;
   hasTrailingNonWhitespaceText: boolean;
@@ -81,6 +93,34 @@ function parserErrorPosition(error: unknown, parserInput: string): number | null
   }
   if (/unexpected end/i.test(error.message)) return parserInput.length;
   return null;
+}
+
+function jsonErrorCategory(error: unknown): JsonErrorCategory {
+  if (!(error instanceof Error)) return "other";
+  const message = error.message.toLowerCase();
+
+  if (/unterminated string/.test(message)) return "unterminated_string";
+  if (/(?:bad|invalid) (?:escaped character|escape|unicode escape)/.test(message)) {
+    return "invalid_escape";
+  }
+  if (/(?:unexpected end|end of json input|end of data)/.test(message)) {
+    return "unexpected_end";
+  }
+  if (
+    /(?:bad control character|bad character|invalid character|unexpected non-whitespace character)/.test(
+      message,
+    )
+  ) {
+    return "invalid_character";
+  }
+  if (
+    /(?:unexpected token|expected |unexpected keyword|unexpected character|unexpected non-digit|no number after minus sign|missing digits|property names must be double-quoted)/.test(
+      message,
+    )
+  ) {
+    return "unexpected_token";
+  }
+  return "other";
 }
 
 function containsMultipleTopLevelValues(value: string): boolean {
@@ -142,6 +182,7 @@ export function analyzeJsonParseFailure(
     endsWithCodeFence: /```\s*$/.test(trimmed),
     parserErrorName: parserErrorName(error),
     parserErrorPosition: parserErrorPosition(error, parserInput),
+    jsonErrorCategory: jsonErrorCategory(error),
     containsMultipleTopLevelValues:
       containsMultipleTopLevelValues(withoutFences),
     hasLeadingNonWhitespaceText:

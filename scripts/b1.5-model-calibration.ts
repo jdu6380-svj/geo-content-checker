@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import type {
   JsonBoundaryCharacterType,
+  JsonErrorCategory,
   JsonParserErrorName,
 } from "../lib/ai/json.ts";
 import {
@@ -29,7 +30,7 @@ import {
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
-export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v10";
+export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v11";
 export const B15_REQUIRED_NODE_VERSION = "v22.23.1";
 export const B15_REQUIRED_CORPUS_SHA256 =
   "6d3115d362c762f9f6ba1235ca897230405f07834235173b940181d5765d72f3";
@@ -115,6 +116,7 @@ const ARTIFACT_RECORD_KEYS = [
   "endsWithCodeFence",
   "parserErrorName",
   "parserErrorPosition",
+  "jsonErrorCategory",
   "containsMultipleTopLevelValues",
   "hasLeadingNonWhitespaceText",
   "hasTrailingNonWhitespaceText",
@@ -284,6 +286,7 @@ export interface B15InternalCall {
   endsWithCodeFence: boolean | null;
   parserErrorName: JsonParserErrorName | null;
   parserErrorPosition: number | null;
+  jsonErrorCategory: JsonErrorCategory | null;
   containsMultipleTopLevelValues: boolean | null;
   hasLeadingNonWhitespaceText: boolean | null;
   hasTrailingNonWhitespaceText: boolean | null;
@@ -364,6 +367,7 @@ export interface B15ArtifactRecord {
   endsWithCodeFence: boolean | null;
   parserErrorName: JsonParserErrorName | null;
   parserErrorPosition: number | null;
+  jsonErrorCategory: JsonErrorCategory | null;
   containsMultipleTopLevelValues: boolean | null;
   hasLeadingNonWhitespaceText: boolean | null;
   hasTrailingNonWhitespaceText: boolean | null;
@@ -697,6 +701,7 @@ function callFromTransport(
     endsWithCodeFence: null,
     parserErrorName: null,
     parserErrorPosition: null,
+    jsonErrorCategory: null,
     containsMultipleTopLevelValues: null,
     hasLeadingNonWhitespaceText: null,
     hasTrailingNonWhitespaceText: null,
@@ -977,6 +982,7 @@ function mergeRuntimeLogs(
       endsWithCodeFence: runtime.endsWithCodeFence ?? null,
       parserErrorName: runtime.parserErrorName ?? null,
       parserErrorPosition: runtime.parserErrorPosition ?? null,
+      jsonErrorCategory: runtime.jsonErrorCategory ?? null,
       containsMultipleTopLevelValues:
         runtime.containsMultipleTopLevelValues ?? null,
       hasLeadingNonWhitespaceText:
@@ -1144,6 +1150,7 @@ function artifactRecord(call: B15InternalCall): B15ArtifactRecord {
     endsWithCodeFence: call.endsWithCodeFence,
     parserErrorName: call.parserErrorName,
     parserErrorPosition: call.parserErrorPosition,
+    jsonErrorCategory: call.jsonErrorCategory,
     containsMultipleTopLevelValues: call.containsMultipleTopLevelValues,
     hasLeadingNonWhitespaceText: call.hasLeadingNonWhitespaceText,
     hasTrailingNonWhitespaceText: call.hasTrailingNonWhitespaceText,
