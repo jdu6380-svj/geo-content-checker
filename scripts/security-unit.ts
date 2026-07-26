@@ -128,7 +128,7 @@ const scoringRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/evaluate-scoring/route.ts", import.meta.url)),
   "utf8",
 );
-assert.match(scoringRouteSource, /timeoutMs:\s*12_000/);
+assert.match(scoringRouteSource, /timeoutMs:\s*15_000/);
 assert.doesNotMatch(scoringRouteSource, /timeoutMs:\s*10_000/);
 const diagnosticRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/qa-diagnostic/route.ts", import.meta.url)),
