@@ -36,6 +36,70 @@ export const JSON_ERROR_CATEGORIES = [
 
 export type JsonErrorCategory = (typeof JSON_ERROR_CATEGORIES)[number];
 
+export const JSON_LAST_CHARACTER_CATEGORIES = [
+  "quote",
+  "comma",
+  "brace",
+  "bracket",
+  "whitespace",
+  "other",
+  "unknown",
+] as const;
+
+export type JsonLastCharacterCategory =
+  (typeof JSON_LAST_CHARACTER_CATEGORIES)[number];
+
+export const VALIDATION_RECEIVED_TYPES = [
+  "string",
+  "array",
+  "object",
+  "null",
+  "missing",
+  "unknown",
+] as const;
+
+export type ValidationReceivedType =
+  (typeof VALIDATION_RECEIVED_TYPES)[number];
+
+export const VALIDATION_EXPECTED_TYPES = [
+  "string",
+  "array",
+  "object",
+  "null",
+  "unknown",
+] as const;
+
+export type ValidationExpectedType =
+  (typeof VALIDATION_EXPECTED_TYPES)[number];
+
+export const VALIDATION_ISSUE_CODES = [
+  "invalid_type",
+  "invalid_literal",
+  "custom",
+  "invalid_union",
+  "invalid_union_discriminator",
+  "invalid_enum_value",
+  "unrecognized_keys",
+  "invalid_arguments",
+  "invalid_return_type",
+  "invalid_date",
+  "invalid_string",
+  "too_small",
+  "too_big",
+  "invalid_intersection_types",
+  "not_multiple_of",
+  "not_finite",
+  "unknown",
+] as const;
+
+export type ValidationIssueCode = (typeof VALIDATION_ISSUE_CODES)[number];
+
+export interface SchemaValidationFailureTelemetry {
+  validationReceivedType: ValidationReceivedType;
+  validationExpectedType: ValidationExpectedType;
+  validationIssueCode: ValidationIssueCode;
+}
+
 export interface JsonParseFailureTelemetry {
   responseLength: number;
   trimmedLength: number;
@@ -46,6 +110,8 @@ export interface JsonParseFailureTelemetry {
   parserErrorName: JsonParserErrorName;
   parserErrorPosition: number | null;
   jsonErrorCategory: JsonErrorCategory;
+  parserErrorCategory: JsonErrorCategory;
+  lastCharacterCategory: JsonLastCharacterCategory;
   containsMultipleTopLevelValues: boolean;
   hasLeadingNonWhitespaceText: boolean;
   hasTrailingNonWhitespaceText: boolean;
@@ -123,6 +189,58 @@ function jsonErrorCategory(error: unknown): JsonErrorCategory {
   return "other";
 }
 
+function lastCharacterCategory(raw: string): JsonLastCharacterCategory {
+  const character = raw.at(-1);
+  if (character === undefined) return "unknown";
+  if (character === '"' || character === "'") return "quote";
+  if (character === ",") return "comma";
+  if (character === "{" || character === "}") return "brace";
+  if (character === "[" || character === "]") return "bracket";
+  if (/\s/u.test(character)) return "whitespace";
+  return "other";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function analyzeSchemaValidationFailure(
+  issue: unknown,
+): SchemaValidationFailureTelemetry {
+  if (!isRecord(issue)) {
+    return {
+      validationReceivedType: "unknown",
+      validationExpectedType: "unknown",
+      validationIssueCode: "unknown",
+    };
+  }
+
+  const validationIssueCode = VALIDATION_ISSUE_CODES.includes(
+    issue.code as ValidationIssueCode,
+  )
+    ? (issue.code as ValidationIssueCode)
+    : "unknown";
+  const validationReceivedType =
+    issue.received === "undefined"
+      ? "missing"
+      : VALIDATION_RECEIVED_TYPES.includes(
+            issue.received as ValidationReceivedType,
+          )
+        ? (issue.received as ValidationReceivedType)
+        : "unknown";
+  const validationExpectedType = VALIDATION_EXPECTED_TYPES.includes(
+    issue.expected as ValidationExpectedType,
+  )
+    ? (issue.expected as ValidationExpectedType)
+    : "unknown";
+
+  return {
+    validationReceivedType,
+    validationExpectedType,
+    validationIssueCode,
+  };
+}
+
 function containsMultipleTopLevelValues(value: string): boolean {
   const expectedClosers: string[] = [];
   let inString = false;
@@ -172,6 +290,7 @@ export function analyzeJsonParseFailure(
   const objectStart = withoutFences.indexOf("{");
   const objectEnd = withoutFences.lastIndexOf("}");
   const parserInput = cleanModelJson(raw);
+  const parserErrorCategory = jsonErrorCategory(error);
 
   return {
     responseLength: raw.length,
@@ -182,7 +301,9 @@ export function analyzeJsonParseFailure(
     endsWithCodeFence: /```\s*$/.test(trimmed),
     parserErrorName: parserErrorName(error),
     parserErrorPosition: parserErrorPosition(error, parserInput),
-    jsonErrorCategory: jsonErrorCategory(error),
+    jsonErrorCategory: parserErrorCategory,
+    parserErrorCategory,
+    lastCharacterCategory: lastCharacterCategory(raw),
     containsMultipleTopLevelValues:
       containsMultipleTopLevelValues(withoutFences),
     hasLeadingNonWhitespaceText:

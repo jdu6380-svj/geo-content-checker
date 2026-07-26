@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { normalizeDiagnosticModelOutput } from "@/lib/ai/diagnostic-output";
-import { analyzeJsonParseFailure } from "@/lib/ai/json";
+import {
+  analyzeJsonParseFailure,
+  analyzeSchemaValidationFailure,
+} from "@/lib/ai/json";
 import { callOpenAICompatibleModel, ModelCallError } from "@/lib/ai/openai-compatible";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
 import { validateDiagnosticEvidence } from "@/lib/geo/evidence";
@@ -177,6 +180,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       }
       const parsedResult = modelDiagnosticSchema.safeParse(normalized);
       if (!parsedResult.success) {
+        const primaryIssue = parsedResult.error.issues[0];
         const requiredFieldMissing = parsedResult.error.issues.some(
           (issue) => issue.code === "invalid_type" && issue.received === "undefined",
         );
@@ -187,6 +191,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
             ? "required_field_missing"
             : "schema_validation_failed",
           fieldPaths: parsedResult.error.issues.map((issue) => issue.path),
+          ...analyzeSchemaValidationFailure(primaryIssue),
         });
         throw parsedResult.error;
       }

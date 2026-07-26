@@ -7,7 +7,11 @@ import { z } from "zod";
 import type {
   JsonBoundaryCharacterType,
   JsonErrorCategory,
+  JsonLastCharacterCategory,
   JsonParserErrorName,
+  ValidationExpectedType,
+  ValidationIssueCode,
+  ValidationReceivedType,
 } from "../lib/ai/json.ts";
 import type { DiagnosticResult } from "../lib/schemas/geo.ts";
 import {
@@ -32,7 +36,7 @@ import {
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
 
-export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v11";
+export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v12";
 export const B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION =
   "b1.5-advice-diagnostics-v2";
 export const B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE =
@@ -114,6 +118,9 @@ const ARTIFACT_RECORD_KEYS = [
   "timeout",
   "validationStage",
   "validationFieldPaths",
+  "validationReceivedType",
+  "validationExpectedType",
+  "validationIssueCode",
   "responseLength",
   "trimmedLength",
   "firstCharType",
@@ -123,6 +130,8 @@ const ARTIFACT_RECORD_KEYS = [
   "parserErrorName",
   "parserErrorPosition",
   "jsonErrorCategory",
+  "parserErrorCategory",
+  "lastCharacterCategory",
   "containsMultipleTopLevelValues",
   "hasLeadingNonWhitespaceText",
   "hasTrailingNonWhitespaceText",
@@ -310,6 +319,9 @@ export interface B15InternalCall {
   validationStage: B15ValidationStage | null;
   validationFieldPaths: string[];
   validationFailureClassification: string | null;
+  validationReceivedType: ValidationReceivedType | null;
+  validationExpectedType: ValidationExpectedType | null;
+  validationIssueCode: ValidationIssueCode | null;
   responseLength: number | null;
   trimmedLength: number | null;
   firstCharType: JsonBoundaryCharacterType | null;
@@ -319,6 +331,8 @@ export interface B15InternalCall {
   parserErrorName: JsonParserErrorName | null;
   parserErrorPosition: number | null;
   jsonErrorCategory: JsonErrorCategory | null;
+  parserErrorCategory: JsonErrorCategory | null;
+  lastCharacterCategory: JsonLastCharacterCategory | null;
   containsMultipleTopLevelValues: boolean | null;
   hasLeadingNonWhitespaceText: boolean | null;
   hasTrailingNonWhitespaceText: boolean | null;
@@ -530,6 +544,9 @@ export interface B15ArtifactRecord {
   timeout: boolean;
   validationStage: B15ValidationStage | null;
   validationFieldPaths: string[];
+  validationReceivedType: ValidationReceivedType | null;
+  validationExpectedType: ValidationExpectedType | null;
+  validationIssueCode: ValidationIssueCode | null;
   responseLength: number | null;
   trimmedLength: number | null;
   firstCharType: JsonBoundaryCharacterType | null;
@@ -539,6 +556,8 @@ export interface B15ArtifactRecord {
   parserErrorName: JsonParserErrorName | null;
   parserErrorPosition: number | null;
   jsonErrorCategory: JsonErrorCategory | null;
+  parserErrorCategory: JsonErrorCategory | null;
+  lastCharacterCategory: JsonLastCharacterCategory | null;
   containsMultipleTopLevelValues: boolean | null;
   hasLeadingNonWhitespaceText: boolean | null;
   hasTrailingNonWhitespaceText: boolean | null;
@@ -1353,6 +1372,9 @@ function callFromTransport(
     validationStage: null,
     validationFieldPaths: [],
     validationFailureClassification: null,
+    validationReceivedType: null,
+    validationExpectedType: null,
+    validationIssueCode: null,
     responseLength:
       module === "diagnose" && result.outcome !== "success"
         ? result.responseLength ?? null
@@ -1365,6 +1387,8 @@ function callFromTransport(
     parserErrorName: null,
     parserErrorPosition: null,
     jsonErrorCategory: null,
+    parserErrorCategory: null,
+    lastCharacterCategory: null,
     containsMultipleTopLevelValues: null,
     hasLeadingNonWhitespaceText: null,
     hasTrailingNonWhitespaceText: null,
@@ -1658,6 +1682,9 @@ function mergeRuntimeLogs(
       validationStage: runtime.validationStage,
       validationFieldPaths: runtime.validationFieldPaths,
       validationFailureClassification: runtime.validationFailureClassification,
+      validationReceivedType: runtime.validationReceivedType ?? null,
+      validationExpectedType: runtime.validationExpectedType ?? null,
+      validationIssueCode: runtime.validationIssueCode ?? null,
       responseLength: runtime.responseLength ?? call.responseLength,
       trimmedLength: runtime.trimmedLength ?? null,
       firstCharType: runtime.firstCharType ?? null,
@@ -1667,6 +1694,8 @@ function mergeRuntimeLogs(
       parserErrorName: runtime.parserErrorName ?? null,
       parserErrorPosition: runtime.parserErrorPosition ?? null,
       jsonErrorCategory: runtime.jsonErrorCategory ?? null,
+      parserErrorCategory: runtime.parserErrorCategory ?? null,
+      lastCharacterCategory: runtime.lastCharacterCategory ?? null,
       containsMultipleTopLevelValues:
         runtime.containsMultipleTopLevelValues ?? null,
       hasLeadingNonWhitespaceText:
@@ -1826,6 +1855,9 @@ function artifactRecord(call: B15InternalCall): B15ArtifactRecord {
           /^\$(?:\.[A-Za-z_][A-Za-z0-9_]*|\[\d+\])*$/.test(path),
       )
       .slice(0, 20),
+    validationReceivedType: call.validationReceivedType,
+    validationExpectedType: call.validationExpectedType,
+    validationIssueCode: call.validationIssueCode,
     responseLength: call.responseLength,
     trimmedLength: call.trimmedLength,
     firstCharType: call.firstCharType,
@@ -1835,6 +1867,8 @@ function artifactRecord(call: B15InternalCall): B15ArtifactRecord {
     parserErrorName: call.parserErrorName,
     parserErrorPosition: call.parserErrorPosition,
     jsonErrorCategory: call.jsonErrorCategory,
+    parserErrorCategory: call.parserErrorCategory,
+    lastCharacterCategory: call.lastCharacterCategory,
     containsMultipleTopLevelValues: call.containsMultipleTopLevelValues,
     hasLeadingNonWhitespaceText: call.hasLeadingNonWhitespaceText,
     hasTrailingNonWhitespaceText: call.hasTrailingNonWhitespaceText,

@@ -6,10 +6,18 @@ import { pathToFileURL } from "node:url";
 import {
   JSON_BOUNDARY_CHARACTER_TYPES,
   JSON_ERROR_CATEGORIES,
+  JSON_LAST_CHARACTER_CATEGORIES,
   JSON_PARSER_ERROR_NAMES,
+  VALIDATION_EXPECTED_TYPES,
+  VALIDATION_ISSUE_CODES,
+  VALIDATION_RECEIVED_TYPES,
   type JsonBoundaryCharacterType,
   type JsonErrorCategory,
+  type JsonLastCharacterCategory,
   type JsonParserErrorName,
+  type ValidationExpectedType,
+  type ValidationIssueCode,
+  type ValidationReceivedType,
 } from "../lib/ai/json.ts";
 import {
   isVercelDeploymentProtectionRedirect,
@@ -54,7 +62,7 @@ export const B1_MODEL_CALLS_PER_PIPELINE = B1_PIPELINE_OPERATIONS.length;
 export const B1_STAGE_1_ARTICLE_COUNT = 10;
 export const B1_STAGE_2_ARTICLE_COUNT = 9;
 export const B1_DEFAULT_STAGE_2_ROUNDS = 2;
-export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v7";
+export const B1_TELEMETRY_SCHEMA_VERSION = "b1-v8";
 
 const B1_MODEL_STATUSES = [
   "not-requested",
@@ -244,6 +252,9 @@ export interface B1CallRecord {
   validationFailureClassification?: B1ValidationFailureClassification | null;
   validationFieldPaths?: string[];
   validationActionTypes?: B1ValidationActionType[];
+  validationReceivedType?: ValidationReceivedType | null;
+  validationExpectedType?: ValidationExpectedType | null;
+  validationIssueCode?: ValidationIssueCode | null;
   responseLength?: number | null;
   trimmedLength?: number | null;
   firstCharType?: JsonBoundaryCharacterType | null;
@@ -253,6 +264,8 @@ export interface B1CallRecord {
   parserErrorName?: JsonParserErrorName | null;
   parserErrorPosition?: number | null;
   jsonErrorCategory?: JsonErrorCategory | null;
+  parserErrorCategory?: JsonErrorCategory | null;
+  lastCharacterCategory?: JsonLastCharacterCategory | null;
   containsMultipleTopLevelValues?: boolean | null;
   hasLeadingNonWhitespaceText?: boolean | null;
   hasTrailingNonWhitespaceText?: boolean | null;
@@ -328,6 +341,9 @@ interface B1PersistedCallRecord {
   validationFailureClassification: B1ValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: B1ValidationActionType[];
+  validationReceivedType: ValidationReceivedType | null;
+  validationExpectedType: ValidationExpectedType | null;
+  validationIssueCode: ValidationIssueCode | null;
   responseLength: number | null;
   trimmedLength: number | null;
   firstCharType: JsonBoundaryCharacterType | null;
@@ -337,6 +353,8 @@ interface B1PersistedCallRecord {
   parserErrorName: JsonParserErrorName | null;
   parserErrorPosition: number | null;
   jsonErrorCategory: JsonErrorCategory | null;
+  parserErrorCategory: JsonErrorCategory | null;
+  lastCharacterCategory: JsonLastCharacterCategory | null;
   containsMultipleTopLevelValues: boolean | null;
   hasLeadingNonWhitespaceText: boolean | null;
   hasTrailingNonWhitespaceText: boolean | null;
@@ -384,6 +402,9 @@ export interface B1RuntimeLogRecord {
   validationFailureClassification: B1ValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: B1ValidationActionType[];
+  validationReceivedType?: ValidationReceivedType | null;
+  validationExpectedType?: ValidationExpectedType | null;
+  validationIssueCode?: ValidationIssueCode | null;
   responseLength?: number | null;
   trimmedLength?: number | null;
   firstCharType?: JsonBoundaryCharacterType | null;
@@ -393,6 +414,8 @@ export interface B1RuntimeLogRecord {
   parserErrorName?: JsonParserErrorName | null;
   parserErrorPosition?: number | null;
   jsonErrorCategory?: JsonErrorCategory | null;
+  parserErrorCategory?: JsonErrorCategory | null;
+  lastCharacterCategory?: JsonLastCharacterCategory | null;
   containsMultipleTopLevelValues?: boolean | null;
   hasLeadingNonWhitespaceText?: boolean | null;
   hasTrailingNonWhitespaceText?: boolean | null;
@@ -605,6 +628,28 @@ function normalizeJsonParserErrorName(
 
 function normalizeJsonErrorCategory(value: unknown): JsonErrorCategory | null {
   return isOneOf(value, JSON_ERROR_CATEGORIES) ? value : null;
+}
+
+function normalizeJsonLastCharacterCategory(
+  value: unknown,
+): JsonLastCharacterCategory | null {
+  return isOneOf(value, JSON_LAST_CHARACTER_CATEGORIES) ? value : null;
+}
+
+function normalizeValidationReceivedType(
+  value: unknown,
+): ValidationReceivedType | null {
+  return isOneOf(value, VALIDATION_RECEIVED_TYPES) ? value : null;
+}
+
+function normalizeValidationExpectedType(
+  value: unknown,
+): ValidationExpectedType | null {
+  return isOneOf(value, VALIDATION_EXPECTED_TYPES) ? value : null;
+}
+
+function normalizeValidationIssueCode(value: unknown): ValidationIssueCode | null {
+  return isOneOf(value, VALIDATION_ISSUE_CODES) ? value : null;
 }
 
 function normalizeRuntimeLogStatus(value: unknown): B1RuntimeLogStatus | null {
@@ -1238,6 +1283,15 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
       : null,
     validationFieldPaths: hasValidationTelemetry ? validationFieldPaths : [],
     validationActionTypes: hasValidationTelemetry ? validationActionTypes : [],
+    validationReceivedType: hasValidationTelemetry
+      ? normalizeValidationReceivedType(record.validationReceivedType)
+      : null,
+    validationExpectedType: hasValidationTelemetry
+      ? normalizeValidationExpectedType(record.validationExpectedType)
+      : null,
+    validationIssueCode: hasValidationTelemetry
+      ? normalizeValidationIssueCode(record.validationIssueCode)
+      : null,
     responseLength: hasValidationTelemetry
       ? normalizeTokenCount(record.responseLength)
       : null,
@@ -1264,6 +1318,12 @@ function persistedCallRecord(record: B1CallRecord): B1PersistedCallRecord {
       : null,
     jsonErrorCategory: hasValidationTelemetry
       ? normalizeJsonErrorCategory(record.jsonErrorCategory)
+      : null,
+    parserErrorCategory: hasValidationTelemetry
+      ? normalizeJsonErrorCategory(record.parserErrorCategory)
+      : null,
+    lastCharacterCategory: hasValidationTelemetry
+      ? normalizeJsonLastCharacterCategory(record.lastCharacterCategory)
       : null,
     containsMultipleTopLevelValues: hasValidationTelemetry
       ? normalizeTelemetryBoolean(record.containsMultipleTopLevelValues)
@@ -1821,6 +1881,26 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     value.jsonErrorCategory === undefined
       ? null
       : normalizeJsonErrorCategory(value.jsonErrorCategory);
+  const parserErrorCategory =
+    value.parserErrorCategory === undefined
+      ? null
+      : normalizeJsonErrorCategory(value.parserErrorCategory);
+  const lastCharacterCategory =
+    value.lastCharacterCategory === undefined
+      ? null
+      : normalizeJsonLastCharacterCategory(value.lastCharacterCategory);
+  const validationReceivedType =
+    value.validationReceivedType === undefined
+      ? null
+      : normalizeValidationReceivedType(value.validationReceivedType);
+  const validationExpectedType =
+    value.validationExpectedType === undefined
+      ? null
+      : normalizeValidationExpectedType(value.validationExpectedType);
+  const validationIssueCode =
+    value.validationIssueCode === undefined
+      ? null
+      : normalizeValidationIssueCode(value.validationIssueCode);
   const containsMultipleTopLevelValues =
     value.containsMultipleTopLevelValues === undefined
       ? null
@@ -1866,6 +1946,11 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
       value.parserErrorPosition !== null &&
       parserErrorPosition === null) ||
     (value.jsonErrorCategory !== undefined && jsonErrorCategory === null) ||
+    (value.parserErrorCategory !== undefined && parserErrorCategory === null) ||
+    (value.lastCharacterCategory !== undefined && lastCharacterCategory === null) ||
+    (value.validationReceivedType !== undefined && validationReceivedType === null) ||
+    (value.validationExpectedType !== undefined && validationExpectedType === null) ||
+    (value.validationIssueCode !== undefined && validationIssueCode === null) ||
     (value.containsMultipleTopLevelValues !== undefined &&
       containsMultipleTopLevelValues === null) ||
     (value.hasLeadingNonWhitespaceText !== undefined &&
@@ -1932,6 +2017,13 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
       : null,
     validationFieldPaths: hasValidValidationTelemetry ? validationFieldPaths : [],
     validationActionTypes: hasValidValidationTelemetry ? validationActionTypes : [],
+    validationReceivedType: hasValidValidationTelemetry
+      ? validationReceivedType
+      : null,
+    validationExpectedType: hasValidValidationTelemetry
+      ? validationExpectedType
+      : null,
+    validationIssueCode: hasValidValidationTelemetry ? validationIssueCode : null,
     responseLength: hasValidValidationTelemetry ? responseLength : null,
     trimmedLength: hasValidValidationTelemetry ? trimmedLength : null,
     firstCharType: hasValidValidationTelemetry ? firstCharType : null,
@@ -1945,6 +2037,10 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
       ? parserErrorPosition
       : null,
     jsonErrorCategory: hasValidValidationTelemetry ? jsonErrorCategory : null,
+    parserErrorCategory: hasValidValidationTelemetry ? parserErrorCategory : null,
+    lastCharacterCategory: hasValidValidationTelemetry
+      ? lastCharacterCategory
+      : null,
     containsMultipleTopLevelValues: hasValidValidationTelemetry
       ? containsMultipleTopLevelValues
       : null,
@@ -2950,6 +3046,9 @@ function applyRuntimeLogRecords(
       validationFailureClassification: runtime.validationFailureClassification,
       validationFieldPaths: runtime.validationFieldPaths,
       validationActionTypes: runtime.validationActionTypes,
+      validationReceivedType: runtime.validationReceivedType ?? null,
+      validationExpectedType: runtime.validationExpectedType ?? null,
+      validationIssueCode: runtime.validationIssueCode ?? null,
       responseLength: runtime.responseLength ?? null,
       trimmedLength: runtime.trimmedLength ?? null,
       firstCharType: runtime.firstCharType ?? null,
@@ -2959,6 +3058,8 @@ function applyRuntimeLogRecords(
       parserErrorName: runtime.parserErrorName ?? null,
       parserErrorPosition: runtime.parserErrorPosition ?? null,
       jsonErrorCategory: runtime.jsonErrorCategory ?? null,
+      parserErrorCategory: runtime.parserErrorCategory ?? null,
+      lastCharacterCategory: runtime.lastCharacterCategory ?? null,
       containsMultipleTopLevelValues:
         runtime.containsMultipleTopLevelValues ?? null,
       hasLeadingNonWhitespaceText:
@@ -3288,6 +3389,9 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       "validationFailureClassification",
       "validationFieldPaths",
       "validationActionTypes",
+      "validationReceivedType",
+      "validationExpectedType",
+      "validationIssueCode",
       "responseLength",
       "trimmedLength",
       "firstCharType",
@@ -3297,6 +3401,8 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       "parserErrorName",
       "parserErrorPosition",
       "jsonErrorCategory",
+      "parserErrorCategory",
+      "lastCharacterCategory",
       "containsMultipleTopLevelValues",
       "hasLeadingNonWhitespaceText",
       "hasTrailingNonWhitespaceText",
@@ -3359,6 +3465,18 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
       : normalizeValidationFailureClassification(value.validationFailureClassification);
   const validationFieldPaths = normalizeValidationFieldPaths(value.validationFieldPaths);
   const validationActionTypes = normalizeValidationActionTypes(value.validationActionTypes);
+  const validationReceivedType =
+    value.validationReceivedType === null
+      ? null
+      : normalizeValidationReceivedType(value.validationReceivedType);
+  const validationExpectedType =
+    value.validationExpectedType === null
+      ? null
+      : normalizeValidationExpectedType(value.validationExpectedType);
+  const validationIssueCode =
+    value.validationIssueCode === null
+      ? null
+      : normalizeValidationIssueCode(value.validationIssueCode);
   const responseLength =
     value.responseLength === null ? null : normalizeTokenCount(value.responseLength);
   const trimmedLength =
@@ -3391,6 +3509,14 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     value.jsonErrorCategory === null
       ? null
       : normalizeJsonErrorCategory(value.jsonErrorCategory);
+  const parserErrorCategory =
+    value.parserErrorCategory === null
+      ? null
+      : normalizeJsonErrorCategory(value.parserErrorCategory);
+  const lastCharacterCategory =
+    value.lastCharacterCategory === null
+      ? null
+      : normalizeJsonLastCharacterCategory(value.lastCharacterCategory);
   const containsMultipleTopLevelValues =
     value.containsMultipleTopLevelValues === null
       ? null
@@ -3437,6 +3563,11 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     (value.parserErrorName !== null && parserErrorName === null) ||
     (value.parserErrorPosition !== null && parserErrorPosition === null) ||
     (value.jsonErrorCategory !== null && jsonErrorCategory === null) ||
+    (value.parserErrorCategory !== null && parserErrorCategory === null) ||
+    (value.lastCharacterCategory !== null && lastCharacterCategory === null) ||
+    (value.validationReceivedType !== null && validationReceivedType === null) ||
+    (value.validationExpectedType !== null && validationExpectedType === null) ||
+    (value.validationIssueCode !== null && validationIssueCode === null) ||
     (value.containsMultipleTopLevelValues !== null &&
       containsMultipleTopLevelValues === null) ||
     (value.hasLeadingNonWhitespaceText !== null &&
@@ -3485,6 +3616,9 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     validationFailureClassification,
     validationFieldPaths,
     validationActionTypes,
+    validationReceivedType,
+    validationExpectedType,
+    validationIssueCode,
     responseLength,
     trimmedLength,
     firstCharType,
@@ -3494,6 +3628,8 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     parserErrorName,
     parserErrorPosition,
     jsonErrorCategory,
+    parserErrorCategory,
+    lastCharacterCategory,
     containsMultipleTopLevelValues,
     hasLeadingNonWhitespaceText,
     hasTrailingNonWhitespaceText,
@@ -3527,6 +3663,9 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     validationFailureClassification: persisted.validationFailureClassification,
     validationFieldPaths: persisted.validationFieldPaths,
     validationActionTypes: persisted.validationActionTypes,
+    validationReceivedType: persisted.validationReceivedType,
+    validationExpectedType: persisted.validationExpectedType,
+    validationIssueCode: persisted.validationIssueCode,
     responseLength: persisted.responseLength,
     trimmedLength: persisted.trimmedLength,
     firstCharType: persisted.firstCharType,
@@ -3536,6 +3675,8 @@ function parsePersistedCall(value: unknown, operation: B1PipelineOperation): B1C
     parserErrorName: persisted.parserErrorName,
     parserErrorPosition: persisted.parserErrorPosition,
     jsonErrorCategory: persisted.jsonErrorCategory,
+    parserErrorCategory: persisted.parserErrorCategory,
+    lastCharacterCategory: persisted.lastCharacterCategory,
     containsMultipleTopLevelValues:
       persisted.containsMultipleTopLevelValues,
     hasLeadingNonWhitespaceText:

@@ -18,8 +18,13 @@ import {
 } from "../lib/ai/content-draft-prompt.ts";
 import {
   analyzeJsonParseFailure,
+  analyzeSchemaValidationFailure,
   cleanModelJson,
   JSON_ERROR_CATEGORIES,
+  JSON_LAST_CHARACTER_CATEGORIES,
+  VALIDATION_EXPECTED_TYPES,
+  VALIDATION_ISSUE_CODES,
+  VALIDATION_RECEIVED_TYPES,
 } from "../lib/ai/json.ts";
 import { formatUntrustedPromptData } from "../lib/ai/prompt-data.ts";
 import { normalizeDiagnosticModelOutput } from "../lib/ai/diagnostic-output.ts";
@@ -172,6 +177,32 @@ assert.deepEqual(JSON_ERROR_CATEGORIES, [
   "invalid_character",
   "other",
 ]);
+assert.deepEqual(JSON_LAST_CHARACTER_CATEGORIES, [
+  "quote",
+  "comma",
+  "brace",
+  "bracket",
+  "whitespace",
+  "other",
+  "unknown",
+]);
+assert.deepEqual(VALIDATION_RECEIVED_TYPES, [
+  "string",
+  "array",
+  "object",
+  "null",
+  "missing",
+  "unknown",
+]);
+assert.deepEqual(VALIDATION_EXPECTED_TYPES, [
+  "string",
+  "array",
+  "object",
+  "null",
+  "unknown",
+]);
+assert.ok(VALIDATION_ISSUE_CODES.includes("invalid_type"));
+assert.ok(VALIDATION_ISSUE_CODES.includes("unknown"));
 
 const jsonParseSensitiveSentinel = "JSON_PARSE_SENTINEL_MUST_NOT_PERSIST";
 const fencedInvalidJson = `  \`\`\`json
@@ -202,6 +233,8 @@ assert.deepEqual(fencedParseTelemetry, {
       ? fencedParseTelemetry.parserErrorPosition
       : null,
   jsonErrorCategory: "unexpected_token",
+  parserErrorCategory: "unexpected_token",
+  lastCharacterCategory: "whitespace",
   containsMultipleTopLevelValues: true,
   hasLeadingNonWhitespaceText: true,
   hasTrailingNonWhitespaceText: false,
@@ -226,6 +259,8 @@ assert.equal(trailingTextTelemetry.hasLeadingNonWhitespaceText, false);
 assert.equal(trailingTextTelemetry.hasTrailingNonWhitespaceText, true);
 assert.equal(trailingTextTelemetry.containsMultipleTopLevelValues, false);
 assert.equal(trailingTextTelemetry.jsonErrorCategory, "invalid_character");
+assert.equal(trailingTextTelemetry.parserErrorCategory, "invalid_character");
+assert.equal(trailingTextTelemetry.lastCharacterCategory, "other");
 assert.equal(
   analyzeJsonParseFailure("", new SyntaxError("Unexpected end of JSON input"))
     .firstCharType,
@@ -261,6 +296,61 @@ assert.equal(
     .jsonErrorCategory,
   "other",
 );
+assert.equal(
+  analyzeJsonParseFailure('"', new SyntaxError("Unexpected end of JSON input"))
+    .lastCharacterCategory,
+  "quote",
+);
+assert.equal(
+  analyzeJsonParseFailure(",", new SyntaxError("Unexpected token"))
+    .lastCharacterCategory,
+  "comma",
+);
+assert.equal(
+  analyzeJsonParseFailure("}", new SyntaxError("Unexpected token"))
+    .lastCharacterCategory,
+  "brace",
+);
+assert.equal(
+  analyzeJsonParseFailure("]", new SyntaxError("Unexpected token"))
+    .lastCharacterCategory,
+  "bracket",
+);
+assert.equal(
+  analyzeJsonParseFailure("", new SyntaxError("Unexpected end of JSON input"))
+    .lastCharacterCategory,
+  "unknown",
+);
+assert.deepEqual(
+  analyzeSchemaValidationFailure({
+    code: "invalid_type",
+    received: "object",
+    expected: "array",
+    value: jsonParseSensitiveSentinel,
+  }),
+  {
+    validationReceivedType: "object",
+    validationExpectedType: "array",
+    validationIssueCode: "invalid_type",
+  },
+);
+assert.deepEqual(
+  analyzeSchemaValidationFailure({
+    code: "invalid_type",
+    received: "undefined",
+    expected: "string",
+  }),
+  {
+    validationReceivedType: "missing",
+    validationExpectedType: "string",
+    validationIssueCode: "invalid_type",
+  },
+);
+assert.deepEqual(analyzeSchemaValidationFailure(jsonParseSensitiveSentinel), {
+  validationReceivedType: "unknown",
+  validationExpectedType: "unknown",
+  validationIssueCode: "unknown",
+});
 
 const normalizedHash = await createAnalysisHash({
   title: "  测试标题  ",
@@ -1235,6 +1325,9 @@ const sensitiveB1PipelineRecord = {
       index === 5 ? "schema_validation_failed" : null,
     validationFieldPaths: index === 5 ? ["$.actions[0].type"] : [],
     validationActionTypes: index === 5 ? ["faq", "unknown"] : [],
+    validationReceivedType: index === 5 ? "object" : null,
+    validationExpectedType: index === 5 ? "array" : null,
+    validationIssueCode: index === 5 ? "invalid_type" : null,
     responseLength: null,
     trimmedLength: null,
     firstCharType: null,
@@ -1244,6 +1337,8 @@ const sensitiveB1PipelineRecord = {
     parserErrorName: null,
     parserErrorPosition: null,
     jsonErrorCategory: null,
+    parserErrorCategory: null,
+    lastCharacterCategory: null,
     containsMultipleTopLevelValues: null,
     hasLeadingNonWhitespaceText: null,
     hasTrailingNonWhitespaceText: null,
@@ -1313,8 +1408,10 @@ for (const request of b1CheckpointArtifact.records[0].requests) {
     "httpStatus",
     "jsonErrorCategory",
     "lastCharType",
+    "lastCharacterCategory",
     "modelLatencyMs",
     "modelStatus",
+    "parserErrorCategory",
     "parserErrorName",
     "parserErrorPosition",
     "promptTokens",
@@ -1331,9 +1428,12 @@ for (const request of b1CheckpointArtifact.records[0].requests) {
     "totalTokens",
     "trimmedLength",
     "validationActionTypes",
+    "validationExpectedType",
     "validationFailureClassification",
     "validationFieldPaths",
+    "validationIssueCode",
     "validationIssueCount",
+    "validationReceivedType",
     "validationStage",
   ]);
 }
@@ -1447,9 +1547,19 @@ const invalidJsonErrorCategoryTelemetry = sanitizeGeoValidationTelemetry({
   failureClassification: "json_parse_failed",
   ...fencedParseTelemetry,
   jsonErrorCategory: b1SensitiveSentinels[0] as "other",
+  parserErrorCategory: b1SensitiveSentinels[0] as "other",
+  lastCharacterCategory: b1SensitiveSentinels[0] as "unknown",
 });
 assert.equal(
   Object.hasOwn(invalidJsonErrorCategoryTelemetry ?? {}, "jsonErrorCategory"),
+  false,
+);
+assert.equal(
+  Object.hasOwn(invalidJsonErrorCategoryTelemetry ?? {}, "parserErrorCategory"),
+  false,
+);
+assert.equal(
+  Object.hasOwn(invalidJsonErrorCategoryTelemetry ?? {}, "lastCharacterCategory"),
   false,
 );
 assert.deepEqual(sanitizedValidationTelemetry, {
@@ -1460,6 +1570,46 @@ assert.deepEqual(sanitizedValidationTelemetry, {
   validationActionTypes: ["faq", "unknown", "non-string"],
   ...fencedParseTelemetry,
 });
+const sanitizedSchemaValidationTelemetry = sanitizeGeoValidationTelemetry({
+  stage: "schema_validation",
+  issueCount: 1,
+  failureClassification: "schema_validation_failed",
+  fieldPaths: [["evidence"]],
+  validationReceivedType: "object",
+  validationExpectedType: "array",
+  validationIssueCode: "invalid_type",
+  actualValue: b1SensitiveSentinels[2],
+});
+assert.deepEqual(sanitizedSchemaValidationTelemetry, {
+  validationStage: "schema_validation",
+  validationIssueCount: 1,
+  validationFailureClassification: "schema_validation_failed",
+  validationFieldPaths: ["$.evidence"],
+  validationActionTypes: [],
+  validationReceivedType: "object",
+  validationExpectedType: "array",
+  validationIssueCode: "invalid_type",
+});
+const invalidSchemaValidationTelemetry = sanitizeGeoValidationTelemetry({
+  stage: "schema_validation",
+  issueCount: 1,
+  failureClassification: "schema_validation_failed",
+  validationReceivedType: b1SensitiveSentinels[0] as "unknown",
+  validationExpectedType: b1SensitiveSentinels[1] as "unknown",
+  validationIssueCode: b1SensitiveSentinels[2] as "unknown",
+});
+assert.equal(
+  Object.hasOwn(invalidSchemaValidationTelemetry ?? {}, "validationReceivedType"),
+  false,
+);
+assert.equal(
+  Object.hasOwn(invalidSchemaValidationTelemetry ?? {}, "validationExpectedType"),
+  false,
+);
+assert.equal(
+  Object.hasOwn(invalidSchemaValidationTelemetry ?? {}, "validationIssueCode"),
+  false,
+);
 assert.doesNotThrow(() =>
   markGeoValidationTelemetry({
       stage: "schema_validation",
@@ -1536,6 +1686,9 @@ assert.deepEqual(b1RuntimeLog, {
   validationFailureClassification: "json_parse_failed",
   validationFieldPaths: ["$"],
   validationActionTypes: [],
+  validationReceivedType: null,
+  validationExpectedType: null,
+  validationIssueCode: null,
   ...fencedParseTelemetry,
 });
 const serializedB1RuntimeLog = JSON.stringify(b1RuntimeLog);
@@ -1985,8 +2138,10 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
       "hasTrailingNonWhitespaceText",
       "jsonErrorCategory",
       "lastCharType",
+      "lastCharacterCategory",
       "modelLatencyMs",
       "modelStatus",
+      "parserErrorCategory",
       "parserErrorName",
       "parserErrorPosition",
       "promptTokens",
@@ -2003,9 +2158,12 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
       "totalTokens",
       "trimmedLength",
       "validationActionTypes",
+      "validationExpectedType",
       "validationFailureClassification",
       "validationFieldPaths",
+      "validationIssueCode",
       "validationIssueCount",
+      "validationReceivedType",
       "validationStage",
     ]);
   }
@@ -3174,6 +3332,9 @@ function createB15MockRuntimeCollector(
       validationFailureClassification: null,
       validationFieldPaths: [],
       validationActionTypes: [],
+      validationReceivedType: null,
+      validationExpectedType: null,
+      validationIssueCode: null,
       responseLength: null,
       trimmedLength: null,
       firstCharType: null,
@@ -3183,6 +3344,8 @@ function createB15MockRuntimeCollector(
       parserErrorName: null,
       parserErrorPosition: null,
       jsonErrorCategory: null,
+      parserErrorCategory: null,
+      lastCharacterCategory: null,
       containsMultipleTopLevelValues: null,
       hasLeadingNonWhitespaceText: null,
       hasTrailingNonWhitespaceText: null,
@@ -3496,8 +3659,10 @@ for (const record of passingB15.artifact.records) {
     "httpStatus",
     "jsonErrorCategory",
     "lastCharType",
+    "lastCharacterCategory",
     "latencyMs",
     "modelStatus",
+    "parserErrorCategory",
     "parserErrorName",
     "parserErrorPosition",
     "promptTokens",
@@ -3514,7 +3679,10 @@ for (const record of passingB15.artifact.records) {
     "timeout",
     "totalTokens",
     "trimmedLength",
+    "validationExpectedType",
     "validationFieldPaths",
+    "validationIssueCode",
+    "validationReceivedType",
     "validationStage",
     "xRequestId",
   ]);
@@ -3538,6 +3706,11 @@ for (const record of passingB15.artifact.records) {
   assert.equal(record.parserErrorName, null);
   assert.equal(record.parserErrorPosition, null);
   assert.equal(record.jsonErrorCategory, null);
+  assert.equal(record.parserErrorCategory, null);
+  assert.equal(record.lastCharacterCategory, null);
+  assert.equal(record.validationReceivedType, null);
+  assert.equal(record.validationExpectedType, null);
+  assert.equal(record.validationIssueCode, null);
   assert.equal(record.containsMultipleTopLevelValues, null);
   assert.equal(record.hasLeadingNonWhitespaceText, null);
   assert.equal(record.hasTrailingNonWhitespaceText, null);
@@ -3593,6 +3766,9 @@ assert.deepEqual(inconclusiveHttpFailureB15.artifact.records[0], {
   timeout: false,
   validationStage: null,
   validationFieldPaths: [],
+  validationReceivedType: null,
+  validationExpectedType: null,
+  validationIssueCode: null,
   responseLength: 137,
   trimmedLength: null,
   firstCharType: null,
@@ -3602,6 +3778,8 @@ assert.deepEqual(inconclusiveHttpFailureB15.artifact.records[0], {
   parserErrorName: null,
   parserErrorPosition: null,
   jsonErrorCategory: null,
+  parserErrorCategory: null,
+  lastCharacterCategory: null,
   containsMultipleTopLevelValues: null,
   hasLeadingNonWhitespaceText: null,
   hasTrailingNonWhitespaceText: null,

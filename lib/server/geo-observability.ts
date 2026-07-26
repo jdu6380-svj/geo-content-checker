@@ -7,11 +7,20 @@ import type { NextRequest } from "next/server";
 import {
   JSON_BOUNDARY_CHARACTER_TYPES,
   JSON_ERROR_CATEGORIES,
+  JSON_LAST_CHARACTER_CATEGORIES,
   JSON_PARSER_ERROR_NAMES,
+  VALIDATION_EXPECTED_TYPES,
+  VALIDATION_ISSUE_CODES,
+  VALIDATION_RECEIVED_TYPES,
   type JsonBoundaryCharacterType,
   type JsonErrorCategory,
+  type JsonLastCharacterCategory,
   type JsonParseFailureTelemetry,
   type JsonParserErrorName,
+  type SchemaValidationFailureTelemetry,
+  type ValidationExpectedType,
+  type ValidationIssueCode,
+  type ValidationReceivedType,
 } from "../ai/json.ts";
 
 export type GeoResponseSource = "model" | "fallback" | "none";
@@ -82,7 +91,8 @@ type GeoValidationActionType =
   | "non-string";
 
 export interface GeoValidationTelemetryInput
-  extends Partial<JsonParseFailureTelemetry> {
+  extends Partial<JsonParseFailureTelemetry>,
+    Partial<SchemaValidationFailureTelemetry> {
   stage: GeoValidationStage;
   issueCount: number;
   failureClassification?: GeoValidationFailureClassification;
@@ -96,6 +106,9 @@ export interface GeoValidationTelemetry {
   validationFailureClassification: GeoValidationFailureClassification | null;
   validationFieldPaths: string[];
   validationActionTypes: GeoValidationActionType[];
+  validationReceivedType?: ValidationReceivedType;
+  validationExpectedType?: ValidationExpectedType;
+  validationIssueCode?: ValidationIssueCode;
   responseLength?: number;
   trimmedLength?: number;
   firstCharType?: JsonBoundaryCharacterType;
@@ -105,6 +118,8 @@ export interface GeoValidationTelemetry {
   parserErrorName?: JsonParserErrorName;
   parserErrorPosition?: number | null;
   jsonErrorCategory?: JsonErrorCategory;
+  parserErrorCategory?: JsonErrorCategory;
+  lastCharacterCategory?: JsonLastCharacterCategory;
   containsMultipleTopLevelValues?: boolean;
   hasLeadingNonWhitespaceText?: boolean;
   hasTrailingNonWhitespaceText?: boolean;
@@ -136,6 +151,9 @@ interface GeoRequestContext {
   validationFailureClassification?: GeoValidationFailureClassification;
   validationFieldPaths?: string[];
   validationActionTypes?: GeoValidationActionType[];
+  validationReceivedType?: ValidationReceivedType;
+  validationExpectedType?: ValidationExpectedType;
+  validationIssueCode?: ValidationIssueCode;
   responseLength?: number;
   trimmedLength?: number;
   firstCharType?: JsonBoundaryCharacterType;
@@ -145,6 +163,8 @@ interface GeoRequestContext {
   parserErrorName?: JsonParserErrorName;
   parserErrorPosition?: number | null;
   jsonErrorCategory?: JsonErrorCategory;
+  parserErrorCategory?: JsonErrorCategory;
+  lastCharacterCategory?: JsonLastCharacterCategory;
   containsMultipleTopLevelValues?: boolean;
   hasLeadingNonWhitespaceText?: boolean;
   hasTrailingNonWhitespaceText?: boolean;
@@ -310,9 +330,38 @@ export function sanitizeGeoValidationTelemetry(
     )
       ? (value.jsonErrorCategory as JsonErrorCategory)
       : undefined;
+    const parserErrorCategory = JSON_ERROR_CATEGORIES.includes(
+      value.parserErrorCategory as JsonErrorCategory,
+    )
+      ? (value.parserErrorCategory as JsonErrorCategory)
+      : undefined;
+    const lastCharacterCategory = JSON_LAST_CHARACTER_CATEGORIES.includes(
+      value.lastCharacterCategory as JsonLastCharacterCategory,
+    )
+      ? (value.lastCharacterCategory as JsonLastCharacterCategory)
+      : undefined;
+    const validationReceivedType = VALIDATION_RECEIVED_TYPES.includes(
+      value.validationReceivedType as ValidationReceivedType,
+    )
+      ? (value.validationReceivedType as ValidationReceivedType)
+      : undefined;
+    const validationExpectedType = VALIDATION_EXPECTED_TYPES.includes(
+      value.validationExpectedType as ValidationExpectedType,
+    )
+      ? (value.validationExpectedType as ValidationExpectedType)
+      : undefined;
+    const validationIssueCode = VALIDATION_ISSUE_CODES.includes(
+      value.validationIssueCode as ValidationIssueCode,
+    )
+      ? (value.validationIssueCode as ValidationIssueCode)
+      : undefined;
     const hasJsonParseFailureTelemetry =
       value.stage === "json_parse" &&
       validationFailureClassification === "json_parse_failed";
+    const hasSchemaValidationFailureTelemetry =
+      value.stage === "schema_validation" &&
+      (validationFailureClassification === "required_field_missing" ||
+        validationFailureClassification === "schema_validation_failed");
 
     return {
       validationStage: value.stage as GeoValidationStage,
@@ -320,6 +369,15 @@ export function sanitizeGeoValidationTelemetry(
       validationFailureClassification,
       validationFieldPaths,
       validationActionTypes,
+      ...(!hasSchemaValidationFailureTelemetry || validationReceivedType === undefined
+        ? {}
+        : { validationReceivedType }),
+      ...(!hasSchemaValidationFailureTelemetry || validationExpectedType === undefined
+        ? {}
+        : { validationExpectedType }),
+      ...(!hasSchemaValidationFailureTelemetry || validationIssueCode === undefined
+        ? {}
+        : { validationIssueCode }),
       ...(!hasJsonParseFailureTelemetry || responseLength === undefined
         ? {}
         : { responseLength }),
@@ -349,6 +407,12 @@ export function sanitizeGeoValidationTelemetry(
       ...(!hasJsonParseFailureTelemetry || jsonErrorCategory === undefined
         ? {}
         : { jsonErrorCategory }),
+      ...(!hasJsonParseFailureTelemetry || parserErrorCategory === undefined
+        ? {}
+        : { parserErrorCategory }),
+      ...(!hasJsonParseFailureTelemetry || lastCharacterCategory === undefined
+        ? {}
+        : { lastCharacterCategory }),
       ...(!hasJsonParseFailureTelemetry ||
       typeof value.containsMultipleTopLevelValues !== "boolean"
         ? {}
@@ -427,6 +491,15 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
               }),
           validationFieldPaths: context.validationFieldPaths,
           validationActionTypes: context.validationActionTypes,
+          ...(context.validationReceivedType === undefined
+            ? {}
+            : { validationReceivedType: context.validationReceivedType }),
+          ...(context.validationExpectedType === undefined
+            ? {}
+            : { validationExpectedType: context.validationExpectedType }),
+          ...(context.validationIssueCode === undefined
+            ? {}
+            : { validationIssueCode: context.validationIssueCode }),
           ...(context.responseLength === undefined
             ? {}
             : { responseLength: context.responseLength }),
@@ -454,6 +527,12 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
           ...(context.jsonErrorCategory === undefined
             ? {}
             : { jsonErrorCategory: context.jsonErrorCategory }),
+          ...(context.parserErrorCategory === undefined
+            ? {}
+            : { parserErrorCategory: context.parserErrorCategory }),
+          ...(context.lastCharacterCategory === undefined
+            ? {}
+            : { lastCharacterCategory: context.lastCharacterCategory }),
           ...(context.containsMultipleTopLevelValues === undefined
             ? {}
             : {
@@ -544,6 +623,15 @@ export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput):
     }
     context.validationFieldPaths = telemetry.validationFieldPaths;
     context.validationActionTypes = telemetry.validationActionTypes;
+    if (telemetry.validationReceivedType !== undefined) {
+      context.validationReceivedType = telemetry.validationReceivedType;
+    }
+    if (telemetry.validationExpectedType !== undefined) {
+      context.validationExpectedType = telemetry.validationExpectedType;
+    }
+    if (telemetry.validationIssueCode !== undefined) {
+      context.validationIssueCode = telemetry.validationIssueCode;
+    }
     if (telemetry.responseLength !== undefined) {
       context.responseLength = telemetry.responseLength;
     }
@@ -570,6 +658,12 @@ export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput):
     }
     if (telemetry.jsonErrorCategory !== undefined) {
       context.jsonErrorCategory = telemetry.jsonErrorCategory;
+    }
+    if (telemetry.parserErrorCategory !== undefined) {
+      context.parserErrorCategory = telemetry.parserErrorCategory;
+    }
+    if (telemetry.lastCharacterCategory !== undefined) {
+      context.lastCharacterCategory = telemetry.lastCharacterCategory;
     }
     if (telemetry.containsMultipleTopLevelValues !== undefined) {
       context.containsMultipleTopLevelValues =
