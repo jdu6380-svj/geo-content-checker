@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -70,6 +71,7 @@ import {
   buildB1RuntimeLogStreamUrl,
   contentDraftFactsArePreserved,
   contentDraftStructureIsPreserved,
+  createNumberedParagraphs,
   diagnosticEvidenceIsLiteral,
   evaluateThirdRoundRequirement,
   parseB1CheckpointArtifact,
@@ -94,22 +96,29 @@ import {
   type B1StabilityObservation,
 } from "./b1-technical-validation.ts";
 import {
+  B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION,
   B15_CALIBRATION_SCHEMA_VERSION,
   B15_EXPECTED_MODEL_REQUESTS,
   B15_REQUIRED_NODE_VERSION,
   assertB15NodeVersion,
   b15QuestionTemplates,
+  buildB15AdviceDiagnosticsArtifact,
   buildB15CalibrationArtifact,
   classifyB15Calibration,
   createB15CalibrationDirectory,
   createB15FetchTransport,
   createB15RunId,
   parseB15Arguments,
+  rehydrateB15AdviceDiagnosticsArtifact,
   resolveB15CalibrationDirectory,
   resolveB15Environment,
   runB15CalibrationFlow,
   selectB15DiagnosticQuestions,
+  serializeB15AdviceDiagnosticsArtifact,
   serializeB15CalibrationArtifact,
+  writeB15AdviceDiagnosticsArtifactAtomic,
+  type B15AdviceDiagnosticsArtifact,
+  type B15AdviceDiagnosticsSourceSession,
   type B15CalibrationTransport,
   type B15TransportResult,
 } from "./b1.5-model-calibration.ts";
@@ -3232,22 +3241,34 @@ async function runB15MockCalibration(
   transportOptions: B15MockTransportOptions = {},
   runtimeOverride?: (call: B1CallRecord, index: number) => B15MockRuntimeDecision,
   runtimeReadiness: "connected" | "unavailable" | "timeout" = "connected",
+  onAdviceDiagnosticsArtifact?: (
+    artifact: B15AdviceDiagnosticsArtifact,
+  ) => Promise<void>,
 ) {
   const { transport, state } = createB15MockTransport(transportOptions);
   const runtimeLogCollector = createB15MockRuntimeCollector(
     runtimeOverride,
     runtimeReadiness,
   );
+  let adviceDiagnosticsArtifact: B15AdviceDiagnosticsArtifact | null = null;
   const flow = await runB15CalibrationFlow({
     articles: b1Fixture,
     transport,
     runtimeLogCollector,
     wait: async () => {},
+    onAdviceDiagnosticsArtifact: async (artifact) => {
+      adviceDiagnosticsArtifact = artifact;
+      await onAdviceDiagnosticsArtifact?.(artifact);
+    },
   });
   const collection = await runtimeLogCollector.finish();
+  const capturedAdviceDiagnosticsArtifact = adviceDiagnosticsArtifact as
+    | B15AdviceDiagnosticsArtifact
+    | null;
   return {
     state,
     flow,
+    adviceDiagnosticsArtifact: capturedAdviceDiagnosticsArtifact,
     artifact: buildB15CalibrationArtifact(flow, collection),
   };
 }
@@ -3268,6 +3289,117 @@ assert.equal(passingB15.artifact.modules.diagnose.round2.sourceModel, 30);
 assert.equal(passingB15.artifact.overall.round1.sourceModel, 70);
 assert.equal(passingB15.artifact.overall.round2.sourceModel, 70);
 assert.equal(passingB15.artifact.runtimeLogStatus.matched, B15_EXPECTED_MODEL_REQUESTS);
+assert.ok(passingB15.adviceDiagnosticsArtifact);
+assert.equal(
+  passingB15.adviceDiagnosticsArtifact.adviceDiagnosticsSchemaVersion,
+  B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION,
+);
+assert.equal(passingB15.adviceDiagnosticsArtifact.metrics.sessions, 20);
+assert.equal(passingB15.adviceDiagnosticsArtifact.metrics.diagnostics, 60);
+assert.equal(passingB15.adviceDiagnosticsArtifact.sessions.length, 20);
+assert.equal(
+  passingB15.adviceDiagnosticsArtifact.sessions.reduce(
+    (total, session) => total + session.diagnostics.length,
+    0,
+  ),
+  60,
+);
+
+const b15AdviceSourceSessions: B15AdviceDiagnosticsSourceSession[] = [];
+for (const round of [1, 2] as const) {
+  for (const article of b1Fixture) {
+    const paragraphs = createNumberedParagraphs(article.content);
+    const paragraph = paragraphs[0];
+    assert.ok(paragraph);
+    const quote = paragraph.text.slice(0, 80);
+    const questions = selectB15DiagnosticQuestions(article.title, article.sourceIndex);
+    b15AdviceSourceSessions.push({
+      article,
+      round,
+      diagnostics: questions.map((question) => ({
+        question,
+        answerability: "信息不足",
+        riskLevel: "medium",
+        evidence: [{ paragraphId: paragraph.id, quote }],
+        missingInfo: [`仍需核验${article.title}与${quote}`],
+        recommendation: `针对${question}，引用${quote}，并补充${article.title}的适用边界。`,
+        source: "model",
+        evidenceStatus: "valid",
+      })),
+    });
+  }
+}
+const b15AdviceArtifact = buildB15AdviceDiagnosticsArtifact(b15AdviceSourceSessions);
+assert.equal(b15AdviceArtifact.metrics.sessions, 20);
+assert.equal(b15AdviceArtifact.metrics.diagnostics, 60);
+assert.equal(b15AdviceArtifact.metrics.evidenceReferences, 60);
+assert.equal(b15AdviceArtifact.metrics.missingInfoItems, 60);
+const b15AdviceSecretSentinel = "B15_ADVICE_SECRET_MUST_NOT_PERSIST";
+const serializedB15AdviceArtifact = serializeB15AdviceDiagnosticsArtifact(
+  b15AdviceArtifact,
+  b1Fixture,
+  [b15AdviceSecretSentinel],
+);
+assert.match(serializedB15AdviceArtifact, /\{\{B15_REF_/);
+assert.doesNotMatch(
+  serializedB15AdviceArtifact,
+  /"(?:article|content|evidence|prompt|question|response|secret|token|title)"\s*:/,
+);
+assert.doesNotMatch(serializedB15AdviceArtifact, new RegExp(b15AdviceSecretSentinel));
+for (const session of b15AdviceSourceSessions) {
+  for (const question of selectB15DiagnosticQuestions(
+    session.article.title,
+    session.article.sourceIndex,
+  )) {
+    assert.equal(serializedB15AdviceArtifact.includes(question), false);
+  }
+  assert.equal(serializedB15AdviceArtifact.includes(session.article.title), false);
+  assert.equal(serializedB15AdviceArtifact.includes(session.article.content), false);
+  for (const diagnostic of session.diagnostics) {
+    const evidence = typeof diagnostic === "object" && diagnostic !== null
+      ? (diagnostic as { evidence?: Array<{ quote?: string }> }).evidence
+      : undefined;
+    for (const item of evidence ?? []) {
+      if (item.quote) {
+        assert.equal(serializedB15AdviceArtifact.includes(item.quote), false);
+      }
+    }
+  }
+}
+assert.deepEqual(
+  rehydrateB15AdviceDiagnosticsArtifact(
+    JSON.parse(serializedB15AdviceArtifact),
+    b1Fixture,
+  ),
+  b15AdviceSourceSessions,
+);
+
+const tamperedB15AdviceQuestion = structuredClone(b15AdviceArtifact);
+tamperedB15AdviceQuestion.sessions[0]!.diagnostics[0]!.questionReference.digest =
+  "0".repeat(64);
+assert.throws(() =>
+  rehydrateB15AdviceDiagnosticsArtifact(tamperedB15AdviceQuestion, b1Fixture)
+);
+const tamperedB15AdviceEvidence = structuredClone(b15AdviceArtifact);
+tamperedB15AdviceEvidence.sessions[0]!.diagnostics[0]!.evidenceReferences[0]!.quoteDigest =
+  "0".repeat(64);
+assert.throws(() =>
+  rehydrateB15AdviceDiagnosticsArtifact(tamperedB15AdviceEvidence, b1Fixture)
+);
+
+const b15AdviceArtifactDirectory = mkdtempSync(join(tmpdir(), "b15-advice-artifact-"));
+try {
+  const artifactPath = await writeB15AdviceDiagnosticsArtifactAtomic(
+    b15AdviceArtifactDirectory,
+    serializedB15AdviceArtifact,
+  );
+  assert.equal(artifactPath, join(b15AdviceArtifactDirectory, "advice-diagnostics.json"));
+  assert.equal(readFileSync(artifactPath, "utf8"), serializedB15AdviceArtifact);
+  assert.equal(statSync(artifactPath).mode & 0o777, 0o600);
+} finally {
+  rmSync(b15AdviceArtifactDirectory, { recursive: true, force: true });
+}
+
 assert.deepEqual(passingB15.artifact.runtimeLogCollectorState, {
   collectorMode: "live",
   liveConnectionAttempts: 1,
@@ -3448,10 +3580,32 @@ assert.equal(blockedDiagnoseB15.state.diagnose, 30);
 assert.equal(blockedDiagnoseB15.state.scoring, 0);
 assert.equal(blockedDiagnoseB15.state.advice, 0);
 assert.equal(blockedDiagnoseB15.state.contentDraft, 0);
+assert.equal(blockedDiagnoseB15.adviceDiagnosticsArtifact, null);
 assert.equal(blockedDiagnoseB15.artifact.result, "BLOCKED");
 assert.equal(blockedDiagnoseB15.artifact.modules.diagnose.round1.sourceModel, 29);
 assert.equal(blockedDiagnoseB15.artifact.modules.diagnose.round1.requiredFieldMissing, 1);
 assert.equal(blockedDiagnoseB15.artifact.modules.diagnose.round1.recommendationMissing, 1);
+
+const unavailableAdviceArtifactB15 = await runB15MockCalibration(
+  {},
+  undefined,
+  "connected",
+  async () => {
+    throw new Error("simulated Advice diagnostics persistence failure");
+  },
+);
+assert.deepEqual(unavailableAdviceArtifactB15.state, {
+  sessions: 20,
+  diagnose: 60,
+  scoring: 0,
+  advice: 0,
+  contentDraft: 0,
+});
+assert.equal(unavailableAdviceArtifactB15.flow.calls.length, 60);
+assert.deepEqual(unavailableAdviceArtifactB15.flow.infrastructureIssues, [
+  "artifact-integrity-failure",
+]);
+assert.equal(unavailableAdviceArtifactB15.artifact.result, "INCONCLUSIVE");
 
 const seventeenContentDraftB15 = await runB15MockCalibration({
   contentFallbackIndexes: [0, 1, 10],
