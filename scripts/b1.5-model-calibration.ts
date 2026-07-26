@@ -34,7 +34,9 @@ import {
 
 export const B15_CALIBRATION_SCHEMA_VERSION = "b1.5-v11";
 export const B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION =
-  "b1.5-advice-diagnostics-v1";
+  "b1.5-advice-diagnostics-v2";
+export const B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE =
+  "outputs/b1/corpus-v1/corpus.json";
 export const B15_REQUIRED_NODE_VERSION = "v22.23.1";
 export const B15_REQUIRED_CORPUS_SHA256 =
   "6d3115d362c762f9f6ba1235ca897230405f07834235173b940181d5765d72f3";
@@ -157,6 +159,8 @@ const FORBIDDEN_ARTIFACT_KEYS = new Set([
 const QUESTION_PREDICTION_BASELINE_PER_ROUND = 10;
 const ADVICE_DIAGNOSTICS_EXPECTED_SESSIONS = 20;
 const ADVICE_DIAGNOSTICS_EXPECTED_RECORDS = 60;
+const B15_RUN_ID_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{12}$/;
 const ADVICE_DIAGNOSTIC_REFERENCE_PREFIX = "{{B15_REF_";
 const ADVICE_DIAGNOSTIC_EXCERPT_LENGTH = 24;
 const ADVICE_DIAGNOSTIC_REFERENCE_PATTERN_SOURCE =
@@ -341,6 +345,7 @@ export interface B15AdviceEvidenceReference {
 }
 
 export interface B15AdviceDiagnosticRecord {
+  diagnosticIndex: number;
   questionReference: {
     index: number;
     digest: string;
@@ -360,8 +365,10 @@ export interface B15AdviceDiagnosticsSession {
   diagnostics: B15AdviceDiagnosticRecord[];
 }
 
-export interface B15AdviceDiagnosticsArtifact {
+interface B15AdviceDiagnosticsArtifactPayload {
   adviceDiagnosticsSchemaVersion: typeof B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION;
+  sourceRunId: string;
+  corpusReference: typeof B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE;
   corpusSha256: typeof B15_REQUIRED_CORPUS_SHA256;
   metrics: {
     sessions: number;
@@ -374,6 +381,14 @@ export interface B15AdviceDiagnosticsArtifact {
     evidenceStatus: Record<DiagnosticResult["evidenceStatus"], number>;
   };
   sessions: B15AdviceDiagnosticsSession[];
+}
+
+export interface B15AdviceDiagnosticsArtifact
+  extends B15AdviceDiagnosticsArtifactPayload {
+  integrity: {
+    algorithm: "sha256";
+    payloadSha256: string;
+  };
 }
 
 export interface B15AdviceDiagnosticsSourceSession {
@@ -406,6 +421,7 @@ const B15_ADVICE_EVIDENCE_REFERENCE_SCHEMA: z.ZodType<B15AdviceEvidenceReference
 
 const B15_ADVICE_DIAGNOSTIC_RECORD_SCHEMA: z.ZodType<B15AdviceDiagnosticRecord> =
   z.object({
+    diagnosticIndex: z.number().int().min(0).max(ADVICE_DIAGNOSTICS_EXPECTED_RECORDS - 1),
     questionReference: z.object({
       index: z.number().int().min(0).max(2),
       digest: z.string().regex(/^[0-9a-f]{64}$/),
@@ -422,6 +438,8 @@ const B15_ADVICE_DIAGNOSTIC_RECORD_SCHEMA: z.ZodType<B15AdviceDiagnosticRecord> 
 const B15_ADVICE_DIAGNOSTICS_ARTIFACT_SCHEMA: z.ZodType<B15AdviceDiagnosticsArtifact> =
   z.object({
     adviceDiagnosticsSchemaVersion: z.literal(B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION),
+    sourceRunId: z.string().regex(B15_RUN_ID_PATTERN),
+    corpusReference: z.literal(B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE),
     corpusSha256: z.literal(B15_REQUIRED_CORPUS_SHA256),
     metrics: z.object({
       sessions: z.number().int().nonnegative(),
@@ -452,6 +470,10 @@ const B15_ADVICE_DIAGNOSTICS_ARTIFACT_SCHEMA: z.ZodType<B15AdviceDiagnosticsArti
         diagnostics: z.array(B15_ADVICE_DIAGNOSTIC_RECORD_SCHEMA).length(3),
       }).strict(),
     ).length(ADVICE_DIAGNOSTICS_EXPECTED_SESSIONS),
+    integrity: z.object({
+      algorithm: z.literal("sha256"),
+      payloadSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    }).strict(),
   }).strict();
 
 export interface B15FlowResult {
@@ -560,6 +582,7 @@ export interface B15CalibrationArtifact {
 
 interface B15FlowOptions {
   articles: B1CorpusArticle[];
+  sourceRunId: string;
   transport: B15CalibrationTransport;
   runtimeLogCollector: B1RuntimeLogCollector;
   wait?: (milliseconds: number) => Promise<void>;
@@ -578,6 +601,31 @@ function isOneOf<T extends readonly string[]>(value: unknown, values: T): value 
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function assertB15RunId(runId: string): void {
+  if (!B15_RUN_ID_PATTERN.test(runId)) {
+    throw new Error("B.1.5 run ID is invalid.");
+  }
+}
+
+function adviceDiagnosticsIntegrityPayload(
+  value: B15AdviceDiagnosticsArtifactPayload,
+): B15AdviceDiagnosticsArtifactPayload {
+  return {
+    adviceDiagnosticsSchemaVersion: value.adviceDiagnosticsSchemaVersion,
+    sourceRunId: value.sourceRunId,
+    corpusReference: value.corpusReference,
+    corpusSha256: value.corpusSha256,
+    metrics: value.metrics,
+    sessions: value.sessions,
+  };
+}
+
+function adviceDiagnosticsPayloadSha256(
+  value: B15AdviceDiagnosticsArtifactPayload,
+): string {
+  return sha256(JSON.stringify(adviceDiagnosticsIntegrityPayload(value)));
 }
 
 function requiredEnvironmentValue(
@@ -667,9 +715,7 @@ export function createB15RunId(
 }
 
 export function resolveB15CalibrationDirectory(cwd: string, runId: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{12}$/.test(runId)) {
-    throw new Error("B.1.5 run ID is invalid.");
-  }
+  assertB15RunId(runId);
   const root = resolve(cwd, ...CALIBRATION_ROOT_SEGMENTS);
   const directory = resolve(root, runId);
   const pathFromRoot = relative(root, directory);
@@ -904,10 +950,12 @@ function orderedAdviceSourceSessions(
 
 export function buildB15AdviceDiagnosticsArtifact(
   sourceSessions: readonly B15AdviceDiagnosticsSourceSession[],
+  sourceRunId: string,
 ): B15AdviceDiagnosticsArtifact {
+  assertB15RunId(sourceRunId);
   const orderedSessions = orderedAdviceSourceSessions(sourceSessions);
   const metrics = emptyAdviceDiagnosticsMetrics();
-  const sessions = orderedSessions.map((session) => {
+  const sessions = orderedSessions.map((session, sessionIndex) => {
     if (session.diagnostics.length !== 3) {
       throw new Error("B.1.5 Advice diagnostics require three records per session.");
     }
@@ -936,6 +984,7 @@ export function buildB15AdviceDiagnosticsArtifact(
       };
       incrementAdviceDiagnosticsMetrics(metrics, diagnostic);
       return {
+        diagnosticIndex: sessionIndex * 3 + questionIndex,
         questionReference: {
           index: questionIndex,
           digest: sha256(expectedQuestion),
@@ -957,11 +1006,20 @@ export function buildB15AdviceDiagnosticsArtifact(
   if (metrics.diagnostics !== ADVICE_DIAGNOSTICS_EXPECTED_RECORDS) {
     throw new Error("B.1.5 Advice diagnostics require exactly 60 records.");
   }
-  return {
+  const payload: B15AdviceDiagnosticsArtifactPayload = {
     adviceDiagnosticsSchemaVersion: B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION,
+    sourceRunId,
+    corpusReference: B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE,
     corpusSha256: B15_REQUIRED_CORPUS_SHA256,
     metrics,
     sessions,
+  };
+  return {
+    ...payload,
+    integrity: {
+      algorithm: "sha256",
+      payloadSha256: adviceDiagnosticsPayloadSha256(payload),
+    },
   };
 }
 
@@ -973,6 +1031,12 @@ function parseB15AdviceDiagnosticsArtifact(
     throw new Error("B.1.5 Advice diagnostics artifact is invalid.");
   }
   assertAllowedArtifactShape(parsed.data);
+  if (
+    parsed.data.integrity.payloadSha256 !==
+    adviceDiagnosticsPayloadSha256(parsed.data)
+  ) {
+    throw new Error("B.1.5 Advice diagnostics artifact integrity mismatch.");
+  }
   return parsed.data;
 }
 
@@ -1021,7 +1085,8 @@ export function rehydrateB15AdviceDiagnosticsArtifact(
   let sessionIndex = 0;
   for (const round of [1, 2] as const) {
     for (const expectedArticle of orderedArticles) {
-      const session = parsedArtifact.sessions[sessionIndex];
+      const currentSessionIndex = sessionIndex;
+      const session = parsedArtifact.sessions[currentSessionIndex];
       sessionIndex += 1;
       if (
         !session ||
@@ -1037,6 +1102,9 @@ export function rehydrateB15AdviceDiagnosticsArtifact(
       const questions = selectB15DiagnosticQuestions(article.title, article.sourceIndex);
       const paragraphs = createNumberedParagraphs(article.content);
       const diagnostics = session.diagnostics.map((record, diagnosticIndex) => {
+        if (record.diagnosticIndex !== currentSessionIndex * 3 + diagnosticIndex) {
+          throw new Error("B.1.5 Advice diagnostic index lineage is invalid.");
+        }
         if (record.questionReference.index !== diagnosticIndex) {
           throw new Error("B.1.5 Advice diagnostic question ordering is invalid.");
         }
@@ -1314,6 +1382,7 @@ function sourceModelCount(calls: B15InternalCall[]): number {
 
 export async function runB15CalibrationFlow({
   articles,
+  sourceRunId,
   transport,
   runtimeLogCollector,
   wait = (milliseconds) =>
@@ -1323,6 +1392,7 @@ export async function runB15CalibrationFlow({
   if (articles.length !== 10) {
     throw new Error("B.1.5 Calibration requires exactly 10 corpus articles.");
   }
+  assertB15RunId(sourceRunId);
 
   const calls: B15InternalCall[] = [];
   const sessions: B15Session[] = [];
@@ -1444,6 +1514,7 @@ export async function runB15CalibrationFlow({
             round: session.round,
             diagnostics: session.diagnostics,
           })),
+          sourceRunId,
         ),
       );
     } catch {
@@ -2330,6 +2401,7 @@ async function main(): Promise<void> {
   try {
     flow = await runB15CalibrationFlow({
       articles,
+      sourceRunId: runId,
       transport,
       runtimeLogCollector,
       onAdviceDiagnosticsArtifact: async (adviceDiagnosticsArtifact) => {

@@ -96,6 +96,7 @@ import {
   type B1StabilityObservation,
 } from "./b1-technical-validation.ts";
 import {
+  B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE,
   B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION,
   B15_CALIBRATION_SCHEMA_VERSION,
   B15_EXPECTED_MODEL_REQUESTS,
@@ -3237,6 +3238,9 @@ function createB15MockRuntimeCollector(
   };
 }
 
+const B15_MOCK_SOURCE_RUN_ID =
+  "2026-07-25T00-00-00-000Z-000000000001";
+
 async function runB15MockCalibration(
   transportOptions: B15MockTransportOptions = {},
   runtimeOverride?: (call: B1CallRecord, index: number) => B15MockRuntimeDecision,
@@ -3253,6 +3257,7 @@ async function runB15MockCalibration(
   let adviceDiagnosticsArtifact: B15AdviceDiagnosticsArtifact | null = null;
   const flow = await runB15CalibrationFlow({
     articles: b1Fixture,
+    sourceRunId: B15_MOCK_SOURCE_RUN_ID,
     transport,
     runtimeLogCollector,
     wait: async () => {},
@@ -3294,6 +3299,19 @@ assert.equal(
   passingB15.adviceDiagnosticsArtifact.adviceDiagnosticsSchemaVersion,
   B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION,
 );
+assert.equal(
+  passingB15.adviceDiagnosticsArtifact.sourceRunId,
+  B15_MOCK_SOURCE_RUN_ID,
+);
+assert.equal(
+  passingB15.adviceDiagnosticsArtifact.corpusReference,
+  B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE,
+);
+assert.equal(passingB15.adviceDiagnosticsArtifact.integrity.algorithm, "sha256");
+assert.match(
+  passingB15.adviceDiagnosticsArtifact.integrity.payloadSha256,
+  /^[0-9a-f]{64}$/,
+);
 assert.equal(passingB15.adviceDiagnosticsArtifact.metrics.sessions, 20);
 assert.equal(passingB15.adviceDiagnosticsArtifact.metrics.diagnostics, 60);
 assert.equal(passingB15.adviceDiagnosticsArtifact.sessions.length, 20);
@@ -3303,6 +3321,12 @@ assert.equal(
     0,
   ),
   60,
+);
+assert.deepEqual(
+  passingB15.adviceDiagnosticsArtifact.sessions.flatMap((session) =>
+    session.diagnostics.map((diagnostic) => diagnostic.diagnosticIndex)
+  ),
+  Array.from({ length: 60 }, (_value, index) => index),
 );
 
 const b15AdviceSourceSessions: B15AdviceDiagnosticsSourceSession[] = [];
@@ -3329,7 +3353,31 @@ for (const round of [1, 2] as const) {
     });
   }
 }
-const b15AdviceArtifact = buildB15AdviceDiagnosticsArtifact(b15AdviceSourceSessions);
+const b15AdviceArtifact = buildB15AdviceDiagnosticsArtifact(
+  b15AdviceSourceSessions,
+  B15_MOCK_SOURCE_RUN_ID,
+);
+const b15AdviceArtifactSameLineage = buildB15AdviceDiagnosticsArtifact(
+  b15AdviceSourceSessions,
+  B15_MOCK_SOURCE_RUN_ID,
+);
+const b15AdviceArtifactDifferentLineage = buildB15AdviceDiagnosticsArtifact(
+  b15AdviceSourceSessions,
+  "2026-07-25T00-00-00-000Z-000000000002",
+);
+assert.equal(b15AdviceArtifact.sourceRunId, B15_MOCK_SOURCE_RUN_ID);
+assert.equal(
+  b15AdviceArtifact.corpusReference,
+  B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE,
+);
+assert.equal(
+  b15AdviceArtifact.integrity.payloadSha256,
+  b15AdviceArtifactSameLineage.integrity.payloadSha256,
+);
+assert.notEqual(
+  b15AdviceArtifact.integrity.payloadSha256,
+  b15AdviceArtifactDifferentLineage.integrity.payloadSha256,
+);
 assert.equal(b15AdviceArtifact.metrics.sessions, 20);
 assert.equal(b15AdviceArtifact.metrics.diagnostics, 60);
 assert.equal(b15AdviceArtifact.metrics.evidenceReferences, 60);
@@ -3372,6 +3420,21 @@ assert.deepEqual(
     b1Fixture,
   ),
   b15AdviceSourceSessions,
+);
+
+const tamperedB15AdviceIntegrity = structuredClone(b15AdviceArtifact);
+tamperedB15AdviceIntegrity.integrity.payloadSha256 = "0".repeat(64);
+assert.throws(() =>
+  rehydrateB15AdviceDiagnosticsArtifact(tamperedB15AdviceIntegrity, b1Fixture)
+);
+const tamperedB15AdviceRunId = structuredClone(b15AdviceArtifact);
+tamperedB15AdviceRunId.sourceRunId =
+  "2026-07-25T00-00-00-000Z-000000000002";
+assert.throws(() =>
+  rehydrateB15AdviceDiagnosticsArtifact(tamperedB15AdviceRunId, b1Fixture)
+);
+assert.throws(() =>
+  buildB15AdviceDiagnosticsArtifact(b15AdviceSourceSessions, "invalid-run-id")
 );
 
 const tamperedB15AdviceQuestion = structuredClone(b15AdviceArtifact);
