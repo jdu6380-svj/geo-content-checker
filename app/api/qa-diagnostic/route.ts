@@ -21,6 +21,7 @@ import {
 } from "@/lib/server/analysis-operation";
 import {
   markGeoRequestOutcome,
+  markGeoRequestStage,
   markGeoValidationTelemetry,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
@@ -134,6 +135,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
   try {
     const body = await readGeoJsonBody(request);
     const input = qaDiagnosticRequestSchema.safeParse(body);
+    markGeoRequestStage("validation_completed");
 
     if (!input.success) {
       return NextResponse.json(
@@ -155,6 +157,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
     const userPrompt = formatUntrustedPromptData({ title, paragraphs, question });
 
     try {
+      markGeoRequestStage("adapter_called");
       const { content: raw } = await callOpenAICompatibleModel({
         messages: [
           { role: "system", content: systemPrompt },
@@ -165,9 +168,11 @@ async function handlePost(request: NextRequest): Promise<Response> {
         maxTokens: 2_200,
         rateLimitMode: authorization.mode,
       });
+      markGeoRequestStage("parser_started");
       let normalized: unknown;
       try {
         normalized = normalizeDiagnosticModelOutput(raw, question);
+        markGeoRequestStage("parser_completed");
       } catch (error) {
         markGeoValidationTelemetry({
           stage: "json_parse",

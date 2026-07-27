@@ -1,6 +1,9 @@
 import {
   markGeoRequestOutcome,
+  markGeoRequestStage,
   sanitizeModelProviderTelemetry,
+  sanitizeGeoProviderRequestId,
+  type GeoModelErrorCategory,
   type GeoModelFinishReason,
   type ModelProviderTelemetry,
 } from "@/lib/server/geo-observability";
@@ -37,15 +40,24 @@ export interface ModelCallResult {
 export class ModelCallError extends Error {
   readonly status?: number;
   readonly retryAfter?: string;
+  readonly providerRequestId?: string;
+  readonly errorCategory?: GeoModelErrorCategory;
 
   constructor(
     message: string,
-    options?: ErrorOptions & { status?: number; retryAfter?: string },
+    options?: ErrorOptions & {
+      status?: number;
+      retryAfter?: string;
+      providerRequestId?: string;
+      errorCategory?: GeoModelErrorCategory;
+    },
   ) {
     super(message, options);
     this.name = "ModelCallError";
     this.status = options?.status;
     this.retryAfter = options?.retryAfter;
+    this.providerRequestId = options?.providerRequestId;
+    this.errorCategory = options?.errorCategory;
   }
 }
 
@@ -61,15 +73,24 @@ export async function callOpenAICompatibleModel({
   const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 
   if (!apiKey) {
-    markGeoRequestOutcome({ modelStatus: "disabled" });
-    throw new ModelCallError("OPENAI_API_KEY is not configured");
+    markGeoRequestOutcome({
+      modelStatus: "disabled",
+      modelErrorCategory: "configuration",
+    });
+    throw new ModelCallError("OPENAI_API_KEY is not configured", {
+      errorCategory: "configuration",
+    });
   }
 
   const budget = await consumeModelCallBudget(rateLimitMode);
   if (!budget.allowed) {
-    markGeoRequestOutcome({ modelStatus: "rate-limited" });
+    markGeoRequestOutcome({
+      modelStatus: "rate-limited",
+      modelErrorCategory: "budget",
+    });
     throw new ModelCallError("Model call budget exhausted", {
       retryAfter: String(budget.retryAfter),
+      errorCategory: "budget",
     });
   }
 
@@ -79,6 +100,7 @@ export async function callOpenAICompatibleModel({
   const providerRequestStartAt = Date.now();
   let firstByteAt: number | undefined;
   markGeoRequestOutcome({ modelStatus: "requested", providerRequestStartAt });
+  markGeoRequestStage("provider_request_sent");
 
   function modelLatencyMs(): number {
     return Math.max(0, Math.round(performance.now() - modelStartedAt));
@@ -102,20 +124,47 @@ export async function callOpenAICompatibleModel({
       cache: "no-store",
     });
     firstByteAt = Date.now();
-    markGeoRequestOutcome({ firstByteAt });
+    const providerRequestId = providerResponseRequestId(response.headers);
+    markGeoRequestOutcome({
+      firstByteAt,
+      providerHttpStatus: response.status,
+      ...(providerRequestId === undefined ? {} : { providerRequestId }),
+    });
+    markGeoRequestStage("provider_response_received");
 
     if (!response.ok) {
       markGeoRequestOutcome({
         modelStatus: response.status === 429 ? "rate-limited" : "failed",
         modelLatencyMs: modelLatencyMs(),
+        modelErrorCategory: "provider_http",
       });
       throw new ModelCallError(`Model request failed with status ${response.status}`, {
         status: response.status,
         retryAfter: response.headers.get("retry-after") ?? undefined,
+        providerRequestId,
+        errorCategory: "provider_http",
       });
     }
 
-    const payload: unknown = await response.json();
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      const responseCompletedAt = Date.now();
+      markGeoRequestOutcome({
+        modelStatus: "failed",
+        modelLatencyMs: modelLatencyMs(),
+        responseCompletedAt,
+        streamDurationMs: Math.max(0, responseCompletedAt - firstByteAt),
+        modelErrorCategory: "provider_response_parse",
+      });
+      throw new ModelCallError("Model response parsing failed", {
+        cause: error instanceof Error ? error : undefined,
+        status: response.status,
+        providerRequestId,
+        errorCategory: "provider_response_parse",
+      });
+    }
     const responseCompletedAt = Date.now();
     markGeoRequestOutcome({
       responseCompletedAt,
@@ -129,9 +178,14 @@ export async function callOpenAICompatibleModel({
       markGeoRequestOutcome({
         modelStatus: "invalid-output",
         modelLatencyMs: modelLatencyMs(),
+        modelErrorCategory: "provider_invalid_output",
         ...providerTelemetryLogFields(telemetry, usage),
       });
-      throw new ModelCallError("Model returned empty content");
+      throw new ModelCallError("Model returned empty content", {
+        status: response.status,
+        providerRequestId,
+        errorCategory: "provider_invalid_output",
+      });
     }
 
     markGeoRequestOutcome({
@@ -152,19 +206,42 @@ export async function callOpenAICompatibleModel({
         modelStatus: "timeout",
         modelLatencyMs: modelLatencyMs(),
         abortedAt,
+        modelErrorCategory: "provider_timeout",
         ...(firstByteAt === undefined
           ? {}
           : { streamDurationMs: Math.max(0, abortedAt - firstByteAt) }),
       });
-      throw new ModelCallError("Model request timed out", { cause: error });
+      throw new ModelCallError("Model request timed out", {
+        cause: error,
+        errorCategory: "provider_timeout",
+      });
     }
-    markGeoRequestOutcome({ modelStatus: "failed", modelLatencyMs: modelLatencyMs() });
+    markGeoRequestOutcome({
+      modelStatus: "failed",
+      modelLatencyMs: modelLatencyMs(),
+      modelErrorCategory: "provider_network",
+    });
     throw new ModelCallError("Model request failed", {
       cause: error instanceof Error ? error : undefined,
+      errorCategory: "provider_network",
     });
   } finally {
     clearTimeout(timeout);
   }
+}
+
+const PROVIDER_REQUEST_ID_HEADERS = [
+  "x-request-id",
+  "x-openai-request-id",
+  "request-id",
+] as const;
+
+function providerResponseRequestId(headers: Headers): string | undefined {
+  for (const name of PROVIDER_REQUEST_ID_HEADERS) {
+    const requestId = sanitizeGeoProviderRequestId(headers.get(name));
+    if (requestId !== undefined) return requestId;
+  }
+  return undefined;
 }
 
 function normalizeTokenCount(value: unknown): number | undefined {

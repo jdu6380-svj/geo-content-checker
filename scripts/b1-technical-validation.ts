@@ -83,6 +83,16 @@ const B1_MODEL_FINISH_REASONS = [
   "function_call",
   "unknown",
 ] as const;
+const B1_MODEL_ERROR_CATEGORIES = [
+  "configuration",
+  "budget",
+  "provider_http",
+  "provider_timeout",
+  "provider_network",
+  "provider_response_parse",
+  "provider_invalid_output",
+  "unknown",
+] as const;
 const B1_RUNTIME_LOG_STATUSES = [
   "matched",
   "delayed-ingestion",
@@ -168,6 +178,7 @@ type B1PipelineOperation = (typeof B1_PIPELINE_OPERATIONS)[number];
 type B1ModelStatus = (typeof B1_MODEL_STATUSES)[number];
 type B1ResponseSource = (typeof B1_RESPONSE_SOURCES)[number];
 type B1ModelFinishReason = (typeof B1_MODEL_FINISH_REASONS)[number];
+type B1ModelErrorCategory = (typeof B1_MODEL_ERROR_CATEGORIES)[number];
 export type B1RuntimeLogStatus = (typeof B1_RUNTIME_LOG_STATUSES)[number];
 export type B1RuntimeLogDisconnectReason =
   (typeof B1_RUNTIME_LOG_DISCONNECT_REASONS)[number];
@@ -384,6 +395,9 @@ export interface B1RuntimeLogRecord {
   modelStatus: B1ModelStatus;
   modelLatencyMs: number | null;
   providerRequestStartAt?: number | null;
+  providerHttpStatus?: number | null;
+  providerRequestId?: string | null;
+  modelErrorCategory?: B1ModelErrorCategory | null;
   firstByteAt?: number | null;
   firstTokenAt?: number | null;
   responseCompletedAt?: number | null;
@@ -600,6 +614,18 @@ function normalizeModelStatus(value: unknown): B1ModelStatus | null {
 
 function normalizeModelFinishReason(value: unknown): B1ModelFinishReason | null {
   return isOneOf(value, B1_MODEL_FINISH_REASONS) ? value : null;
+}
+
+function normalizeModelErrorCategory(value: unknown): B1ModelErrorCategory | null {
+  return isOneOf(value, B1_MODEL_ERROR_CATEGORIES) ? value : null;
+}
+
+function normalizeProviderRequestId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(normalized)
+    ? normalized
+    : null;
 }
 
 function normalizeTokenCount(value: unknown): number | null {
@@ -1821,6 +1847,18 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     value.providerRequestStartAt === undefined
       ? null
       : normalizeDuration(value.providerRequestStartAt);
+  const providerHttpStatus =
+    value.providerHttpStatus === undefined
+      ? null
+      : normalizeHttpStatus(value.providerHttpStatus);
+  const providerRequestId =
+    value.providerRequestId === undefined
+      ? null
+      : normalizeProviderRequestId(value.providerRequestId);
+  const modelErrorCategory =
+    value.modelErrorCategory === undefined
+      ? null
+      : normalizeModelErrorCategory(value.modelErrorCategory);
   const firstByteAt =
     value.firstByteAt === undefined ? null : normalizeDuration(value.firstByteAt);
   const firstTokenAt =
@@ -1923,6 +1961,9 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     !isOneOf(value.modelStatus, B1_MODEL_STATUSES) ||
     (value.modelLatencyMs !== undefined && modelLatencyMs === null) ||
     (value.providerRequestStartAt !== undefined && providerRequestStartAt === null) ||
+    (value.providerHttpStatus !== undefined && providerHttpStatus === null) ||
+    (value.providerRequestId !== undefined && providerRequestId === null) ||
+    (value.modelErrorCategory !== undefined && modelErrorCategory === null) ||
     (value.firstByteAt !== undefined && firstByteAt === null) ||
     (value.firstTokenAt !== undefined && firstTokenAt === null) ||
     (value.responseCompletedAt !== undefined && responseCompletedAt === null) ||
@@ -1997,6 +2038,9 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     modelStatus: value.modelStatus,
     modelLatencyMs,
     providerRequestStartAt,
+    providerHttpStatus,
+    providerRequestId,
+    modelErrorCategory,
     firstByteAt,
     firstTokenAt,
     responseCompletedAt,

@@ -59,10 +59,16 @@ import {
   isStrongSecuritySecret,
 } from "../lib/server/security-config.ts";
 import {
+  GEO_MODEL_ERROR_CATEGORIES,
+  GEO_REQUEST_STAGES,
+  markGeoRequestOutcome,
+  markGeoRequestStage,
   markGeoValidationTelemetry,
   normalizeGeoModelFinishReason,
+  sanitizeGeoProviderRequestId,
   sanitizeGeoValidationTelemetry,
   sanitizeModelProviderTelemetry,
+  withGeoRequestLogging,
 } from "../lib/server/geo-observability.ts";
 import { scrubSentryEvent } from "../lib/sentry-scrub.ts";
 import {
@@ -149,11 +155,37 @@ const diagnosticRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/qa-diagnostic/route.ts", import.meta.url)),
   "utf8",
 );
-assert.match(diagnosticRouteSource, /temperature:\s*0/);
-assert.match(diagnosticRouteSource, /timeoutMs:\s*22_000/);
-assert.match(diagnosticRouteSource, /maxTokens:\s*2_200/);
-assert.match(diagnosticRouteSource, /顶层字段必须且只能各出现一次/);
-assert.match(diagnosticRouteSource, /question、recommendation、answerability/);
+assert.ok(
+  /temperature:\s*0/.test(diagnosticRouteSource),
+  "qa-diagnostic temperature contract is missing",
+);
+assert.ok(
+  /timeoutMs:\s*22_000/.test(diagnosticRouteSource),
+  "qa-diagnostic timeout contract is missing",
+);
+assert.ok(
+  /maxTokens:\s*2_200/.test(diagnosticRouteSource),
+  "qa-diagnostic token limit contract is missing",
+);
+assert.ok(
+  /顶层字段必须且只能各出现一次/.test(diagnosticRouteSource),
+  "qa-diagnostic strict top-level field contract is missing",
+);
+assert.ok(
+  /question、recommendation、answerability/.test(diagnosticRouteSource),
+  "qa-diagnostic required field contract is missing",
+);
+for (const stage of [
+  "validation_completed",
+  "adapter_called",
+  "parser_started",
+  "parser_completed",
+] as const) {
+  assert.ok(
+    new RegExp(`markGeoRequestStage\\("${stage}"\\)`).test(diagnosticRouteSource),
+    `qa-diagnostic stage marker is missing: ${stage}`,
+  );
+}
 const patchesRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/generate-patches/route.ts", import.meta.url)),
   "utf8",
@@ -167,6 +199,34 @@ const modelAdapterSource = readFileSync(
 );
 assert.match(modelAdapterSource, /response_format:\s*\{ type: "json_object" \}/);
 assert.doesNotMatch(modelAdapterSource, /json_schema/);
+assert.match(modelAdapterSource, /markGeoRequestStage\("provider_request_sent"\)/);
+assert.match(modelAdapterSource, /markGeoRequestStage\("provider_response_received"\)/);
+assert.match(modelAdapterSource, /providerHttpStatus:\s*response\.status/);
+assert.match(modelAdapterSource, /modelErrorCategory:\s*"provider_http"/);
+assert.deepEqual(GEO_REQUEST_STAGES, [
+  "request_started",
+  "validation_completed",
+  "adapter_called",
+  "provider_request_sent",
+  "provider_response_received",
+  "parser_started",
+  "parser_completed",
+  "response_returned",
+]);
+assert.deepEqual(GEO_MODEL_ERROR_CATEGORIES, [
+  "configuration",
+  "budget",
+  "provider_http",
+  "provider_timeout",
+  "provider_network",
+  "provider_response_parse",
+  "provider_invalid_output",
+  "unknown",
+]);
+assert.equal(sanitizeGeoProviderRequestId("req_abc-123:xyz"), "req_abc-123:xyz");
+assert.equal(sanitizeGeoProviderRequestId(" req_abc-123 "), "req_abc-123");
+assert.equal(sanitizeGeoProviderRequestId("req_abc\nsecret"), undefined);
+assert.equal(sanitizeGeoProviderRequestId("x".repeat(129)), undefined);
 assert.equal(normalizeGeoModelFinishReason("length"), "length");
 assert.equal(normalizeGeoModelFinishReason("provider-specific"), "unknown");
 assert.deepEqual(JSON_ERROR_CATEGORIES, [
@@ -203,6 +263,71 @@ assert.deepEqual(VALIDATION_EXPECTED_TYPES, [
 ]);
 assert.ok(VALIDATION_ISSUE_CODES.includes("invalid_type"));
 assert.ok(VALIDATION_ISSUE_CODES.includes("unknown"));
+
+const requestStageLogs: string[] = [];
+const originalConsoleInfo = console.info;
+console.info = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === "string") requestStageLogs.push(value);
+  }
+};
+try {
+  const stageHandler = withGeoRequestLogging(
+    "/api/qa-diagnostic",
+    async () => {
+      for (const stage of GEO_REQUEST_STAGES.slice(1, -1)) {
+        markGeoRequestStage(stage);
+      }
+      markGeoRequestOutcome({
+        modelStatus: "failed",
+        modelLatencyMs: 321,
+        providerHttpStatus: 502,
+        providerRequestId: "req_safe_123",
+        modelErrorCategory: "provider_http",
+        finishReason: "length",
+        completionTokens: 42,
+      });
+      return Response.json({ ok: true });
+    },
+  );
+  const stageResponse = await stageHandler(
+    new Request("http://localhost/api/qa-diagnostic", { method: "POST" }) as never,
+  );
+  const stageEvents = requestStageLogs
+    .map((value) => JSON.parse(value) as Record<string, unknown>)
+    .filter((value) => value.event === "geo_api_stage");
+  assert.deepEqual(
+    stageEvents.map((value) => value.stage),
+    GEO_REQUEST_STAGES,
+  );
+  const stageRequestId = stageResponse.headers.get("X-Request-ID");
+  assert.match(stageRequestId ?? "", /^[0-9a-f-]{36}$/);
+  for (const event of stageEvents) {
+    assert.deepEqual(Object.keys(event).sort(), [
+      "event",
+      "latency",
+      "requestId",
+      "route",
+      "stage",
+      "timestamp",
+    ]);
+    assert.equal(event.requestId, stageRequestId);
+    assert.equal(event.route, "/api/qa-diagnostic");
+    assert.equal(typeof event.timestamp, "number");
+    assert.equal(typeof event.latency, "number");
+  }
+  const requestEvent = requestStageLogs
+    .map((value) => JSON.parse(value) as Record<string, unknown>)
+    .find((value) => value.event === "geo_api_request");
+  assert.equal(requestEvent?.providerHttpStatus, 502);
+  assert.equal(requestEvent?.providerRequestId, "req_safe_123");
+  assert.equal(requestEvent?.modelErrorCategory, "provider_http");
+  assert.equal(requestEvent?.finishReason, "length");
+  assert.equal(requestEvent?.completionTokens, 42);
+  assert.equal(requestEvent?.modelLatencyMs, 321);
+} finally {
+  console.info = originalConsoleInfo;
+}
 
 const jsonParseSensitiveSentinel = "JSON_PARSE_SENTINEL_MUST_NOT_PERSIST";
 const fencedInvalidJson = `  \`\`\`json
@@ -1635,10 +1760,13 @@ const b1RuntimeLog = parseB1RuntimeLogMessage(
     route: "/api/evaluate-scoring",
     status: 200,
     durationMs: 1_234,
-    source: "model",
-    modelStatus: "success",
+    source: "fallback",
+    modelStatus: "invalid-output",
     modelLatencyMs: 987,
     providerRequestStartAt: 1_720_000_000_000,
+    providerHttpStatus: 200,
+    providerRequestId: "req_runtime_123",
+    modelErrorCategory: "provider_invalid_output",
     firstByteAt: 1_720_000_000_900,
     responseCompletedAt: 1_720_000_000_987,
     streamDurationMs: 87,
@@ -1664,10 +1792,13 @@ assert.deepEqual(b1RuntimeLog, {
   requestId: "00000000-0000-4000-8000-000000000001",
   route: "/api/evaluate-scoring",
   status: 200,
-  source: "model",
-  modelStatus: "success",
+  source: "fallback",
+  modelStatus: "invalid-output",
   modelLatencyMs: 987,
   providerRequestStartAt: 1_720_000_000_000,
+  providerHttpStatus: 200,
+  providerRequestId: "req_runtime_123",
+  modelErrorCategory: "provider_invalid_output",
   firstByteAt: 1_720_000_000_900,
   firstTokenAt: null,
   responseCompletedAt: 1_720_000_000_987,
@@ -2139,12 +2270,15 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
       "jsonErrorCategory",
       "lastCharType",
       "lastCharacterCategory",
+      "modelErrorCategory",
       "modelLatencyMs",
       "modelStatus",
       "parserErrorCategory",
       "parserErrorName",
       "parserErrorPosition",
       "promptTokens",
+      "providerHttpStatus",
+      "providerRequestId",
       "providerRequestStartAt",
       "reasoningTokens",
       "requestId",
@@ -2955,11 +3089,16 @@ assert.equal(b15Environment.expectedSha, "c".repeat(40));
 const b15RunnerScript = fileURLToPath(
   new URL("./b1.5-model-calibration.ts", import.meta.url),
 );
+const b15RequiredNodeVersionImport = `data:text/javascript,${encodeURIComponent(
+  `Object.defineProperty(process, "version", { value: ${JSON.stringify(B15_REQUIRED_NODE_VERSION)} });`,
+)}`;
 const b15CliSecretSentinel = "b15-cli-secret-must-not-appear";
 const rejectedB15Runner = spawnSync(
   process.execPath,
   [
     "--experimental-strip-types",
+    "--import",
+    b15RequiredNodeVersionImport,
     b15RunnerScript,
     `--resume=${b15CliSecretSentinel}`,
   ],

@@ -45,6 +45,32 @@ export const GEO_MODEL_FINISH_REASONS = [
 
 export type GeoModelFinishReason = (typeof GEO_MODEL_FINISH_REASONS)[number];
 
+export const GEO_REQUEST_STAGES = [
+  "request_started",
+  "validation_completed",
+  "adapter_called",
+  "provider_request_sent",
+  "provider_response_received",
+  "parser_started",
+  "parser_completed",
+  "response_returned",
+] as const;
+
+export type GeoRequestStage = (typeof GEO_REQUEST_STAGES)[number];
+
+export const GEO_MODEL_ERROR_CATEGORIES = [
+  "configuration",
+  "budget",
+  "provider_http",
+  "provider_timeout",
+  "provider_network",
+  "provider_response_parse",
+  "provider_invalid_output",
+  "unknown",
+] as const;
+
+export type GeoModelErrorCategory = (typeof GEO_MODEL_ERROR_CATEGORIES)[number];
+
 export interface ModelProviderTelemetry {
   contentPresent: boolean;
   contentLength: number;
@@ -133,6 +159,9 @@ interface GeoRequestContext {
   modelStatus: GeoModelStatus;
   modelLatencyMs?: number;
   providerRequestStartAt?: number;
+  providerHttpStatus?: number;
+  providerRequestId?: string;
+  modelErrorCategory?: GeoModelErrorCategory;
   firstByteAt?: number;
   firstTokenAt?: number;
   responseCompletedAt?: number;
@@ -193,6 +222,20 @@ function normalizeProviderTokenCount(value: unknown): number | undefined {
 function normalizeDiagnosticLength(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
+    : undefined;
+}
+
+function normalizeProviderHttpStatus(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 100 && value <= 599
+    ? value
+    : undefined;
+}
+
+export function sanitizeGeoProviderRequestId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(normalized)
+    ? normalized
     : undefined;
 }
 
@@ -455,6 +498,15 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.providerRequestStartAt === undefined
       ? {}
       : { providerRequestStartAt: context.providerRequestStartAt }),
+    ...(context.providerHttpStatus === undefined
+      ? {}
+      : { providerHttpStatus: context.providerHttpStatus }),
+    ...(context.providerRequestId === undefined
+      ? {}
+      : { providerRequestId: context.providerRequestId }),
+    ...(context.modelErrorCategory === undefined
+      ? {}
+      : { modelErrorCategory: context.modelErrorCategory }),
     ...(context.firstByteAt === undefined ? {} : { firstByteAt: context.firstByteAt }),
     ...(context.firstTokenAt === undefined ? {} : { firstTokenAt: context.firstTokenAt }),
     ...(context.responseCompletedAt === undefined
@@ -564,11 +616,33 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
   }
 }
 
+export function markGeoRequestStage(stage: GeoRequestStage): void {
+  try {
+    const context = requestStorage.getStore();
+    if (!context || !GEO_REQUEST_STAGES.includes(stage)) return;
+    console.info(
+      JSON.stringify({
+        event: "geo_api_stage",
+        requestId: context.requestId,
+        route: context.route,
+        stage,
+        timestamp: Date.now(),
+        latency: Math.max(0, Math.round(performance.now() - context.startedAt)),
+      }),
+    );
+  } catch {
+    return;
+  }
+}
+
 export function markGeoRequestOutcome(params: {
   source?: GeoResponseSource;
   modelStatus?: GeoModelStatus;
   modelLatencyMs?: number;
   providerRequestStartAt?: number;
+  providerHttpStatus?: number;
+  providerRequestId?: string;
+  modelErrorCategory?: GeoModelErrorCategory;
   firstByteAt?: number;
   firstTokenAt?: number;
   responseCompletedAt?: number;
@@ -590,6 +664,16 @@ export function markGeoRequestOutcome(params: {
   if (params.modelLatencyMs !== undefined) context.modelLatencyMs = params.modelLatencyMs;
   if (params.providerRequestStartAt !== undefined) {
     context.providerRequestStartAt = params.providerRequestStartAt;
+  }
+  const providerHttpStatus = normalizeProviderHttpStatus(params.providerHttpStatus);
+  if (providerHttpStatus !== undefined) context.providerHttpStatus = providerHttpStatus;
+  const providerRequestId = sanitizeGeoProviderRequestId(params.providerRequestId);
+  if (providerRequestId !== undefined) context.providerRequestId = providerRequestId;
+  if (
+    params.modelErrorCategory !== undefined &&
+    GEO_MODEL_ERROR_CATEGORIES.includes(params.modelErrorCategory)
+  ) {
+    context.modelErrorCategory = params.modelErrorCategory;
   }
   if (params.firstByteAt !== undefined) context.firstByteAt = params.firstByteAt;
   if (params.firstTokenAt !== undefined) context.firstTokenAt = params.firstTokenAt;
@@ -693,6 +777,7 @@ export function withGeoRequestLogging(route: string, handler: RouteHandler): Rou
     };
 
     return requestStorage.run(context, async () => {
+      markGeoRequestStage("request_started");
       let response: Response;
       try {
         response = await handler(request);
@@ -723,6 +808,7 @@ export function withGeoRequestLogging(route: string, handler: RouteHandler): Rou
         response.headers.set("X-Request-ID", context.requestId);
       }
       response.headers.set("Cache-Control", "no-store");
+      markGeoRequestStage("response_returned");
       writeRequestLog(context, request, response);
       return response;
     });
