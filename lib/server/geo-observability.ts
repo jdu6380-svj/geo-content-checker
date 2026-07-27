@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
 import type { NextRequest } from "next/server";
 
+import { createSentryErrorContext } from "../sentry-scrub.ts";
+
 import {
   JSON_BOUNDARY_CHARACTER_TYPES,
   JSON_ERROR_CATEGORIES,
@@ -155,6 +157,7 @@ interface GeoRequestContext {
   requestId: string;
   route: string;
   startedAt: number;
+  stage: GeoRequestStage;
   source: GeoResponseSource;
   modelStatus: GeoModelStatus;
   modelLatencyMs?: number;
@@ -620,6 +623,7 @@ export function markGeoRequestStage(stage: GeoRequestStage): void {
   try {
     const context = requestStorage.getStore();
     if (!context || !GEO_REQUEST_STAGES.includes(stage)) return;
+    context.stage = stage;
     console.info(
       JSON.stringify({
         event: "geo_api_stage",
@@ -772,6 +776,7 @@ export function withGeoRequestLogging(route: string, handler: RouteHandler): Rou
       requestId: randomUUID(),
       route,
       startedAt: performance.now(),
+      stage: "request_started",
       source: "none",
       modelStatus: "not-requested",
     };
@@ -787,9 +792,20 @@ export function withGeoRequestLogging(route: string, handler: RouteHandler): Rou
           { status: 500 },
         );
         context.modelStatus = context.modelStatus === "requested" ? "failed" : context.modelStatus;
+        const sentryContext = createSentryErrorContext({
+          requestId: context.requestId,
+          route: context.route,
+          stage: context.stage,
+          latency: performance.now() - context.startedAt,
+          errorCategory: context.modelErrorCategory ?? "application",
+        });
         Sentry.captureException(error, {
-          tags: { route },
-          extra: { requestId: context.requestId },
+          tags: {
+            route: sentryContext.route,
+            stage: sentryContext.stage,
+            errorCategory: sentryContext.errorCategory,
+          },
+          extra: sentryContext,
         });
         console.error(
           JSON.stringify({

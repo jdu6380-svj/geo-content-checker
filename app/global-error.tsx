@@ -3,6 +3,11 @@
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
+import {
+  createSentryErrorContext,
+  SENTRY_CONTROLLED_ERROR_NAME,
+} from "@/lib/sentry-scrub";
+
 export default function GlobalError({
   error,
   reset,
@@ -11,7 +16,23 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    Sentry.captureException(error);
+    const context = createSentryErrorContext({
+      route: window.location.pathname,
+      stage: "client_global_error",
+      latency: window.performance.now(),
+      errorCategory:
+        error.name === SENTRY_CONTROLLED_ERROR_NAME
+          ? "controlled_error"
+          : "application",
+    });
+    Sentry.captureException(error, {
+      tags: {
+        route: context.route,
+        stage: context.stage,
+        errorCategory: context.errorCategory,
+      },
+      extra: context,
+    });
   }, [error]);
 
   return (
