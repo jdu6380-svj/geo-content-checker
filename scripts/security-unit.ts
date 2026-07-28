@@ -59,8 +59,12 @@ import {
   isStrongSecuritySecret,
 } from "../lib/server/security-config.ts";
 import {
+  GEO_FALLBACK_REASONS,
   GEO_MODEL_ERROR_CATEGORIES,
   GEO_REQUEST_STAGES,
+  geoFallbackReasonForModelError,
+  markGeoFallbackTelemetry,
+  markGeoParserFailureTelemetry,
   markGeoRequestOutcome,
   markGeoRequestStage,
   markGeoValidationTelemetry,
@@ -75,9 +79,11 @@ import {
   scrubSentryEvent,
 } from "../lib/sentry-scrub.ts";
 import {
+  B1_FALLBACK_REASONS,
   B1_MODEL_CALLS_PER_PIPELINE,
   B1_PIPELINE_OPERATIONS,
   B1_QUESTION_TYPES,
+  B1_REQUEST_STAGES,
   B1_TELEMETRY_SCHEMA_VERSION,
   buildAnonymousB1Report,
   buildB1CheckpointArtifact,
@@ -92,6 +98,7 @@ import {
   parseB1RuntimeLogHistoryBody,
   parseB1RuntimeLogMessage,
   parseB1RuntimeLogPollPayload,
+  parseB1RuntimeStageLogMessage,
   parseB1Arguments,
   requireB1RuntimeLogCollectorReady,
   resolveB1CampaignDirectory,
@@ -198,6 +205,19 @@ for (const stage of [
   );
 }
 assert.ok(
+  /markGeoParserFailureTelemetry\(/.test(diagnosticRouteSource),
+  "qa-diagnostic parser failure marker is missing",
+);
+assert.ok(
+  /markGeoFallbackTelemetry\(/.test(diagnosticRouteSource),
+  "qa-diagnostic fallback marker is missing",
+);
+assert.ok(
+  diagnosticRouteSource.indexOf("validateDiagnosticEvidence({ ...parsed") <
+    diagnosticRouteSource.indexOf('markGeoRequestStage("parser_completed")'),
+  "qa-diagnostic parser completion must follow response validation",
+);
+assert.ok(
   /createSentryErrorContext\(/.test(globalErrorSource),
   "global Sentry capture must use the safe context builder",
 );
@@ -240,6 +260,8 @@ assert.deepEqual(GEO_REQUEST_STAGES, [
   "provider_response_received",
   "parser_started",
   "parser_completed",
+  "parser_failed",
+  "fallback_triggered",
   "response_returned",
 ]);
 assert.deepEqual(GEO_MODEL_ERROR_CATEGORIES, [
@@ -252,6 +274,31 @@ assert.deepEqual(GEO_MODEL_ERROR_CATEGORIES, [
   "provider_invalid_output",
   "unknown",
 ]);
+assert.deepEqual(GEO_FALLBACK_REASONS, [
+  "model_disabled",
+  "model_unavailable",
+  "provider_error",
+  "parse_error",
+  "missing_content",
+  "invalid_response",
+  "unexpected_format",
+]);
+assert.deepEqual(B1_REQUEST_STAGES, GEO_REQUEST_STAGES);
+assert.deepEqual(B1_FALLBACK_REASONS, GEO_FALLBACK_REASONS);
+assert.equal(
+  geoFallbackReasonForModelError("provider_response_parse"),
+  "parse_error",
+);
+assert.equal(
+  geoFallbackReasonForModelError("provider_invalid_output"),
+  "missing_content",
+);
+assert.equal(geoFallbackReasonForModelError("provider_timeout"), "provider_error");
+assert.equal(geoFallbackReasonForModelError("configuration"), "model_unavailable");
+assert.equal(
+  geoFallbackReasonForModelError("PRIVATE_RESPONSE_BODY"),
+  "unexpected_format",
+);
 assert.equal(sanitizeGeoProviderRequestId("req_abc-123:xyz"), "req_abc-123:xyz");
 assert.equal(sanitizeGeoProviderRequestId(" req_abc-123 "), "req_abc-123");
 assert.equal(sanitizeGeoProviderRequestId("req_abc\nsecret"), undefined);
@@ -300,11 +347,46 @@ console.info = (...values: unknown[]) => {
     if (typeof value === "string") requestStageLogs.push(value);
   }
 };
+
+function telemetryEvents(event: string): Record<string, unknown>[] {
+  return requestStageLogs
+    .map((value) => JSON.parse(value) as Record<string, unknown>)
+    .filter((value) => value.event === event);
+}
+
+function assertSafeStageEvents(
+  events: Record<string, unknown>[],
+  requestId: string | null,
+): void {
+  assert.match(requestId ?? "", /^[0-9a-f-]{36}$/);
+  for (const event of events) {
+    assert.deepEqual(Object.keys(event).sort(), [
+      "event",
+      "latency",
+      "requestId",
+      "route",
+      "stage",
+      "timestamp",
+    ]);
+    assert.equal(event.requestId, requestId);
+    assert.equal(event.route, "/api/qa-diagnostic");
+    assert.equal(typeof event.timestamp, "number");
+    assert.equal(typeof event.latency, "number");
+  }
+}
+
 try {
-  const stageHandler = withGeoRequestLogging(
+  const successHandler = withGeoRequestLogging(
     "/api/qa-diagnostic",
     async () => {
-      for (const stage of GEO_REQUEST_STAGES.slice(1, -1)) {
+      for (const stage of [
+        "validation_completed",
+        "adapter_called",
+        "provider_request_sent",
+        "provider_response_received",
+        "parser_started",
+        "parser_completed",
+      ] as const) {
         markGeoRequestStage(stage);
       }
       markGeoRequestOutcome({
@@ -319,41 +401,132 @@ try {
       return Response.json({ ok: true });
     },
   );
-  const stageResponse = await stageHandler(
+  const successResponse = await successHandler(
     new Request("http://localhost/api/qa-diagnostic", { method: "POST" }) as never,
   );
-  const stageEvents = requestStageLogs
-    .map((value) => JSON.parse(value) as Record<string, unknown>)
-    .filter((value) => value.event === "geo_api_stage");
+  const successStageEvents = telemetryEvents("geo_api_stage");
   assert.deepEqual(
-    stageEvents.map((value) => value.stage),
-    GEO_REQUEST_STAGES,
+    successStageEvents.map((value) => value.stage),
+    [
+      "request_started",
+      "validation_completed",
+      "adapter_called",
+      "provider_request_sent",
+      "provider_response_received",
+      "parser_started",
+      "parser_completed",
+      "response_returned",
+    ],
   );
-  const stageRequestId = stageResponse.headers.get("X-Request-ID");
-  assert.match(stageRequestId ?? "", /^[0-9a-f-]{36}$/);
-  for (const event of stageEvents) {
-    assert.deepEqual(Object.keys(event).sort(), [
-      "event",
-      "latency",
-      "requestId",
-      "route",
-      "stage",
-      "timestamp",
-    ]);
-    assert.equal(event.requestId, stageRequestId);
-    assert.equal(event.route, "/api/qa-diagnostic");
-    assert.equal(typeof event.timestamp, "number");
-    assert.equal(typeof event.latency, "number");
-  }
-  const requestEvent = requestStageLogs
-    .map((value) => JSON.parse(value) as Record<string, unknown>)
-    .find((value) => value.event === "geo_api_request");
-  assert.equal(requestEvent?.providerHttpStatus, 502);
-  assert.equal(requestEvent?.providerRequestId, "req_safe_123");
-  assert.equal(requestEvent?.modelErrorCategory, "provider_http");
-  assert.equal(requestEvent?.finishReason, "length");
-  assert.equal(requestEvent?.completionTokens, 42);
-  assert.equal(requestEvent?.modelLatencyMs, 321);
+  assertSafeStageEvents(
+    successStageEvents,
+    successResponse.headers.get("X-Request-ID"),
+  );
+  const successRequestEvent = telemetryEvents("geo_api_request")[0];
+  assert.equal(successRequestEvent?.providerHttpStatus, 502);
+  assert.equal(successRequestEvent?.providerRequestId, "req_safe_123");
+  assert.equal(successRequestEvent?.modelErrorCategory, "provider_http");
+  assert.equal(successRequestEvent?.finishReason, "length");
+  assert.equal(successRequestEvent?.completionTokens, 42);
+  assert.equal(successRequestEvent?.modelLatencyMs, 321);
+
+  requestStageLogs.length = 0;
+  const invalidFallbackReason = "PRIVATE_RESPONSE_BODY";
+  const providerParseFailureHandler = withGeoRequestLogging(
+    "/api/qa-diagnostic",
+    async () => {
+      for (const stage of [
+        "validation_completed",
+        "adapter_called",
+        "provider_request_sent",
+        "provider_response_received",
+      ] as const) {
+        markGeoRequestStage(stage);
+      }
+      markGeoRequestOutcome({
+        modelStatus: "failed",
+        providerHttpStatus: 200,
+        modelErrorCategory: "provider_response_parse",
+      });
+      markGeoParserFailureTelemetry("provider_response_parse");
+      markGeoFallbackTelemetry(invalidFallbackReason as never);
+      markGeoFallbackTelemetry("parse_error");
+      markGeoRequestOutcome({ source: "fallback" });
+      return Response.json({ ok: true });
+    },
+  );
+  const providerParseFailureResponse = await providerParseFailureHandler(
+    new Request("http://localhost/api/qa-diagnostic", { method: "POST" }) as never,
+  );
+  const providerParseFailureStages = telemetryEvents("geo_api_stage");
+  assert.deepEqual(
+    providerParseFailureStages.map((value) => value.stage),
+    [
+      "request_started",
+      "validation_completed",
+      "adapter_called",
+      "provider_request_sent",
+      "provider_response_received",
+      "parser_started",
+      "parser_failed",
+      "fallback_triggered",
+      "response_returned",
+    ],
+  );
+  assertSafeStageEvents(
+    providerParseFailureStages,
+    providerParseFailureResponse.headers.get("X-Request-ID"),
+  );
+  const providerParseFailureEvent = telemetryEvents("geo_api_request")[0];
+  assert.equal(providerParseFailureEvent?.fallbackReason, "parse_error");
+  assert.doesNotMatch(
+    JSON.stringify(requestStageLogs),
+    new RegExp(invalidFallbackReason),
+  );
+
+  requestStageLogs.length = 0;
+  const routeParseFailureHandler = withGeoRequestLogging(
+    "/api/qa-diagnostic",
+    async () => {
+      for (const stage of [
+        "validation_completed",
+        "adapter_called",
+        "provider_request_sent",
+        "provider_response_received",
+        "parser_started",
+      ] as const) {
+        markGeoRequestStage(stage);
+      }
+      markGeoParserFailureTelemetry();
+      markGeoFallbackTelemetry("invalid_response");
+      markGeoRequestOutcome({ source: "fallback", modelStatus: "success" });
+      return Response.json({ ok: true });
+    },
+  );
+  const routeParseFailureResponse = await routeParseFailureHandler(
+    new Request("http://localhost/api/qa-diagnostic", { method: "POST" }) as never,
+  );
+  const routeParseFailureStages = telemetryEvents("geo_api_stage");
+  assert.deepEqual(
+    routeParseFailureStages.map((value) => value.stage),
+    [
+      "request_started",
+      "validation_completed",
+      "adapter_called",
+      "provider_request_sent",
+      "provider_response_received",
+      "parser_started",
+      "parser_failed",
+      "fallback_triggered",
+      "response_returned",
+    ],
+  );
+  assertSafeStageEvents(
+    routeParseFailureStages,
+    routeParseFailureResponse.headers.get("X-Request-ID"),
+  );
+  const routeParseFailureEvent = telemetryEvents("geo_api_request")[0];
+  assert.equal(routeParseFailureEvent?.fallbackReason, "invalid_response");
 } finally {
   console.info = originalConsoleInfo;
 }
@@ -1796,6 +1969,7 @@ const b1RuntimeLog = parseB1RuntimeLogMessage(
     providerHttpStatus: 200,
     providerRequestId: "req_runtime_123",
     modelErrorCategory: "provider_invalid_output",
+    fallbackReason: "missing_content",
     firstByteAt: 1_720_000_000_900,
     responseCompletedAt: 1_720_000_000_987,
     streamDurationMs: 87,
@@ -1828,6 +2002,7 @@ assert.deepEqual(b1RuntimeLog, {
   providerHttpStatus: 200,
   providerRequestId: "req_runtime_123",
   modelErrorCategory: "provider_invalid_output",
+  fallbackReason: "missing_content",
   firstByteAt: 1_720_000_000_900,
   firstTokenAt: null,
   responseCompletedAt: 1_720_000_000_987,
@@ -1855,6 +2030,58 @@ const serializedB1RuntimeLog = JSON.stringify(b1RuntimeLog);
 for (const sentinel of b1SensitiveSentinels) {
   assert.doesNotMatch(serializedB1RuntimeLog, new RegExp(sentinel));
 }
+assert.equal(
+  parseB1RuntimeLogMessage(
+    JSON.stringify({
+      event: "geo_api_request",
+      requestId: "00000000-0000-4000-8000-000000000001",
+      route: "/api/qa-diagnostic",
+      status: 200,
+      durationMs: 100,
+      source: "fallback",
+      modelStatus: "failed",
+      fallbackReason: b1SensitiveSentinels[4],
+    }),
+  ),
+  null,
+);
+const b1RuntimeStageLog = parseB1RuntimeStageLogMessage(
+  `2026-07-25T00:00:00.000Z ${JSON.stringify({
+    event: "geo_api_stage",
+    requestId: "00000000-0000-4000-8000-000000000001",
+    route: "/api/qa-diagnostic",
+    stage: "parser_failed",
+    timestamp: 1_720_000_000_987,
+    latency: 987,
+    prompt: b1SensitiveSentinels[1],
+    evidence: b1SensitiveSentinels[2],
+    response: b1SensitiveSentinels[4],
+  })}`,
+);
+assert.deepEqual(b1RuntimeStageLog, {
+  requestId: "00000000-0000-4000-8000-000000000001",
+  route: "/api/qa-diagnostic",
+  stage: "parser_failed",
+  timestamp: 1_720_000_000_987,
+  latency: 987,
+});
+const serializedB1RuntimeStageLog = JSON.stringify(b1RuntimeStageLog);
+for (const sentinel of b1SensitiveSentinels) {
+  assert.doesNotMatch(serializedB1RuntimeStageLog, new RegExp(sentinel));
+}
+assert.equal(
+  parseB1RuntimeStageLogMessage(
+    JSON.stringify({
+      event: "geo_api_stage",
+      requestId: "00000000-0000-4000-8000-000000000001",
+      route: "/api/qa-diagnostic",
+      stage: b1SensitiveSentinels[0],
+      timestamp: 1_720_000_000_987,
+      latency: 987,
+    }),
+  ),
+  null,
+);
 const historicalBodyRecords = parseB1RuntimeLogHistoryBody(
   JSON.stringify([
     {
@@ -4212,7 +4439,7 @@ const scrubbed = scrubSentryEvent({
   extra: {
     requestId: "safe",
     route: "/api/test?article=private",
-    stage: "parser_completed",
+    stage: "parser_failed",
     latency: 123.4,
     errorCategory: "application",
     prompt: "private",
@@ -4238,7 +4465,7 @@ assert.equal(scrubbed.user, undefined);
 assert.deepEqual(scrubbed.extra, {
   requestId: "safe",
   route: "/api/test",
-  stage: "parser_completed",
+  stage: "parser_failed",
   latency: 123,
   errorCategory: "application",
 });
@@ -4286,6 +4513,12 @@ assert.deepEqual(
     latency: 13,
     errorCategory: "application",
   },
+);
+assert.equal(
+  createSentryErrorContext({
+    stage: "fallback_triggered",
+  }).stage,
+  "fallback_triggered",
 );
 
 const prompt = formatUntrustedPromptData({

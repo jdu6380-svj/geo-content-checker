@@ -55,6 +55,8 @@ export const GEO_REQUEST_STAGES = [
   "provider_response_received",
   "parser_started",
   "parser_completed",
+  "parser_failed",
+  "fallback_triggered",
   "response_returned",
 ] as const;
 
@@ -72,6 +74,18 @@ export const GEO_MODEL_ERROR_CATEGORIES = [
 ] as const;
 
 export type GeoModelErrorCategory = (typeof GEO_MODEL_ERROR_CATEGORIES)[number];
+
+export const GEO_FALLBACK_REASONS = [
+  "model_disabled",
+  "model_unavailable",
+  "provider_error",
+  "parse_error",
+  "missing_content",
+  "invalid_response",
+  "unexpected_format",
+] as const;
+
+export type GeoFallbackReason = (typeof GEO_FALLBACK_REASONS)[number];
 
 export interface ModelProviderTelemetry {
   contentPresent: boolean;
@@ -165,6 +179,7 @@ interface GeoRequestContext {
   providerHttpStatus?: number;
   providerRequestId?: string;
   modelErrorCategory?: GeoModelErrorCategory;
+  fallbackReason?: GeoFallbackReason;
   firstByteAt?: number;
   firstTokenAt?: number;
   responseCompletedAt?: number;
@@ -240,6 +255,26 @@ export function sanitizeGeoProviderRequestId(value: unknown): string | undefined
   return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(normalized)
     ? normalized
     : undefined;
+}
+
+export function geoFallbackReasonForModelError(
+  value: unknown,
+): GeoFallbackReason {
+  switch (value) {
+    case "configuration":
+    case "budget":
+      return "model_unavailable";
+    case "provider_http":
+    case "provider_timeout":
+    case "provider_network":
+      return "provider_error";
+    case "provider_response_parse":
+      return "parse_error";
+    case "provider_invalid_output":
+      return "missing_content";
+    default:
+      return "unexpected_format";
+  }
 }
 
 export function sanitizeModelProviderTelemetry(payload: unknown): ModelProviderTelemetry {
@@ -510,6 +545,9 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.modelErrorCategory === undefined
       ? {}
       : { modelErrorCategory: context.modelErrorCategory }),
+    ...(context.fallbackReason === undefined
+      ? {}
+      : { fallbackReason: context.fallbackReason }),
     ...(context.firstByteAt === undefined ? {} : { firstByteAt: context.firstByteAt }),
     ...(context.firstTokenAt === undefined ? {} : { firstTokenAt: context.firstTokenAt }),
     ...(context.responseCompletedAt === undefined
@@ -696,6 +734,38 @@ export function markGeoRequestOutcome(params: {
   if (params.reasoningTokens !== undefined) context.reasoningTokens = params.reasoningTokens;
   if (params.totalTokens !== undefined) context.totalTokens = params.totalTokens;
   if (params.estimatedCostUsd !== undefined) context.estimatedCostUsd = params.estimatedCostUsd;
+}
+
+export function markGeoParserFailureTelemetry(
+  modelErrorCategory?: GeoModelErrorCategory,
+): void {
+  try {
+    const context = requestStorage.getStore();
+    if (!context) return;
+    if (
+      context.stage === "provider_response_received" &&
+      (modelErrorCategory === "provider_response_parse" ||
+        modelErrorCategory === "provider_invalid_output")
+    ) {
+      markGeoRequestStage("parser_started");
+    }
+    if (context.stage === "parser_started") {
+      markGeoRequestStage("parser_failed");
+    }
+  } catch {
+    // Parser telemetry must never affect the request path.
+  }
+}
+
+export function markGeoFallbackTelemetry(reason: GeoFallbackReason): void {
+  try {
+    const context = requestStorage.getStore();
+    if (!context || !GEO_FALLBACK_REASONS.includes(reason)) return;
+    context.fallbackReason = reason;
+    markGeoRequestStage("fallback_triggered");
+  } catch {
+    // Fallback telemetry must never affect the request path.
+  }
 }
 
 export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput): void {

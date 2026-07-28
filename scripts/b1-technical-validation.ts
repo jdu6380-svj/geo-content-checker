@@ -93,6 +93,27 @@ const B1_MODEL_ERROR_CATEGORIES = [
   "provider_invalid_output",
   "unknown",
 ] as const;
+export const B1_REQUEST_STAGES = [
+  "request_started",
+  "validation_completed",
+  "adapter_called",
+  "provider_request_sent",
+  "provider_response_received",
+  "parser_started",
+  "parser_completed",
+  "parser_failed",
+  "fallback_triggered",
+  "response_returned",
+] as const;
+export const B1_FALLBACK_REASONS = [
+  "model_disabled",
+  "model_unavailable",
+  "provider_error",
+  "parse_error",
+  "missing_content",
+  "invalid_response",
+  "unexpected_format",
+] as const;
 const B1_RUNTIME_LOG_STATUSES = [
   "matched",
   "delayed-ingestion",
@@ -179,6 +200,8 @@ type B1ModelStatus = (typeof B1_MODEL_STATUSES)[number];
 type B1ResponseSource = (typeof B1_RESPONSE_SOURCES)[number];
 type B1ModelFinishReason = (typeof B1_MODEL_FINISH_REASONS)[number];
 type B1ModelErrorCategory = (typeof B1_MODEL_ERROR_CATEGORIES)[number];
+export type B1RequestStage = (typeof B1_REQUEST_STAGES)[number];
+export type B1FallbackReason = (typeof B1_FALLBACK_REASONS)[number];
 export type B1RuntimeLogStatus = (typeof B1_RUNTIME_LOG_STATUSES)[number];
 export type B1RuntimeLogDisconnectReason =
   (typeof B1_RUNTIME_LOG_DISCONNECT_REASONS)[number];
@@ -398,6 +421,7 @@ export interface B1RuntimeLogRecord {
   providerHttpStatus?: number | null;
   providerRequestId?: string | null;
   modelErrorCategory?: B1ModelErrorCategory | null;
+  fallbackReason?: B1FallbackReason;
   firstByteAt?: number | null;
   firstTokenAt?: number | null;
   responseCompletedAt?: number | null;
@@ -433,6 +457,14 @@ export interface B1RuntimeLogRecord {
   containsMultipleTopLevelValues?: boolean | null;
   hasLeadingNonWhitespaceText?: boolean | null;
   hasTrailingNonWhitespaceText?: boolean | null;
+}
+
+export interface B1RuntimeStageRecord {
+  requestId: string;
+  route: string;
+  stage: B1RequestStage;
+  timestamp: number;
+  latency: number;
 }
 
 export interface B1RuntimeLogConfig {
@@ -618,6 +650,10 @@ function normalizeModelFinishReason(value: unknown): B1ModelFinishReason | null 
 
 function normalizeModelErrorCategory(value: unknown): B1ModelErrorCategory | null {
   return isOneOf(value, B1_MODEL_ERROR_CATEGORIES) ? value : null;
+}
+
+function normalizeFallbackReason(value: unknown): B1FallbackReason | null {
+  return isOneOf(value, B1_FALLBACK_REASONS) ? value : null;
 }
 
 function normalizeProviderRequestId(value: unknown): string | null {
@@ -1859,6 +1895,10 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     value.modelErrorCategory === undefined
       ? null
       : normalizeModelErrorCategory(value.modelErrorCategory);
+  const fallbackReason =
+    value.fallbackReason === undefined
+      ? null
+      : normalizeFallbackReason(value.fallbackReason);
   const firstByteAt =
     value.firstByteAt === undefined ? null : normalizeDuration(value.firstByteAt);
   const firstTokenAt =
@@ -1964,6 +2004,7 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     (value.providerHttpStatus !== undefined && providerHttpStatus === null) ||
     (value.providerRequestId !== undefined && providerRequestId === null) ||
     (value.modelErrorCategory !== undefined && modelErrorCategory === null) ||
+    (value.fallbackReason !== undefined && fallbackReason === null) ||
     (value.firstByteAt !== undefined && firstByteAt === null) ||
     (value.firstTokenAt !== undefined && firstTokenAt === null) ||
     (value.responseCompletedAt !== undefined && responseCompletedAt === null) ||
@@ -2041,6 +2082,7 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     providerHttpStatus,
     providerRequestId,
     modelErrorCategory,
+    ...(fallbackReason === null ? {} : { fallbackReason }),
     firstByteAt,
     firstTokenAt,
     responseCompletedAt,
@@ -2112,6 +2154,55 @@ export function parseB1RuntimeLogMessage(message: unknown): B1RuntimeLogRecord |
   for (const candidate of candidates) {
     try {
       const record = parseB1RuntimeLogValue(JSON.parse(candidate));
+      if (record) return record;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function parseB1RuntimeStageLogValue(value: unknown): B1RuntimeStageRecord | null {
+  if (!isRecord(value) || value.event !== "geo_api_stage") return null;
+  const requestId = normalizeRequestId(value.requestId);
+  const timestamp = normalizeDuration(value.timestamp);
+  const latency = normalizeDuration(value.latency);
+  if (
+    requestId === null ||
+    typeof value.route !== "string" ||
+    !Object.values(B1_OPERATION_ROUTES).includes(value.route) ||
+    !isOneOf(value.stage, B1_REQUEST_STAGES) ||
+    timestamp === null ||
+    latency === null
+  ) {
+    return null;
+  }
+  return {
+    requestId,
+    route: value.route,
+    stage: value.stage,
+    timestamp,
+    latency,
+  };
+}
+
+export function parseB1RuntimeStageLogMessage(
+  message: unknown,
+): B1RuntimeStageRecord | null {
+  if (typeof message !== "string") return null;
+  const trimmed = message.trim();
+  if (!trimmed) return null;
+
+  const candidates = [trimmed];
+  let objectStart = trimmed.indexOf("{");
+  while (objectStart >= 0 && candidates.length < 16) {
+    if (objectStart > 0) candidates.push(trimmed.slice(objectStart));
+    objectStart = trimmed.indexOf("{", objectStart + 1);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const record = parseB1RuntimeStageLogValue(JSON.parse(candidate));
       if (record) return record;
     } catch {
       continue;

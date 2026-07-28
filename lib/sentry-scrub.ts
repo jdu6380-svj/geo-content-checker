@@ -35,6 +35,8 @@ const SENTRY_ERROR_STAGES = [
   "provider_response_received",
   "parser_started",
   "parser_completed",
+  "parser_failed",
+  "fallback_triggered",
   "response_returned",
   "client_global_error",
   "unknown",
