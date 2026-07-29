@@ -175,6 +175,9 @@ interface GeoRequestContext {
   source: GeoResponseSource;
   modelStatus: GeoModelStatus;
   modelLatencyMs?: number;
+  modelBudgetLimit?: number;
+  modelBudgetRemaining?: number;
+  modelBudgetRetryAfter?: number;
   providerRequestStartAt?: number;
   providerHttpStatus?: number;
   providerRequestId?: string;
@@ -533,6 +536,15 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     modelStatus: context.modelStatus,
     rateLimitMode: response.headers.get("X-GEO-RateLimit-Mode") ?? "none",
     ...(context.modelLatencyMs === undefined ? {} : { modelLatencyMs: context.modelLatencyMs }),
+    ...(context.modelBudgetLimit === undefined
+      ? {}
+      : { modelBudgetLimit: context.modelBudgetLimit }),
+    ...(context.modelBudgetRemaining === undefined
+      ? {}
+      : { modelBudgetRemaining: context.modelBudgetRemaining }),
+    ...(context.modelBudgetRetryAfter === undefined
+      ? {}
+      : { modelBudgetRetryAfter: context.modelBudgetRetryAfter }),
     ...(context.providerRequestStartAt === undefined
       ? {}
       : { providerRequestStartAt: context.providerRequestStartAt }),
@@ -681,6 +693,9 @@ export function markGeoRequestOutcome(params: {
   source?: GeoResponseSource;
   modelStatus?: GeoModelStatus;
   modelLatencyMs?: number;
+  modelBudgetLimit?: number;
+  modelBudgetRemaining?: number;
+  modelBudgetRetryAfter?: number;
   providerRequestStartAt?: number;
   providerHttpStatus?: number;
   providerRequestId?: string;
@@ -704,6 +719,20 @@ export function markGeoRequestOutcome(params: {
   if (params.source) context.source = params.source;
   if (params.modelStatus) context.modelStatus = params.modelStatus;
   if (params.modelLatencyMs !== undefined) context.modelLatencyMs = params.modelLatencyMs;
+  const modelBudgetLimit = normalizeProviderTokenCount(params.modelBudgetLimit);
+  if (modelBudgetLimit !== undefined) context.modelBudgetLimit = modelBudgetLimit;
+  const modelBudgetRemaining = normalizeProviderTokenCount(
+    params.modelBudgetRemaining,
+  );
+  if (modelBudgetRemaining !== undefined) {
+    context.modelBudgetRemaining = modelBudgetRemaining;
+  }
+  const modelBudgetRetryAfter = normalizeProviderTokenCount(
+    params.modelBudgetRetryAfter,
+  );
+  if (modelBudgetRetryAfter !== undefined) {
+    context.modelBudgetRetryAfter = modelBudgetRetryAfter;
+  }
   if (params.providerRequestStartAt !== undefined) {
     context.providerRequestStartAt = params.providerRequestStartAt;
   }

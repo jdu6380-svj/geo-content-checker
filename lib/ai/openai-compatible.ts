@@ -83,6 +83,11 @@ export async function callOpenAICompatibleModel({
   }
 
   const budget = await consumeModelCallBudget(rateLimitMode);
+  markGeoRequestOutcome({
+    modelBudgetLimit: budget.limit,
+    modelBudgetRemaining: budget.remaining,
+    modelBudgetRetryAfter: budget.retryAfter,
+  });
   if (!budget.allowed) {
     markGeoRequestOutcome({
       modelStatus: "rate-limited",
