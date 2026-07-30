@@ -9,6 +9,7 @@ import {
 import { callOpenAICompatibleModel, ModelCallError } from "@/lib/ai/openai-compatible";
 import { normalizePatchModelOutput } from "@/lib/ai/patch-output";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
+import { anchorContentActionQuotes } from "@/lib/geo/content-draft-quote-anchor";
 import { formatPatchMarkdown } from "@/lib/markdown/patch-markdown";
 import {
   generatePatchesRequestSchema,
@@ -346,18 +347,25 @@ async function handlePost(request: NextRequest): Promise<Response> {
         return NextResponse.json(fallback, { headers });
       }
 
+      const adviceActions = parsed.data.actions as ModelAdviceAction[];
+      const contentActions = parsed.data.actions as ModelContentAction[];
+      const anchoredContentActions = mode === "content_draft"
+        ? anchorContentActionQuotes(contentActions, paragraphs)
+        : null;
       const actions = mode === "advice"
-        ? validateAdviceActions(parsed.data.actions as ModelAdviceAction[], diagnostics, paragraphs)
-        : validateContentActions(parsed.data.actions as ModelContentAction[], paragraphs);
+        ? validateAdviceActions(adviceActions, diagnostics, paragraphs)
+        : anchoredContentActions
+          ? validateContentActions(anchoredContentActions, paragraphs)
+          : null;
       if (!actions) {
         const issuePaths = mode === "advice"
           ? adviceValidationIssuePaths(
-              parsed.data.actions as ModelAdviceAction[],
+              adviceActions,
               diagnostics,
               paragraphs,
             )
           : contentValidationIssuePaths(
-              parsed.data.actions as ModelContentAction[],
+              anchoredContentActions ?? contentActions,
               paragraphs,
             );
         const hasQuoteMismatch = issuePaths.some(

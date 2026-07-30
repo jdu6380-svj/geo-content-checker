@@ -44,6 +44,7 @@ import {
   ANALYSIS_VERSION,
   REPORT_SCHEMA_VERSION,
 } from "../lib/constants/analysis-contract.ts";
+import { anchorContentActionQuotes } from "../lib/geo/content-draft-quote-anchor.ts";
 import { validateDiagnosticEvidence } from "../lib/geo/evidence.ts";
 import { MAX_ARTICLE_CHARACTERS } from "../lib/constants/input-limits.ts";
 import { formatPatchMarkdown } from "../lib/markdown/patch-markdown.ts";
@@ -1012,6 +1013,109 @@ assert.equal(contentDraftPrompts.user.includes("diagnostics"), false);
 assert.equal(contentDraftPrompts.system.includes("2 到 6 个动作"), true);
 assert.equal(contentDraftPrompts.system.includes("不超过 200 个字符"), true);
 assert.equal(CONTENT_DRAFT_MAX_TOKENS, 2_000);
+
+const anchoredContentActions = anchorContentActionQuotes(
+  [
+    {
+      type: "faq",
+      question: "系统如何处理格式不同但内容相同的原文引用？",
+      answer: "AI能力 需要连续证据",
+      evidence: {
+        paragraphId: "Para-1",
+        quote: "AI能力 需要连续证据",
+      },
+    },
+    {
+      type: "fact_card",
+      label: "原文引用",
+      value: "已经完全匹配",
+      evidence: {
+        paragraphId: "Para-2",
+        quote: "已经完全匹配",
+      },
+    },
+  ],
+  [
+    {
+      id: "Para-1",
+      text: "系统要求ＡＩ能力  \n\t需要连续证据，并保留原文格式。",
+    },
+    {
+      id: "Para-2",
+      text: "这段内容已经完全匹配。",
+    },
+  ],
+);
+assert.equal(anchoredContentActions?.[0]?.evidence.quote, "ＡＩ能力  \n\t需要连续证据");
+assert.equal(anchoredContentActions?.[0]?.type, "faq");
+assert.equal(
+  anchoredContentActions?.[0]?.type === "faq"
+    ? anchoredContentActions[0].answer
+    : null,
+  "ＡＩ能力  \n\t需要连续证据",
+);
+assert.equal(anchoredContentActions?.[1]?.evidence.quote, "已经完全匹配");
+
+assert.equal(
+  anchorContentActionQuotes(
+    [{
+      type: "faq",
+      question: "重复引用为什么不能自动锚定到任意位置？",
+      answer: "AI证据",
+      evidence: { paragraphId: "Para-1", quote: "AI证据" },
+    }],
+    [{ id: "Para-1", text: "ＡＩ证据与ＡＩ证据重复出现。" }],
+  ),
+  null,
+);
+assert.equal(
+  anchorContentActionQuotes(
+    [{
+      type: "faq",
+      question: "逐字相同但重复出现的引用是否仍然存在歧义？",
+      answer: "完全相同",
+      evidence: { paragraphId: "Para-1", quote: "完全相同" },
+    }],
+    [{ id: "Para-1", text: "完全相同与完全相同仍然是两个区间。" }],
+  ),
+  null,
+);
+assert.equal(
+  anchorContentActionQuotes(
+    [{
+      type: "faq",
+      question: "语义相似的改写是否可以当作逐字引用？",
+      answer: "这是一项可靠结论",
+      evidence: { paragraphId: "Para-1", quote: "这是一项可靠结论" },
+    }],
+    [{ id: "Para-1", text: "这是一项可核验结论。" }],
+  ),
+  null,
+);
+assert.equal(
+  anchorContentActionQuotes(
+    [{
+      type: "fact_card",
+      label: "字段一致性",
+      value: "不同内容",
+      evidence: { paragraphId: "Para-1", quote: "AI证据" },
+    }],
+    [{ id: "Para-1", text: "ＡＩ证据。" }],
+  ),
+  null,
+);
+assert.equal(
+  anchorContentActionQuotes(
+    [{
+      type: "fact_card",
+      label: "段落校验",
+      value: "AI证据",
+      evidence: { paragraphId: "Para-2", quote: "AI证据" },
+    }],
+    [{ id: "Para-1", text: "ＡＩ证据。" }],
+  ),
+  null,
+);
 
 const rawAdviceOutput = JSON.stringify({
   result: {
