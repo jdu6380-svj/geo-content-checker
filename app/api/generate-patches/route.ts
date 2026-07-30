@@ -319,7 +319,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         ],
         temperature: 0,
         timeoutMs: mode === "advice" ? 28_000 : CONTENT_DRAFT_TIMEOUT_MS,
-        maxTokens: mode === "advice" ? 2_600 : CONTENT_DRAFT_MAX_TOKENS,
+        maxTokens: mode === "advice" ? 3_600 : CONTENT_DRAFT_MAX_TOKENS,
         rateLimitMode: authorization.mode,
       });
       let json: unknown;

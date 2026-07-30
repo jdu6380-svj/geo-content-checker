@@ -249,7 +249,7 @@ assert.match(
   patchesRouteSource,
   /timeoutMs:\s*mode === "advice" \? 28_000 : CONTENT_DRAFT_TIMEOUT_MS/,
 );
-assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 2_600/);
+assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 3_600/);
 assert.match(
   patchesRouteSource,
   /failureClassification:\s*finishReason === "length"\s*\?\s*"token_cap_truncation"/,
