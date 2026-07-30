@@ -312,7 +312,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         ],
         temperature: 0,
         timeoutMs: mode === "advice" ? 17_000 : 15_000,
-        maxTokens: mode === "advice" ? 1_800 : CONTENT_DRAFT_MAX_TOKENS,
+        maxTokens: mode === "advice" ? 2_000 : CONTENT_DRAFT_MAX_TOKENS,
         rateLimitMode: authorization.mode,
       });
       let json: unknown;
@@ -325,7 +325,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           failureClassification:
             finishReason === "length" &&
               usage?.completionTokens ===
-                (mode === "advice" ? 1_800 : CONTENT_DRAFT_MAX_TOKENS)
+                (mode === "advice" ? 2_000 : CONTENT_DRAFT_MAX_TOKENS)
               ? "token_cap_truncation"
               : "json_parse_failed",
           fieldPaths: [[]],
