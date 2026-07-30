@@ -1045,7 +1045,7 @@ assert.equal(
   contentDraftPrompts.system.includes("不得自行从 paragraphs 提取、总结、改写或压缩引用"),
   true,
 );
-assert.equal(CONTENT_DRAFT_MAX_TOKENS, 2_000);
+assert.equal(CONTENT_DRAFT_MAX_TOKENS, 2_600);
 
 const contentDraftEvidenceCandidates = buildContentDraftEvidenceCandidates(
   [

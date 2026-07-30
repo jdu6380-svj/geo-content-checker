@@ -6,7 +6,7 @@ type ContentDraftParagraph = {
   text: string;
 };
 
-export const CONTENT_DRAFT_MAX_TOKENS = 2_000;
+export const CONTENT_DRAFT_MAX_TOKENS = 2_600;
 
 export function buildContentDraftPrompts(
   title: string,
