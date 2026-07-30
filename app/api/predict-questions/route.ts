@@ -80,7 +80,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           { role: "user", content: userPrompt },
         ],
         timeoutMs: 10_000,
-        maxTokens: 800,
+        maxTokens: 1_600,
         rateLimitMode: authorization.mode,
       });
       markGeoRequestStage("parser_started");

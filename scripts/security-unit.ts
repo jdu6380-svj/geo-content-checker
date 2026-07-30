@@ -164,6 +164,11 @@ const scoringRouteSource = readFileSync(
 );
 assert.match(scoringRouteSource, /timeoutMs:\s*15_000/);
 assert.doesNotMatch(scoringRouteSource, /timeoutMs:\s*10_000/);
+const predictQuestionsRouteSource = readFileSync(
+  fileURLToPath(new URL("../app/api/predict-questions/route.ts", import.meta.url)),
+  "utf8",
+);
+assert.match(predictQuestionsRouteSource, /maxTokens:\s*1_600/);
 const diagnosticRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/qa-diagnostic/route.ts", import.meta.url)),
   "utf8",
