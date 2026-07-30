@@ -1,4 +1,5 @@
 import {
+  classifyGeoProviderResponseReadError,
   markGeoRequestOutcome,
   markGeoRequestStage,
   sanitizeModelProviderTelemetry,
@@ -155,19 +156,21 @@ export async function callOpenAICompatibleModel({
     try {
       payload = await response.json();
     } catch (error) {
+      const errorCategory = classifyGeoProviderResponseReadError(error);
+      if (errorCategory === "provider_timeout") throw error;
       const responseCompletedAt = Date.now();
       markGeoRequestOutcome({
         modelStatus: "failed",
         modelLatencyMs: modelLatencyMs(),
         responseCompletedAt,
         streamDurationMs: Math.max(0, responseCompletedAt - firstByteAt),
-        modelErrorCategory: "provider_response_parse",
+        modelErrorCategory: errorCategory,
       });
       throw new ModelCallError("Model response parsing failed", {
         cause: error instanceof Error ? error : undefined,
         status: response.status,
         providerRequestId,
-        errorCategory: "provider_response_parse",
+        errorCategory,
       });
     }
     const responseCompletedAt = Date.now();

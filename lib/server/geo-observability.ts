@@ -75,6 +75,14 @@ export const GEO_MODEL_ERROR_CATEGORIES = [
 
 export type GeoModelErrorCategory = (typeof GEO_MODEL_ERROR_CATEGORIES)[number];
 
+export function classifyGeoProviderResponseReadError(
+  error: unknown,
+): "provider_timeout" | "provider_response_parse" {
+  return error instanceof Error && error.name === "AbortError"
+    ? "provider_timeout"
+    : "provider_response_parse";
+}
+
 export const GEO_FALLBACK_REASONS = [
   "model_disabled",
   "model_unavailable",

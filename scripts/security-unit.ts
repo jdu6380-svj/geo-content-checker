@@ -59,6 +59,7 @@ import {
   isStrongSecuritySecret,
 } from "../lib/server/security-config.ts";
 import {
+  classifyGeoProviderResponseReadError,
   GEO_FALLBACK_REASONS,
   GEO_MODEL_ERROR_CATEGORIES,
   GEO_REQUEST_STAGES,
@@ -252,6 +253,20 @@ assert.match(modelAdapterSource, /markGeoRequestStage\("provider_request_sent"\)
 assert.match(modelAdapterSource, /markGeoRequestStage\("provider_response_received"\)/);
 assert.match(modelAdapterSource, /providerHttpStatus:\s*response\.status/);
 assert.match(modelAdapterSource, /modelErrorCategory:\s*"provider_http"/);
+assert.match(
+  modelAdapterSource,
+  /if \(errorCategory === "provider_timeout"\) throw error;/,
+);
+const responseBodyAbortError = new Error("Response body read aborted");
+responseBodyAbortError.name = "AbortError";
+assert.equal(
+  classifyGeoProviderResponseReadError(responseBodyAbortError),
+  "provider_timeout",
+);
+assert.equal(
+  classifyGeoProviderResponseReadError(new SyntaxError("Malformed JSON")),
+  "provider_response_parse",
+);
 assert.deepEqual(GEO_REQUEST_STAGES, [
   "request_started",
   "validation_completed",
