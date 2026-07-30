@@ -28,6 +28,9 @@ export type JsonParserErrorName = (typeof JSON_PARSER_ERROR_NAMES)[number];
 export const JSON_ERROR_CATEGORIES = [
   "unterminated_string",
   "invalid_escape",
+  "trailing_comma",
+  "multiple_root_object",
+  "missing_bracket",
   "unexpected_token",
   "unexpected_end",
   "invalid_character",
@@ -281,6 +284,88 @@ function containsMultipleTopLevelValues(value: string): boolean {
   return false;
 }
 
+function hasTrailingComma(value: string): boolean {
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character !== ",") continue;
+
+    let nextIndex = index + 1;
+    while (nextIndex < value.length && /\s/u.test(value[nextIndex] ?? "")) {
+      nextIndex += 1;
+    }
+    if (value[nextIndex] === "}" || value[nextIndex] === "]") return true;
+  }
+
+  return false;
+}
+
+function hasUnclosedContainer(value: string): boolean {
+  const expectedClosers: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (const character of value) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      expectedClosers.push(character === "{" ? "}" : "]");
+      continue;
+    }
+    if (character !== "}" && character !== "]") continue;
+    if (expectedClosers.at(-1) !== character) return false;
+    expectedClosers.pop();
+  }
+
+  return expectedClosers.length > 0;
+}
+
+function refinedJsonErrorCategory(params: {
+  parserInput: string;
+  parserCategory: JsonErrorCategory;
+  parserPosition: number | null;
+  multipleTopLevelValues: boolean;
+}): JsonErrorCategory {
+  if (hasTrailingComma(params.parserInput)) return "trailing_comma";
+  if (params.multipleTopLevelValues) return "multiple_root_object";
+  if (
+    hasUnclosedContainer(params.parserInput) &&
+    (params.parserCategory === "unexpected_end" ||
+      params.parserPosition === params.parserInput.length)
+  ) {
+    return "missing_bracket";
+  }
+  return params.parserCategory;
+}
+
 export function analyzeJsonParseFailure(
   raw: string,
   error: unknown,
@@ -291,6 +376,9 @@ export function analyzeJsonParseFailure(
   const objectEnd = withoutFences.lastIndexOf("}");
   const parserInput = cleanModelJson(raw);
   const parserErrorCategory = jsonErrorCategory(error);
+  const parserPosition = parserErrorPosition(error, parserInput);
+  const multipleTopLevelValues =
+    containsMultipleTopLevelValues(withoutFences);
 
   return {
     responseLength: raw.length,
@@ -300,12 +388,16 @@ export function analyzeJsonParseFailure(
     startsWithCodeFence: /^```(?:json)?(?:\s|$)/i.test(trimmed),
     endsWithCodeFence: /```\s*$/.test(trimmed),
     parserErrorName: parserErrorName(error),
-    parserErrorPosition: parserErrorPosition(error, parserInput),
-    jsonErrorCategory: parserErrorCategory,
+    parserErrorPosition: parserPosition,
+    jsonErrorCategory: refinedJsonErrorCategory({
+      parserInput,
+      parserCategory: parserErrorCategory,
+      parserPosition,
+      multipleTopLevelValues,
+    }),
     parserErrorCategory,
     lastCharacterCategory: lastCharacterCategory(raw),
-    containsMultipleTopLevelValues:
-      containsMultipleTopLevelValues(withoutFences),
+    containsMultipleTopLevelValues: multipleTopLevelValues,
     hasLeadingNonWhitespaceText:
       objectStart > 0 && withoutFences.slice(0, objectStart).trim().length > 0,
     hasTrailingNonWhitespaceText:

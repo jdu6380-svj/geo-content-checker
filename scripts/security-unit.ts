@@ -323,6 +323,9 @@ assert.equal(normalizeGeoModelFinishReason("provider-specific"), "unknown");
 assert.deepEqual(JSON_ERROR_CATEGORIES, [
   "unterminated_string",
   "invalid_escape",
+  "trailing_comma",
+  "multiple_root_object",
+  "missing_bracket",
   "unexpected_token",
   "unexpected_end",
   "invalid_character",
@@ -372,6 +375,7 @@ function telemetryEvents(event: string): Record<string, unknown>[] {
 function assertSafeStageEvents(
   events: Record<string, unknown>[],
   requestId: string | null,
+  route = "/api/qa-diagnostic",
 ): void {
   assert.match(requestId ?? "", /^[0-9a-f-]{36}$/);
   for (const event of events) {
@@ -384,7 +388,7 @@ function assertSafeStageEvents(
       "timestamp",
     ]);
     assert.equal(event.requestId, requestId);
-    assert.equal(event.route, "/api/qa-diagnostic");
+    assert.equal(event.route, route);
     assert.equal(typeof event.timestamp, "number");
     assert.equal(typeof event.latency, "number");
   }
@@ -542,6 +546,92 @@ try {
   );
   const routeParseFailureEvent = telemetryEvents("geo_api_request")[0];
   assert.equal(routeParseFailureEvent?.fallbackReason, "invalid_response");
+
+  requestStageLogs.length = 0;
+  const predictQuestionsSensitiveResponse =
+    '{"questions":["PREDICT_PRIVATE_RESPONSE"],}';
+  let predictQuestionsParseError: unknown;
+  try {
+    JSON.parse(cleanModelJson(predictQuestionsSensitiveResponse));
+  } catch (error) {
+    predictQuestionsParseError = error;
+  }
+  const predictQuestionsParseFailureHandler = withGeoRequestLogging(
+    "/api/predict-questions",
+    async () => {
+      for (const stage of [
+        "validation_completed",
+        "adapter_called",
+        "provider_request_sent",
+        "provider_response_received",
+        "parser_started",
+      ] as const) {
+        markGeoRequestStage(stage);
+      }
+      markGeoValidationTelemetry({
+        stage: "json_parse",
+        issueCount: 1,
+        failureClassification: "json_parse_failed",
+        fieldPaths: [[]],
+        ...analyzeJsonParseFailure(
+          predictQuestionsSensitiveResponse,
+          predictQuestionsParseError,
+        ),
+      });
+      markGeoParserFailureTelemetry();
+      markGeoFallbackTelemetry("parse_error");
+      markGeoRequestOutcome({ source: "fallback", modelStatus: "success" });
+      return Response.json({ ok: true });
+    },
+  );
+  const predictQuestionsParseFailureResponse =
+    await predictQuestionsParseFailureHandler(
+      new Request("http://localhost/api/predict-questions", {
+        method: "POST",
+      }) as never,
+    );
+  const predictQuestionsParseFailureStages = telemetryEvents("geo_api_stage");
+  assert.deepEqual(
+    predictQuestionsParseFailureStages.map((value) => value.stage),
+    [
+      "request_started",
+      "validation_completed",
+      "adapter_called",
+      "provider_request_sent",
+      "provider_response_received",
+      "parser_started",
+      "parser_failed",
+      "fallback_triggered",
+      "response_returned",
+    ],
+  );
+  assertSafeStageEvents(
+    predictQuestionsParseFailureStages,
+    predictQuestionsParseFailureResponse.headers.get("X-Request-ID"),
+    "/api/predict-questions",
+  );
+  const predictQuestionsParseFailureEvent =
+    telemetryEvents("geo_api_request")[0];
+  assert.equal(
+    predictQuestionsParseFailureEvent?.validationFailureClassification,
+    "json_parse_failed",
+  );
+  assert.equal(
+    predictQuestionsParseFailureEvent?.jsonErrorCategory,
+    "trailing_comma",
+  );
+  assert.equal(
+    predictQuestionsParseFailureEvent?.parserErrorCategory,
+    "unexpected_token",
+  );
+  assert.equal(
+    predictQuestionsParseFailureEvent?.fallbackReason,
+    "parse_error",
+  );
+  assert.doesNotMatch(
+    JSON.stringify(requestStageLogs),
+    /PREDICT_PRIVATE_RESPONSE/,
+  );
 } finally {
   console.info = originalConsoleInfo;
 }
@@ -574,7 +664,7 @@ assert.deepEqual(fencedParseTelemetry, {
     typeof fencedParseTelemetry.parserErrorPosition === "number"
       ? fencedParseTelemetry.parserErrorPosition
       : null,
-  jsonErrorCategory: "unexpected_token",
+  jsonErrorCategory: "trailing_comma",
   parserErrorCategory: "unexpected_token",
   lastCharacterCategory: "whitespace",
   containsMultipleTopLevelValues: true,
@@ -603,6 +693,42 @@ assert.equal(trailingTextTelemetry.containsMultipleTopLevelValues, false);
 assert.equal(trailingTextTelemetry.jsonErrorCategory, "invalid_character");
 assert.equal(trailingTextTelemetry.parserErrorCategory, "invalid_character");
 assert.equal(trailingTextTelemetry.lastCharacterCategory, "other");
+const trailingCommaInput = '{"questions":["问题一","问题二","问题三","问题四","问题五"],}';
+let trailingCommaError: unknown;
+try {
+  JSON.parse(cleanModelJson(trailingCommaInput));
+} catch (error) {
+  trailingCommaError = error;
+}
+assert.equal(
+  analyzeJsonParseFailure(trailingCommaInput, trailingCommaError)
+    .jsonErrorCategory,
+  "trailing_comma",
+);
+const multipleRootInput = '{"questions":[]}\n{"questions":[]}';
+let multipleRootError: unknown;
+try {
+  JSON.parse(cleanModelJson(multipleRootInput));
+} catch (error) {
+  multipleRootError = error;
+}
+assert.equal(
+  analyzeJsonParseFailure(multipleRootInput, multipleRootError)
+    .jsonErrorCategory,
+  "multiple_root_object",
+);
+const missingBracketInput = '{"questions":["问题一"]';
+let missingBracketError: unknown;
+try {
+  JSON.parse(cleanModelJson(missingBracketInput));
+} catch (error) {
+  missingBracketError = error;
+}
+assert.equal(
+  analyzeJsonParseFailure(missingBracketInput, missingBracketError)
+    .jsonErrorCategory,
+  "missing_bracket",
+);
 assert.equal(
   analyzeJsonParseFailure("", new SyntaxError("Unexpected end of JSON input"))
     .firstCharType,

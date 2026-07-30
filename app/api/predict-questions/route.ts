@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { callOpenAICompatibleModel } from "@/lib/ai/openai-compatible";
-import { cleanModelJson } from "@/lib/ai/json";
+import { analyzeJsonParseFailure, cleanModelJson } from "@/lib/ai/json";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
 import {
   modelQuestionsSchema,
@@ -14,8 +14,12 @@ import {
   authorizeAnalysisOperation,
 } from "@/lib/server/analysis-operation";
 import {
+  markGeoFallbackTelemetry,
+  markGeoParserFailureTelemetry,
   markGeoRequestOutcome,
+  markGeoRequestStage,
   markGeoValidationTelemetry,
+  type GeoFallbackReason,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
@@ -67,6 +71,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
       paragraphs: input.data.numbered_paragraphs,
     });
 
+    let parserStarted = false;
+    let parserFallbackReason: GeoFallbackReason = "parse_error";
     try {
       const { content: raw } = await callOpenAICompatibleModel({
         messages: [
@@ -77,6 +83,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
         maxTokens: 800,
         rateLimitMode: authorization.mode,
       });
+      markGeoRequestStage("parser_started");
+      parserStarted = true;
       let modelJson: unknown;
       try {
         modelJson = JSON.parse(cleanModelJson(raw));
@@ -84,10 +92,13 @@ async function handlePost(request: NextRequest): Promise<Response> {
         markGeoValidationTelemetry({
           stage: "json_parse",
           issueCount: 1,
+          failureClassification: "json_parse_failed",
           fieldPaths: [[]],
+          ...analyzeJsonParseFailure(raw, error),
         });
         throw error;
       }
+      parserFallbackReason = "invalid_response";
       const parsedResult = modelQuestionsSchema.safeParse(modelJson);
       if (!parsedResult.success) {
         markGeoValidationTelemetry({
@@ -105,15 +116,23 @@ async function handlePost(request: NextRequest): Promise<Response> {
           issueCount: 1,
           fieldPaths: [["questions"]],
         });
+        markGeoParserFailureTelemetry();
+        markGeoFallbackTelemetry("invalid_response");
         markGeoRequestOutcome({ source: "fallback", modelStatus: "invalid-output" });
         return NextResponse.json(fallback, { headers });
       }
+      markGeoRequestStage("parser_completed");
+      parserStarted = false;
       markGeoRequestOutcome({ source: "model" });
       return NextResponse.json(
         { questions, source: "model" } satisfies PredictQuestionsResponse,
         { headers },
       );
     } catch {
+      if (parserStarted) {
+        markGeoParserFailureTelemetry();
+        markGeoFallbackTelemetry(parserFallbackReason);
+      }
       markGeoRequestOutcome({ source: "fallback" });
       return NextResponse.json(fallback, { headers });
     }
