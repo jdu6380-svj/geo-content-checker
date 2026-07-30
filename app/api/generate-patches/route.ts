@@ -37,7 +37,7 @@ import {
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
 export const runtime = "nodejs";
-export const maxDuration = 25;
+export const maxDuration = 32;
 
 type EvidenceSnippet = {
   paragraphId: string;
@@ -317,7 +317,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           { role: "user", content: prompts.user },
         ],
         temperature: 0,
-        timeoutMs: mode === "advice" ? 22_000 : 15_000,
+        timeoutMs: mode === "advice" ? 28_000 : 15_000,
         maxTokens: mode === "advice" ? 2_600 : CONTENT_DRAFT_MAX_TOKENS,
         rateLimitMode: authorization.mode,
       });
