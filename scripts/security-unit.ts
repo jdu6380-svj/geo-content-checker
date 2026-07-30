@@ -865,7 +865,7 @@ assert.equal(
 assert.equal(contentDraftPrompts.user.includes("diagnostics"), false);
 assert.equal(contentDraftPrompts.system.includes("2 到 6 个动作"), true);
 assert.equal(contentDraftPrompts.system.includes("不超过 200 个字符"), true);
-assert.equal(CONTENT_DRAFT_MAX_TOKENS, 1_200);
+assert.equal(CONTENT_DRAFT_MAX_TOKENS, 2_000);
 
 const rawAdviceOutput = JSON.stringify({
   result: {
