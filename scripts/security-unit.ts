@@ -244,7 +244,11 @@ const patchesRouteSource = readFileSync(
 );
 assert.match(patchesRouteSource, /temperature:\s*0/);
 assert.match(patchesRouteSource, /export const maxDuration = 32/);
-assert.match(patchesRouteSource, /timeoutMs:\s*mode === "advice" \? 28_000 : 15_000/);
+assert.match(patchesRouteSource, /const CONTENT_DRAFT_TIMEOUT_MS = 28_000/);
+assert.match(
+  patchesRouteSource,
+  /timeoutMs:\s*mode === "advice" \? 28_000 : CONTENT_DRAFT_TIMEOUT_MS/,
+);
 assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 2_600/);
 assert.match(
   patchesRouteSource,

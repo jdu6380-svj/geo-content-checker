@@ -54,6 +54,7 @@ const FAQ_QUESTIONS = [
 ];
 
 const FACT_LABELS = ["核心信息", "方法与步骤", "适用范围"];
+const CONTENT_DRAFT_TIMEOUT_MS = 28_000;
 const SNIPPET_PATTERNS = [
   null,
   /怎么做|做法|方法|步骤|第一步|第二步|第三步|第四步|首先|其次|最后/,
@@ -317,7 +318,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           { role: "user", content: prompts.user },
         ],
         temperature: 0,
-        timeoutMs: mode === "advice" ? 28_000 : 15_000,
+        timeoutMs: mode === "advice" ? 28_000 : CONTENT_DRAFT_TIMEOUT_MS,
         maxTokens: mode === "advice" ? 2_600 : CONTENT_DRAFT_MAX_TOKENS,
         rateLimitMode: authorization.mode,
       });
