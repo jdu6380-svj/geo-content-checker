@@ -44,6 +44,7 @@ import {
   ANALYSIS_VERSION,
   REPORT_SCHEMA_VERSION,
 } from "../lib/constants/analysis-contract.ts";
+import { buildContentDraftEvidenceCandidates } from "../lib/geo/content-draft-evidence-candidates.ts";
 import { anchorContentActionQuotes } from "../lib/geo/content-draft-quote-anchor.ts";
 import { validateDiagnosticEvidence } from "../lib/geo/evidence.ts";
 import { MAX_ARTICLE_CHARACTERS } from "../lib/constants/input-limits.ts";
@@ -247,6 +248,14 @@ assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 2_600/);
 assert.match(
   patchesRouteSource,
   /failureClassification:\s*finishReason === "length"\s*\?\s*"token_cap_truncation"/,
+);
+assert.match(
+  patchesRouteSource,
+  /buildContentDraftEvidenceCandidates\(\s*diagnostics,\s*paragraphs,\s*\)/,
+);
+assert.match(
+  patchesRouteSource,
+  /buildContentDraftPrompts\(title, paragraphs, evidenceCandidates\)/,
 );
 assert.doesNotMatch(patchesRouteSource, /usage\?\.completionTokens/);
 const modelAdapterSource = readFileSync(
@@ -996,23 +1005,119 @@ assert.equal(arbitraryNormalizedDiagnostic.recommendation, undefined);
 const contentDraftPromptInput = {
   title: "雨水花园维护说明",
   paragraphs: [{ id: "Para-1", text: "强降雨后应检查入口和溢流口。" }],
+  evidenceCandidates: [{
+    paragraphId: "Para-1",
+    quote: "强降雨后应检查入口和溢流口。",
+    relatedQuestions: ["强降雨后需要检查什么？"],
+  }],
 };
 const contentDraftPrompts = buildContentDraftPrompts(
   contentDraftPromptInput.title,
   contentDraftPromptInput.paragraphs,
+  contentDraftPromptInput.evidenceCandidates,
 );
 assert.deepEqual(
   contentDraftPrompts,
-  buildContentDraftPrompts(contentDraftPromptInput.title, contentDraftPromptInput.paragraphs),
+  buildContentDraftPrompts(
+    contentDraftPromptInput.title,
+    contentDraftPromptInput.paragraphs,
+    contentDraftPromptInput.evidenceCandidates,
+  ),
 );
 assert.equal(
   contentDraftPrompts.user,
   formatUntrustedPromptData(contentDraftPromptInput),
 );
 assert.equal(contentDraftPrompts.user.includes("diagnostics"), false);
+assert.equal(contentDraftPrompts.user.includes("evidenceCandidates"), true);
 assert.equal(contentDraftPrompts.system.includes("2 到 6 个动作"), true);
 assert.equal(contentDraftPrompts.system.includes("不超过 200 个字符"), true);
+assert.equal(
+  contentDraftPrompts.system.includes("只能逐字使用输入 evidenceCandidates"),
+  true,
+);
+assert.equal(
+  contentDraftPrompts.system.includes("不得自行从 paragraphs 提取、总结、改写或压缩引用"),
+  true,
+);
 assert.equal(CONTENT_DRAFT_MAX_TOKENS, 2_000);
+
+const contentDraftEvidenceCandidates = buildContentDraftEvidenceCandidates(
+  [
+    {
+      question: "强降雨后需要检查什么？",
+      answerability: "可以完全回答",
+      riskLevel: "low",
+      evidence: [{
+        paragraphId: "Para-1",
+        quote: "强降雨后应检查入口和溢流口。",
+      }],
+      missingInfo: [],
+      recommendation: "保留检查说明。",
+      source: "model",
+      evidenceStatus: "valid",
+    },
+    {
+      question: "哪些位置需要复核？",
+      answerability: "可以完全回答",
+      riskLevel: "low",
+      evidence: [{
+        paragraphId: "Para-1",
+        quote: "强降雨后应检查入口和溢流口。",
+      }],
+      missingInfo: [],
+      recommendation: "保留位置说明。",
+      source: "model",
+      evidenceStatus: "valid",
+    },
+    {
+      question: "无效 Evidence 是否会进入候选？",
+      answerability: "信息不足",
+      riskLevel: "medium",
+      evidence: [{
+        paragraphId: "Para-2",
+        quote: "滤料需要定期补充。",
+      }],
+      missingInfo: [],
+      recommendation: "不要使用无效 Evidence。",
+      source: "model",
+      evidenceStatus: "invalid",
+    },
+    {
+      question: "伪造 quote 是否会通过二次校验？",
+      answerability: "可以完全回答",
+      riskLevel: "low",
+      evidence: [{
+        paragraphId: "Para-2",
+        quote: "这段文字不在原文中。",
+      }],
+      missingInfo: [],
+      recommendation: "拒绝不在原文中的 quote。",
+      source: "model",
+      evidenceStatus: "valid",
+    },
+  ],
+  [
+    {
+      id: "Para-1",
+      text: "强降雨后应检查入口和溢流口。",
+    },
+    {
+      id: "Para-2",
+      text: "滤料板结时需要进行松动维护。",
+    },
+  ],
+);
+assert.deepEqual(contentDraftEvidenceCandidates, [
+  {
+    paragraphId: "Para-1",
+    quote: "强降雨后应检查入口和溢流口。",
+    relatedQuestions: [
+      "强降雨后需要检查什么？",
+      "哪些位置需要复核？",
+    ],
+  },
+]);
 
 const anchoredContentActions = anchorContentActionQuotes(
   [

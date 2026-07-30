@@ -9,6 +9,7 @@ import {
 import { callOpenAICompatibleModel, ModelCallError } from "@/lib/ai/openai-compatible";
 import { normalizePatchModelOutput } from "@/lib/ai/patch-output";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
+import { buildContentDraftEvidenceCandidates } from "@/lib/geo/content-draft-evidence-candidates";
 import { anchorContentActionQuotes } from "@/lib/geo/content-draft-quote-anchor";
 import { formatPatchMarkdown } from "@/lib/markdown/patch-markdown";
 import {
@@ -275,7 +276,11 @@ function promptsForMode(
     };
   }
 
-  return buildContentDraftPrompts(title, paragraphs);
+  const evidenceCandidates = buildContentDraftEvidenceCandidates(
+    diagnostics,
+    paragraphs,
+  );
+  return buildContentDraftPrompts(title, paragraphs, evidenceCandidates);
 }
 
 async function handlePost(request: NextRequest): Promise<Response> {
