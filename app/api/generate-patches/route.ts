@@ -35,7 +35,7 @@ import {
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
 export const runtime = "nodejs";
-export const maxDuration = 20;
+export const maxDuration = 25;
 
 type EvidenceSnippet = {
   paragraphId: string;
