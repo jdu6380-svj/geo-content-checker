@@ -305,14 +305,14 @@ async function handlePost(request: NextRequest): Promise<Response> {
     const prompts = promptsForMode(mode, title, paragraphs, diagnostics);
 
     try {
-      const { content: raw, finishReason, usage } = await callOpenAICompatibleModel({
+      const { content: raw, finishReason } = await callOpenAICompatibleModel({
         messages: [
           { role: "system", content: prompts.system },
           { role: "user", content: prompts.user },
         ],
         temperature: 0,
-        timeoutMs: mode === "advice" ? 17_000 : 15_000,
-        maxTokens: mode === "advice" ? 2_000 : CONTENT_DRAFT_MAX_TOKENS,
+        timeoutMs: mode === "advice" ? 22_000 : 15_000,
+        maxTokens: mode === "advice" ? 2_600 : CONTENT_DRAFT_MAX_TOKENS,
         rateLimitMode: authorization.mode,
       });
       let json: unknown;
@@ -322,12 +322,9 @@ async function handlePost(request: NextRequest): Promise<Response> {
         markGeoValidationTelemetry({
           stage: "json_parse",
           issueCount: 1,
-          failureClassification:
-            finishReason === "length" &&
-              usage?.completionTokens ===
-                (mode === "advice" ? 2_000 : CONTENT_DRAFT_MAX_TOKENS)
-              ? "token_cap_truncation"
-              : "json_parse_failed",
+          failureClassification: finishReason === "length"
+            ? "token_cap_truncation"
+            : "json_parse_failed",
           fieldPaths: [[]],
         });
         throw error;

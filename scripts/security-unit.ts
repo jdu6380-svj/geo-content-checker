@@ -241,8 +241,13 @@ const patchesRouteSource = readFileSync(
   "utf8",
 );
 assert.match(patchesRouteSource, /temperature:\s*0/);
-assert.match(patchesRouteSource, /timeoutMs:\s*mode === "advice" \? 17_000 : 15_000/);
-assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 2_000/);
+assert.match(patchesRouteSource, /timeoutMs:\s*mode === "advice" \? 22_000 : 15_000/);
+assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 2_600/);
+assert.match(
+  patchesRouteSource,
+  /failureClassification:\s*finishReason === "length"\s*\?\s*"token_cap_truncation"/,
+);
+assert.doesNotMatch(patchesRouteSource, /usage\?\.completionTokens/);
 const modelAdapterSource = readFileSync(
   fileURLToPath(new URL("../lib/ai/openai-compatible.ts", import.meta.url)),
   "utf8",
