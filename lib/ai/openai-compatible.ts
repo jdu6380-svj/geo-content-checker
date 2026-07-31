@@ -2,6 +2,7 @@ import {
   classifyGeoProviderResponseReadError,
   markGeoRequestOutcome,
   markGeoRequestStage,
+  markScoringProviderResponseParseTelemetry,
   sanitizeModelProviderTelemetry,
   sanitizeGeoProviderRequestId,
   type GeoModelErrorCategory,
@@ -153,9 +154,18 @@ export async function callOpenAICompatibleModel({
     }
 
     let payload: unknown;
+    let responseBody: string | undefined;
     try {
-      payload = await response.json();
+      responseBody = await response.text();
+      payload = JSON.parse(responseBody);
     } catch (error) {
+      markScoringProviderResponseParseTelemetry({
+        responseBody,
+        responseContentType: response.headers.get("content-type"),
+        parseError: error,
+        responseParseFailureStage:
+          responseBody === undefined ? "body_read" : "json_parse",
+      });
       const errorCategory = classifyGeoProviderResponseReadError(error);
       if (errorCategory === "provider_timeout") throw error;
       const responseCompletedAt = Date.now();

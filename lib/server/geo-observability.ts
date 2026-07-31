@@ -85,6 +85,52 @@ export function classifyGeoProviderResponseReadError(
     : "provider_response_parse";
 }
 
+export const GEO_PROVIDER_RESPONSE_CONTENT_TYPES = [
+  "missing",
+  "application/json",
+  "json-compatible",
+  "text/plain",
+  "text/html",
+  "other",
+] as const;
+
+export type GeoProviderResponseContentType =
+  (typeof GEO_PROVIDER_RESPONSE_CONTENT_TYPES)[number];
+
+export const GEO_PROVIDER_RESPONSE_JSON_PARSE_ERROR_CATEGORIES = [
+  "empty_body",
+  "truncated_json",
+  "non_json_content",
+  "invalid_json",
+  "unknown",
+] as const;
+
+export type GeoProviderResponseJsonParseErrorCategory =
+  (typeof GEO_PROVIDER_RESPONSE_JSON_PARSE_ERROR_CATEGORIES)[number];
+
+export const GEO_PROVIDER_RESPONSE_PARSE_FAILURE_STAGES = [
+  "body_read",
+  "json_parse",
+] as const;
+
+export type GeoProviderResponseParseFailureStage =
+  (typeof GEO_PROVIDER_RESPONSE_PARSE_FAILURE_STAGES)[number];
+
+export interface GeoProviderResponseParseTelemetry {
+  responseBodyPresent: boolean;
+  responseBodyLength: number;
+  responseContentType: GeoProviderResponseContentType;
+  responseJsonParseErrorCategory: GeoProviderResponseJsonParseErrorCategory;
+  responseParseFailureStage: GeoProviderResponseParseFailureStage;
+}
+
+export interface GeoProviderResponseParseTelemetryInput {
+  responseBody?: unknown;
+  responseContentType?: unknown;
+  parseError?: unknown;
+  responseParseFailureStage: unknown;
+}
+
 export const GEO_FALLBACK_REASONS = [
   "model_disabled",
   "model_unavailable",
@@ -224,6 +270,11 @@ interface GeoRequestContext {
   responseCompletedAt?: number;
   abortedAt?: number;
   streamDurationMs?: number;
+  responseBodyPresent?: boolean;
+  responseBodyLength?: number;
+  responseContentType?: GeoProviderResponseContentType;
+  responseJsonParseErrorCategory?: GeoProviderResponseJsonParseErrorCategory;
+  responseParseFailureStage?: GeoProviderResponseParseFailureStage;
   messagePresent?: boolean;
   contentFieldPresent?: boolean;
   contentType?: GeoProviderFieldType;
@@ -350,6 +401,91 @@ function normalizeProviderHttpStatus(value: unknown): number | undefined {
     : undefined;
 }
 
+function normalizeProviderResponseContentType(
+  value: unknown,
+): GeoProviderResponseContentType {
+  if (typeof value !== "string") return "missing";
+  const mediaType = value.split(";", 1)[0]?.trim().toLowerCase();
+  if (!mediaType) return "missing";
+  if (mediaType === "application/json") return "application/json";
+  if (mediaType.includes("/") && mediaType.endsWith("+json")) {
+    return "json-compatible";
+  }
+  if (mediaType === "text/plain") return "text/plain";
+  if (mediaType === "text/html" || mediaType === "application/xhtml+xml") {
+    return "text/html";
+  }
+  return "other";
+}
+
+function classifyProviderResponseJsonParseError(
+  responseBody: unknown,
+  parseError: unknown,
+  failureStage: GeoProviderResponseParseFailureStage,
+): GeoProviderResponseJsonParseErrorCategory {
+  if (failureStage !== "json_parse" || typeof responseBody !== "string") {
+    return "unknown";
+  }
+
+  const trimmedBody = responseBody.trim();
+  if (trimmedBody.length === 0) return "empty_body";
+
+  const firstCharacter = trimmedBody[0];
+  if (firstCharacter !== "{" && firstCharacter !== "[") {
+    return "non_json_content";
+  }
+
+  const errorMessage = parseError instanceof Error
+    ? parseError.message.toLowerCase()
+    : "";
+  const expectedLastCharacter = firstCharacter === "{" ? "}" : "]";
+  if (
+    /unexpected end|end of json|unterminated/.test(errorMessage) ||
+    trimmedBody.at(-1) !== expectedLastCharacter
+  ) {
+    return "truncated_json";
+  }
+
+  return parseError instanceof SyntaxError ? "invalid_json" : "unknown";
+}
+
+export function sanitizeGeoProviderResponseParseTelemetry(
+  input: unknown,
+): GeoProviderResponseParseTelemetry | null {
+  try {
+    if (!isRecord(input)) return null;
+    if (
+      !GEO_PROVIDER_RESPONSE_PARSE_FAILURE_STAGES.includes(
+        input.responseParseFailureStage as GeoProviderResponseParseFailureStage,
+      )
+    ) {
+      return null;
+    }
+
+    const responseParseFailureStage =
+      input.responseParseFailureStage as GeoProviderResponseParseFailureStage;
+    const responseBody =
+      typeof input.responseBody === "string" ? input.responseBody : undefined;
+
+    return {
+      responseBodyPresent:
+        responseBody !== undefined && responseBody.length > 0,
+      responseBodyLength: responseBody?.length ?? 0,
+      responseContentType: normalizeProviderResponseContentType(
+        input.responseContentType,
+      ),
+      responseJsonParseErrorCategory: classifyProviderResponseJsonParseError(
+        responseBody,
+        input.parseError,
+        responseParseFailureStage,
+      ),
+      responseParseFailureStage,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function sanitizeGeoProviderRequestId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
@@ -454,6 +590,25 @@ function markDiagnosisProviderStructureTelemetry(
     reasoningContentPresent: telemetry.reasoningContentPresent,
     reasoningContentType: telemetry.reasoningContentType,
   });
+}
+
+export function markScoringProviderResponseParseTelemetry(
+  input: GeoProviderResponseParseTelemetryInput,
+): void {
+  try {
+    const context = requestStorage.getStore();
+    if (context?.route !== "/api/evaluate-scoring") return;
+    const telemetry = sanitizeGeoProviderResponseParseTelemetry(input);
+    if (!telemetry) return;
+    context.responseBodyPresent = telemetry.responseBodyPresent;
+    context.responseBodyLength = telemetry.responseBodyLength;
+    context.responseContentType = telemetry.responseContentType;
+    context.responseJsonParseErrorCategory =
+      telemetry.responseJsonParseErrorCategory;
+    context.responseParseFailureStage = telemetry.responseParseFailureStage;
+  } catch {
+    // Provider response telemetry must never affect the request path.
+  }
 }
 
 function sanitizeValidationPath(value: unknown): string | null {
@@ -748,6 +903,24 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.streamDurationMs === undefined
       ? {}
       : { streamDurationMs: context.streamDurationMs }),
+    ...(context.responseBodyPresent === undefined
+      ? {}
+      : { responseBodyPresent: context.responseBodyPresent }),
+    ...(context.responseBodyLength === undefined
+      ? {}
+      : { responseBodyLength: context.responseBodyLength }),
+    ...(context.responseContentType === undefined
+      ? {}
+      : { responseContentType: context.responseContentType }),
+    ...(context.responseJsonParseErrorCategory === undefined
+      ? {}
+      : {
+          responseJsonParseErrorCategory:
+            context.responseJsonParseErrorCategory,
+        }),
+    ...(context.responseParseFailureStage === undefined
+      ? {}
+      : { responseParseFailureStage: context.responseParseFailureStage }),
     ...(context.messagePresent === undefined
       ? {}
       : { messagePresent: context.messagePresent }),

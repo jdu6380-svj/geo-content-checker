@@ -66,15 +66,20 @@ import {
   classifyGeoProviderResponseReadError,
   GEO_FALLBACK_REASONS,
   GEO_MODEL_ERROR_CATEGORIES,
+  GEO_PROVIDER_RESPONSE_CONTENT_TYPES,
+  GEO_PROVIDER_RESPONSE_JSON_PARSE_ERROR_CATEGORIES,
+  GEO_PROVIDER_RESPONSE_PARSE_FAILURE_STAGES,
   GEO_REQUEST_STAGES,
   geoFallbackReasonForModelError,
   markGeoFallbackTelemetry,
   markGeoParserFailureTelemetry,
   markGeoRequestOutcome,
   markGeoRequestStage,
+  markScoringProviderResponseParseTelemetry,
   markGeoValidationTelemetry,
   normalizeGeoModelFinishReason,
   sanitizeGeoProviderRequestId,
+  sanitizeGeoProviderResponseParseTelemetry,
   sanitizeGeoValidationTelemetry,
   sanitizeModelProviderTelemetry,
   withGeoRequestLogging,
@@ -293,6 +298,13 @@ assert.match(modelAdapterSource, /markGeoRequestStage\("provider_request_sent"\)
 assert.match(modelAdapterSource, /markGeoRequestStage\("provider_response_received"\)/);
 assert.match(modelAdapterSource, /providerHttpStatus:\s*response\.status/);
 assert.match(modelAdapterSource, /modelErrorCategory:\s*"provider_http"/);
+assert.match(modelAdapterSource, /responseBody = await response\.text\(\)/);
+assert.match(modelAdapterSource, /payload = JSON\.parse\(responseBody\)/);
+assert.match(
+  modelAdapterSource,
+  /markScoringProviderResponseParseTelemetry\(\{/,
+);
+assert.doesNotMatch(modelAdapterSource, /response\.json\(\)/);
 assert.match(
   modelAdapterSource,
   /if \(errorCategory === "provider_timeout"\) throw error;/,
@@ -329,6 +341,25 @@ assert.deepEqual(GEO_MODEL_ERROR_CATEGORIES, [
   "provider_invalid_output",
   "unknown",
 ]);
+assert.deepEqual(GEO_PROVIDER_RESPONSE_CONTENT_TYPES, [
+  "missing",
+  "application/json",
+  "json-compatible",
+  "text/plain",
+  "text/html",
+  "other",
+]);
+assert.deepEqual(GEO_PROVIDER_RESPONSE_JSON_PARSE_ERROR_CATEGORIES, [
+  "empty_body",
+  "truncated_json",
+  "non_json_content",
+  "invalid_json",
+  "unknown",
+]);
+assert.deepEqual(GEO_PROVIDER_RESPONSE_PARSE_FAILURE_STAGES, [
+  "body_read",
+  "json_parse",
+]);
 assert.deepEqual(GEO_FALLBACK_REASONS, [
   "model_disabled",
   "model_unavailable",
@@ -358,6 +389,98 @@ assert.equal(sanitizeGeoProviderRequestId("req_abc-123:xyz"), "req_abc-123:xyz")
 assert.equal(sanitizeGeoProviderRequestId(" req_abc-123 "), "req_abc-123");
 assert.equal(sanitizeGeoProviderRequestId("req_abc\nsecret"), undefined);
 assert.equal(sanitizeGeoProviderRequestId("x".repeat(129)), undefined);
+const providerResponseBodySentinel =
+  '{"choices":[{"message":{"content":"PRIVATE_PROVIDER_RESPONSE_BODY"}}]';
+const providerResponseHeaderSentinel =
+  "application/json; charset=utf-8; private=PRIVATE_PROVIDER_HEADER";
+const providerResponseErrorSentinel =
+  "Unexpected end of JSON input PRIVATE_PROVIDER_PARSE_ERROR";
+const truncatedProviderResponseTelemetry =
+  sanitizeGeoProviderResponseParseTelemetry({
+    responseBody: providerResponseBodySentinel,
+    responseContentType: providerResponseHeaderSentinel,
+    parseError: new SyntaxError(providerResponseErrorSentinel),
+    responseParseFailureStage: "json_parse",
+  });
+assert.deepEqual(truncatedProviderResponseTelemetry, {
+  responseBodyPresent: true,
+  responseBodyLength: providerResponseBodySentinel.length,
+  responseContentType: "application/json",
+  responseJsonParseErrorCategory: "truncated_json",
+  responseParseFailureStage: "json_parse",
+});
+for (const sensitiveValue of [
+  "PRIVATE_PROVIDER_RESPONSE_BODY",
+  "PRIVATE_PROVIDER_HEADER",
+  "PRIVATE_PROVIDER_PARSE_ERROR",
+]) {
+  assert.equal(
+    JSON.stringify(truncatedProviderResponseTelemetry).includes(sensitiveValue),
+    false,
+  );
+}
+assert.deepEqual(
+  sanitizeGeoProviderResponseParseTelemetry({
+    responseBody: "",
+    responseContentType: undefined,
+    parseError: new SyntaxError("Unexpected end of JSON input"),
+    responseParseFailureStage: "json_parse",
+  }),
+  {
+    responseBodyPresent: false,
+    responseBodyLength: 0,
+    responseContentType: "missing",
+    responseJsonParseErrorCategory: "empty_body",
+    responseParseFailureStage: "json_parse",
+  },
+);
+assert.equal(
+  sanitizeGeoProviderResponseParseTelemetry({
+    responseBody: "<html>PRIVATE_PROVIDER_HTML</html>",
+    responseContentType: "text/html; charset=utf-8",
+    parseError: new SyntaxError("Unexpected token '<'"),
+    responseParseFailureStage: "json_parse",
+  })?.responseJsonParseErrorCategory,
+  "non_json_content",
+);
+assert.deepEqual(
+  sanitizeGeoProviderResponseParseTelemetry({
+    responseBody: '{"choices":,}',
+    responseContentType: "application/problem+json",
+    parseError: new SyntaxError("Unexpected token ','"),
+    responseParseFailureStage: "json_parse",
+  }),
+  {
+    responseBodyPresent: true,
+    responseBodyLength: 13,
+    responseContentType: "json-compatible",
+    responseJsonParseErrorCategory: "invalid_json",
+    responseParseFailureStage: "json_parse",
+  },
+);
+assert.deepEqual(
+  sanitizeGeoProviderResponseParseTelemetry({
+    responseContentType: "application/json",
+    parseError: new Error("PRIVATE_PROVIDER_BODY_READ_ERROR"),
+    responseParseFailureStage: "body_read",
+  }),
+  {
+    responseBodyPresent: false,
+    responseBodyLength: 0,
+    responseContentType: "application/json",
+    responseJsonParseErrorCategory: "unknown",
+    responseParseFailureStage: "body_read",
+  },
+);
+assert.equal(
+  sanitizeGeoProviderResponseParseTelemetry({
+    responseBody: "PRIVATE_PROVIDER_INVALID_INPUT",
+    responseContentType: "PRIVATE_PROVIDER_INVALID_INPUT",
+    parseError: new Error("PRIVATE_PROVIDER_INVALID_INPUT"),
+    responseParseFailureStage: "PRIVATE_PROVIDER_INVALID_INPUT",
+  }),
+  null,
+);
 assert.equal(normalizeGeoModelFinishReason("length"), "length");
 assert.equal(normalizeGeoModelFinishReason("provider-specific"), "unknown");
 assert.deepEqual(JSON_ERROR_CATEGORIES, [
@@ -636,6 +759,94 @@ try {
     scoringSchemaFailureEvent?.schemaFailureCategory,
     "required_field_missing",
   );
+
+  requestStageLogs.length = 0;
+  const scoringProviderParseTelemetryHandler = withGeoRequestLogging(
+    "/api/evaluate-scoring",
+    async () => {
+      markScoringProviderResponseParseTelemetry({
+        responseBody: providerResponseBodySentinel,
+        responseContentType: providerResponseHeaderSentinel,
+        parseError: new SyntaxError(providerResponseErrorSentinel),
+        responseParseFailureStage: "json_parse",
+      });
+      markGeoRequestOutcome({
+        source: "fallback",
+        modelStatus: "failed",
+        modelErrorCategory: "provider_response_parse",
+      });
+      return Response.json({ ok: true });
+    },
+  );
+  await scoringProviderParseTelemetryHandler(
+    new Request("http://localhost/api/evaluate-scoring", {
+      method: "POST",
+    }) as never,
+  );
+  const scoringProviderParseTelemetryEvent =
+    telemetryEvents("geo_api_request")[0];
+  assert.equal(scoringProviderParseTelemetryEvent?.responseBodyPresent, true);
+  assert.equal(
+    scoringProviderParseTelemetryEvent?.responseBodyLength,
+    providerResponseBodySentinel.length,
+  );
+  assert.equal(
+    scoringProviderParseTelemetryEvent?.responseContentType,
+    "application/json",
+  );
+  assert.equal(
+    scoringProviderParseTelemetryEvent?.responseJsonParseErrorCategory,
+    "truncated_json",
+  );
+  assert.equal(
+    scoringProviderParseTelemetryEvent?.responseParseFailureStage,
+    "json_parse",
+  );
+  for (const sensitiveValue of [
+    "PRIVATE_PROVIDER_RESPONSE_BODY",
+    "PRIVATE_PROVIDER_HEADER",
+    "PRIVATE_PROVIDER_PARSE_ERROR",
+  ]) {
+    assert.equal(
+      JSON.stringify(scoringProviderParseTelemetryEvent).includes(
+        sensitiveValue,
+      ),
+      false,
+    );
+  }
+
+  requestStageLogs.length = 0;
+  const nonScoringProviderParseTelemetryHandler = withGeoRequestLogging(
+    "/api/qa-diagnostic",
+    async () => {
+      markScoringProviderResponseParseTelemetry({
+        responseBody: providerResponseBodySentinel,
+        responseContentType: providerResponseHeaderSentinel,
+        parseError: new SyntaxError(providerResponseErrorSentinel),
+        responseParseFailureStage: "json_parse",
+      });
+      return Response.json({ ok: true });
+    },
+  );
+  await nonScoringProviderParseTelemetryHandler(
+    new Request("http://localhost/api/qa-diagnostic", {
+      method: "POST",
+    }) as never,
+  );
+  const nonScoringProviderParseTelemetryEvent =
+    telemetryEvents("geo_api_request")[0];
+  for (const field of [
+    "responseBodyPresent",
+    "responseBodyLength",
+    "responseContentType",
+    "responseJsonParseErrorCategory",
+    "responseParseFailureStage",
+  ]) {
+    assert.equal(
+      Object.hasOwn(nonScoringProviderParseTelemetryEvent ?? {}, field),
+      false,
+    );
+  }
 
   requestStageLogs.length = 0;
   const invalidFallbackReason = "PRIVATE_RESPONSE_BODY";
