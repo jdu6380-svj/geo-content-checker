@@ -200,11 +200,11 @@ assert.ok(
   "qa-diagnostic timeout contract is missing",
 );
 assert.ok(
-  /maxTokens:\s*3_000/.test(diagnosticRouteSource),
+  /maxTokens:\s*4_000/.test(diagnosticRouteSource),
   "qa-diagnostic token limit contract is missing",
 );
 assert.match(diagnosticRouteSource, /export const maxDuration = 36/);
-assert.match(diagnosticRouteSource, /modelOutputTokenLimit:\s*3_000/);
+assert.match(diagnosticRouteSource, /modelOutputTokenLimit:\s*4_000/);
 assert.ok(
   /顶层字段必须且只能各出现一次/.test(diagnosticRouteSource),
   "qa-diagnostic strict top-level field contract is missing",

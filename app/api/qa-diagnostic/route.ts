@@ -164,7 +164,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
     let parserFallbackReason: GeoFallbackReason = "unexpected_format";
     try {
       markGeoRequestStage("adapter_called");
-      markGeoRequestOutcome({ modelOutputTokenLimit: 3_000 });
+      markGeoRequestOutcome({ modelOutputTokenLimit: 4_000 });
       const { content: raw } = await callOpenAICompatibleModel({
         messages: [
           { role: "system", content: systemPrompt },
@@ -172,7 +172,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         ],
         temperature: 0,
         timeoutMs: 32_000,
-        maxTokens: 3_000,
+        maxTokens: 4_000,
         rateLimitMode: authorization.mode,
       });
       markGeoRequestStage("parser_started");
