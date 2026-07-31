@@ -114,7 +114,7 @@ async function evaluateWithModel(params: {
       { role: "user", content: userPrompt },
     ],
     timeoutMs: 32_000,
-    maxTokens: 1_200,
+    maxTokens: 2_400,
     rateLimitMode: params.rateLimitMode,
   });
   let modelJson: unknown;
