@@ -442,6 +442,8 @@ function assertSafeStageEvents(
 }
 
 try {
+  const diagnosisContentSentinel = "PRIVATE_DIAGNOSIS_CONTENT";
+  const diagnosisReasoningSentinel = "PRIVATE_DIAGNOSIS_REASONING";
   const successHandler = withGeoRequestLogging(
     "/api/qa-diagnostic",
     async () => {
@@ -455,6 +457,14 @@ try {
       ] as const) {
         markGeoRequestStage(stage);
       }
+      sanitizeModelProviderTelemetry({
+        choices: [{
+          message: {
+            content: diagnosisContentSentinel,
+            reasoning_content: diagnosisReasoningSentinel,
+          },
+        }],
+      });
       markGeoRequestOutcome({
         modelStatus: "failed",
         modelLatencyMs: 321,
@@ -495,6 +505,20 @@ try {
   assert.equal(successRequestEvent?.providerRequestId, "req_safe_123");
   assert.equal(successRequestEvent?.modelErrorCategory, "provider_http");
   assert.equal(successRequestEvent?.finishReason, "length");
+  assert.equal(successRequestEvent?.messagePresent, true);
+  assert.equal(successRequestEvent?.contentFieldPresent, true);
+  assert.equal(successRequestEvent?.contentType, "string");
+  assert.equal(successRequestEvent?.contentBlank, false);
+  assert.equal(successRequestEvent?.reasoningContentPresent, true);
+  assert.equal(successRequestEvent?.reasoningContentType, "string");
+  assert.equal(
+    JSON.stringify(successRequestEvent).includes(diagnosisContentSentinel),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(successRequestEvent).includes(diagnosisReasoningSentinel),
+    false,
+  );
   assert.equal(successRequestEvent?.completionTokens, 42);
   assert.equal(successRequestEvent?.reasoningTokens, 21);
   assert.equal(successRequestEvent?.reasoningRatio, 0.5);
@@ -526,6 +550,51 @@ try {
   assert.equal(outputBudgetNearLimitEvent?.budgetNearLimit, true);
   assert.equal(
     Object.hasOwn(outputBudgetNearLimitEvent ?? {}, "modelOutputTokenLimit"),
+    false,
+  );
+
+  requestStageLogs.length = 0;
+  const invalidProviderStructureSentinel = "PRIVATE_PROVIDER_STRUCTURE";
+  const invalidProviderStructureHandler = withGeoRequestLogging(
+    "/api/qa-diagnostic",
+    async () => {
+      markGeoRequestOutcome({
+        messagePresent: invalidProviderStructureSentinel as unknown as boolean,
+        contentFieldPresent:
+          invalidProviderStructureSentinel as unknown as boolean,
+        contentType: invalidProviderStructureSentinel as unknown as "string",
+        contentBlank: invalidProviderStructureSentinel as unknown as boolean,
+        reasoningContentPresent:
+          invalidProviderStructureSentinel as unknown as boolean,
+        reasoningContentType:
+          invalidProviderStructureSentinel as unknown as "string",
+      });
+      return Response.json({ ok: true });
+    },
+  );
+  await invalidProviderStructureHandler(
+    new Request("http://localhost/api/qa-diagnostic", {
+      method: "POST",
+    }) as never,
+  );
+  const invalidProviderStructureEvent = telemetryEvents("geo_api_request")[0];
+  for (const field of [
+    "messagePresent",
+    "contentFieldPresent",
+    "contentType",
+    "contentBlank",
+    "reasoningContentPresent",
+    "reasoningContentType",
+  ]) {
+    assert.equal(
+      Object.hasOwn(invalidProviderStructureEvent ?? {}, field),
+      false,
+    );
+  }
+  assert.equal(
+    JSON.stringify(invalidProviderStructureEvent).includes(
+      invalidProviderStructureSentinel,
+    ),
     false,
   );
 
@@ -2095,6 +2164,12 @@ const providerTelemetry = sanitizeModelProviderTelemetry({
   evidence: b1SensitiveSentinels[2],
 });
 assert.deepEqual(providerTelemetry, {
+  messagePresent: true,
+  contentFieldPresent: true,
+  contentType: "string",
+  contentBlank: false,
+  reasoningContentPresent: true,
+  reasoningContentType: "string",
   contentPresent: true,
   contentLength: b1SensitiveSentinels[4].length,
   finishReason: "length",
@@ -2106,6 +2181,74 @@ assert.deepEqual(providerTelemetry, {
 for (const sentinel of b1SensitiveSentinels) {
   assert.doesNotMatch(JSON.stringify(providerTelemetry), new RegExp(sentinel));
 }
+assert.deepEqual(
+  sanitizeModelProviderTelemetry({
+    choices: [{
+      finish_reason: "stop",
+      message: {
+        reasoning_content: b1SensitiveSentinels[1],
+      },
+    }],
+    usage: {
+      prompt_tokens: 1_438,
+      completion_tokens: 354,
+      reasoning_tokens: 354,
+      total_tokens: 1_792,
+    },
+  }),
+  {
+    messagePresent: true,
+    contentFieldPresent: false,
+    contentType: "missing",
+    contentBlank: false,
+    reasoningContentPresent: true,
+    reasoningContentType: "string",
+    contentPresent: false,
+    contentLength: 0,
+    finishReason: "stop",
+    promptTokens: 1_438,
+    completionTokens: 354,
+    reasoningTokens: 354,
+    totalTokens: 1_792,
+  },
+);
+assert.deepEqual(
+  sanitizeModelProviderTelemetry({
+    choices: [{
+      message: {
+        content: null,
+        reasoning_content: [],
+      },
+    }],
+  }),
+  {
+    messagePresent: true,
+    contentFieldPresent: true,
+    contentType: "null",
+    contentBlank: false,
+    reasoningContentPresent: true,
+    reasoningContentType: "array",
+    contentPresent: false,
+    contentLength: 0,
+    finishReason: "unknown",
+  },
+);
+assert.deepEqual(
+  sanitizeModelProviderTelemetry({
+    choices: [{ message: { content: "   " } }],
+  }),
+  {
+    messagePresent: true,
+    contentFieldPresent: true,
+    contentType: "string",
+    contentBlank: true,
+    reasoningContentPresent: false,
+    reasoningContentType: "missing",
+    contentPresent: false,
+    contentLength: 3,
+    finishReason: "unknown",
+  },
+);
 for (const malformedPayload of [
   undefined,
   null,
@@ -2130,6 +2273,12 @@ assert.deepEqual(
     },
   })),
   {
+    messagePresent: false,
+    contentFieldPresent: false,
+    contentType: "missing",
+    contentBlank: false,
+    reasoningContentPresent: false,
+    reasoningContentType: "missing",
     contentPresent: false,
     contentLength: 0,
     finishReason: "unknown",

@@ -97,7 +97,25 @@ export const GEO_FALLBACK_REASONS = [
 
 export type GeoFallbackReason = (typeof GEO_FALLBACK_REASONS)[number];
 
+export const GEO_PROVIDER_FIELD_TYPES = [
+  "missing",
+  "null",
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+] as const;
+
+export type GeoProviderFieldType = (typeof GEO_PROVIDER_FIELD_TYPES)[number];
+
 export interface ModelProviderTelemetry {
+  messagePresent: boolean;
+  contentFieldPresent: boolean;
+  contentType: GeoProviderFieldType;
+  contentBlank: boolean;
+  reasoningContentPresent: boolean;
+  reasoningContentType: GeoProviderFieldType;
   contentPresent: boolean;
   contentLength: number;
   finishReason: GeoModelFinishReason;
@@ -206,6 +224,12 @@ interface GeoRequestContext {
   responseCompletedAt?: number;
   abortedAt?: number;
   streamDurationMs?: number;
+  messagePresent?: boolean;
+  contentFieldPresent?: boolean;
+  contentType?: GeoProviderFieldType;
+  contentBlank?: boolean;
+  reasoningContentPresent?: boolean;
+  reasoningContentType?: GeoProviderFieldType;
   contentPresent?: boolean;
   contentLength?: number;
   finishReason?: GeoModelFinishReason;
@@ -260,6 +284,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeProviderTokenCount(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
+    : undefined;
+}
+
+function providerFieldType(
+  value: unknown,
+  fieldPresent: boolean,
+): GeoProviderFieldType {
+  if (!fieldPresent || value === undefined) return "missing";
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (isRecord(value)) return "object";
+  if (typeof value === "string") return "string";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "missing";
+}
+
+function normalizeProviderFieldType(
+  value: unknown,
+): GeoProviderFieldType | undefined {
+  return GEO_PROVIDER_FIELD_TYPES.includes(value as GeoProviderFieldType)
+    ? (value as GeoProviderFieldType)
     : undefined;
 }
 
@@ -338,8 +384,13 @@ export function sanitizeModelProviderTelemetry(payload: unknown): ModelProviderT
     const choice = Array.isArray(root.choices) && isRecord(root.choices[0])
       ? root.choices[0]
       : {};
-    const message = isRecord(choice.message) ? choice.message : {};
+    const messageValue = choice.message;
+    const messagePresent = isRecord(messageValue);
+    const message: Record<string, unknown> = messagePresent ? messageValue : {};
+    const contentFieldPresent = Object.hasOwn(message, "content");
     const content = message.content;
+    const reasoningContentPresent = Object.hasOwn(message, "reasoning_content");
+    const reasoningContent = message.reasoning_content;
     const usage = isRecord(root.usage) ? root.usage : {};
     const completionDetails = isRecord(usage.completion_tokens_details)
       ? usage.completion_tokens_details
@@ -353,7 +404,16 @@ export function sanitizeModelProviderTelemetry(payload: unknown): ModelProviderT
     const reasoningTokens = nestedReasoningTokens ?? directReasoningTokens;
     const totalTokens = normalizeProviderTokenCount(usage.total_tokens);
 
-    return {
+    const telemetry: ModelProviderTelemetry = {
+      messagePresent,
+      contentFieldPresent,
+      contentType: providerFieldType(content, contentFieldPresent),
+      contentBlank: typeof content === "string" && content.trim().length === 0,
+      reasoningContentPresent,
+      reasoningContentType: providerFieldType(
+        reasoningContent,
+        reasoningContentPresent,
+      ),
       contentPresent: typeof content === "string" && content.trim().length > 0,
       contentLength: typeof content === "string" ? content.length : 0,
       finishReason: normalizeGeoModelFinishReason(choice.finish_reason),
@@ -362,13 +422,38 @@ export function sanitizeModelProviderTelemetry(payload: unknown): ModelProviderT
       ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
       ...(totalTokens === undefined ? {} : { totalTokens }),
     };
+    markDiagnosisProviderStructureTelemetry(telemetry);
+    return telemetry;
   } catch {
-    return {
+    const telemetry: ModelProviderTelemetry = {
+      messagePresent: false,
+      contentFieldPresent: false,
+      contentType: "missing",
+      contentBlank: false,
+      reasoningContentPresent: false,
+      reasoningContentType: "missing",
       contentPresent: false,
       contentLength: 0,
       finishReason: "unknown",
     };
+    markDiagnosisProviderStructureTelemetry(telemetry);
+    return telemetry;
   }
+}
+
+function markDiagnosisProviderStructureTelemetry(
+  telemetry: ModelProviderTelemetry,
+): void {
+  const context = requestStorage.getStore();
+  if (context?.route !== "/api/qa-diagnostic") return;
+  markGeoRequestOutcome({
+    messagePresent: telemetry.messagePresent,
+    contentFieldPresent: telemetry.contentFieldPresent,
+    contentType: telemetry.contentType,
+    contentBlank: telemetry.contentBlank,
+    reasoningContentPresent: telemetry.reasoningContentPresent,
+    reasoningContentType: telemetry.reasoningContentType,
+  });
 }
 
 function sanitizeValidationPath(value: unknown): string | null {
@@ -663,6 +748,20 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.streamDurationMs === undefined
       ? {}
       : { streamDurationMs: context.streamDurationMs }),
+    ...(context.messagePresent === undefined
+      ? {}
+      : { messagePresent: context.messagePresent }),
+    ...(context.contentFieldPresent === undefined
+      ? {}
+      : { contentFieldPresent: context.contentFieldPresent }),
+    ...(context.contentType === undefined ? {} : { contentType: context.contentType }),
+    ...(context.contentBlank === undefined ? {} : { contentBlank: context.contentBlank }),
+    ...(context.reasoningContentPresent === undefined
+      ? {}
+      : { reasoningContentPresent: context.reasoningContentPresent }),
+    ...(context.reasoningContentType === undefined
+      ? {}
+      : { reasoningContentType: context.reasoningContentType }),
     ...(context.contentPresent === undefined ? {} : { contentPresent: context.contentPresent }),
     ...(context.contentLength === undefined ? {} : { contentLength: context.contentLength }),
     ...(context.finishReason === undefined ? {} : { finishReason: context.finishReason }),
@@ -812,6 +911,12 @@ export function markGeoRequestOutcome(params: {
   responseCompletedAt?: number;
   abortedAt?: number;
   streamDurationMs?: number;
+  messagePresent?: boolean;
+  contentFieldPresent?: boolean;
+  contentType?: GeoProviderFieldType;
+  contentBlank?: boolean;
+  reasoningContentPresent?: boolean;
+  reasoningContentType?: GeoProviderFieldType;
   contentPresent?: boolean;
   contentLength?: number;
   finishReason?: GeoModelFinishReason;
@@ -862,6 +967,26 @@ export function markGeoRequestOutcome(params: {
   if (params.abortedAt !== undefined) context.abortedAt = params.abortedAt;
   if (params.streamDurationMs !== undefined) {
     context.streamDurationMs = params.streamDurationMs;
+  }
+  if (typeof params.messagePresent === "boolean") {
+    context.messagePresent = params.messagePresent;
+  }
+  if (typeof params.contentFieldPresent === "boolean") {
+    context.contentFieldPresent = params.contentFieldPresent;
+  }
+  const contentType = normalizeProviderFieldType(params.contentType);
+  if (contentType !== undefined) context.contentType = contentType;
+  if (typeof params.contentBlank === "boolean") {
+    context.contentBlank = params.contentBlank;
+  }
+  if (typeof params.reasoningContentPresent === "boolean") {
+    context.reasoningContentPresent = params.reasoningContentPresent;
+  }
+  const reasoningContentType = normalizeProviderFieldType(
+    params.reasoningContentType,
+  );
+  if (reasoningContentType !== undefined) {
+    context.reasoningContentType = reasoningContentType;
   }
   if (params.contentPresent !== undefined) context.contentPresent = params.contentPresent;
   if (params.contentLength !== undefined) context.contentLength = params.contentLength;
