@@ -19,9 +19,11 @@ import {
 import {
   analyzeJsonParseFailure,
   analyzeSchemaValidationFailure,
+  analyzeSchemaValidationFailureDetails,
   cleanModelJson,
   JSON_ERROR_CATEGORIES,
   JSON_LAST_CHARACTER_CATEGORIES,
+  SCHEMA_FAILURE_CATEGORIES,
   VALIDATION_EXPECTED_TYPES,
   VALIDATION_ISSUE_CODES,
   VALIDATION_RECEIVED_TYPES,
@@ -169,6 +171,14 @@ const predictQuestionsRouteSource = readFileSync(
   "utf8",
 );
 assert.match(predictQuestionsRouteSource, /maxTokens:\s*1_600/);
+assert.match(
+  scoringRouteSource,
+  /analyzeSchemaValidationFailureDetails\(\s*parsedResult\.error\.issues\[0\]/,
+);
+assert.match(
+  scoringRouteSource,
+  /failureClassification:\s*schemaFailure\.requiredFieldMissing/,
+);
 const diagnosticRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/qa-diagnostic/route.ts", import.meta.url)),
   "utf8",
@@ -367,6 +377,8 @@ assert.deepEqual(JSON_LAST_CHARACTER_CATEGORIES, [
 ]);
 assert.deepEqual(VALIDATION_RECEIVED_TYPES, [
   "string",
+  "number",
+  "boolean",
   "array",
   "object",
   "null",
@@ -375,10 +387,18 @@ assert.deepEqual(VALIDATION_RECEIVED_TYPES, [
 ]);
 assert.deepEqual(VALIDATION_EXPECTED_TYPES, [
   "string",
+  "number",
+  "boolean",
   "array",
   "object",
   "null",
   "unknown",
+]);
+assert.deepEqual(SCHEMA_FAILURE_CATEGORIES, [
+  "required_field_missing",
+  "type_mismatch",
+  "schema_validation_failed",
+  "malformed_schema_issue",
 ]);
 assert.ok(VALIDATION_ISSUE_CODES.includes("invalid_type"));
 assert.ok(VALIDATION_ISSUE_CODES.includes("unknown"));
@@ -473,6 +493,42 @@ try {
   assert.equal(successRequestEvent?.finishReason, "length");
   assert.equal(successRequestEvent?.completionTokens, 42);
   assert.equal(successRequestEvent?.modelLatencyMs, 321);
+
+  requestStageLogs.length = 0;
+  const scoringSchemaFailureHandler = withGeoRequestLogging(
+    "/api/evaluate-scoring",
+    async () => {
+      markGeoValidationTelemetry({
+        stage: "schema_validation",
+        issueCount: 1,
+        failureClassification: "required_field_missing",
+        fieldPaths: [["dimensions"]],
+        ...analyzeSchemaValidationFailureDetails({
+          code: "invalid_type",
+          received: "undefined",
+          expected: "object",
+          path: ["dimensions"],
+        }),
+      });
+      markGeoRequestOutcome({ source: "fallback", modelStatus: "success" });
+      return Response.json({ ok: true });
+    },
+  );
+  await scoringSchemaFailureHandler(
+    new Request("http://localhost/api/evaluate-scoring", {
+      method: "POST",
+    }) as never,
+  );
+  const scoringSchemaFailureEvent =
+    telemetryEvents("geo_api_request")[0];
+  assert.equal(scoringSchemaFailureEvent?.validationIssueCode, "invalid_type");
+  assert.equal(scoringSchemaFailureEvent?.expectedType, "object");
+  assert.equal(scoringSchemaFailureEvent?.receivedType, "missing");
+  assert.equal(scoringSchemaFailureEvent?.requiredFieldMissing, true);
+  assert.equal(
+    scoringSchemaFailureEvent?.schemaFailureCategory,
+    "required_field_missing",
+  );
 
   requestStageLogs.length = 0;
   const invalidFallbackReason = "PRIVATE_RESPONSE_BODY";
@@ -844,6 +900,77 @@ assert.deepEqual(analyzeSchemaValidationFailure(jsonParseSensitiveSentinel), {
   validationExpectedType: "unknown",
   validationIssueCode: "unknown",
 });
+const missingScoringDimensionsTelemetry =
+  analyzeSchemaValidationFailureDetails({
+    code: "invalid_type",
+    received: "undefined",
+    expected: "object",
+    path: ["dimensions"],
+  });
+assert.deepEqual(missingScoringDimensionsTelemetry, {
+  validationReceivedType: "missing",
+  validationExpectedType: "object",
+  validationIssueCode: "invalid_type",
+  expectedType: "object",
+  receivedType: "missing",
+  requiredFieldMissing: true,
+  schemaFailureCategory: "required_field_missing",
+});
+assert.deepEqual(
+  analyzeSchemaValidationFailureDetails({
+    code: "invalid_type",
+    received: "array",
+    expected: "object",
+    path: ["dimensions"],
+  }),
+  {
+    validationReceivedType: "array",
+    validationExpectedType: "object",
+    validationIssueCode: "invalid_type",
+    expectedType: "object",
+    receivedType: "array",
+    requiredFieldMissing: false,
+    schemaFailureCategory: "type_mismatch",
+  },
+);
+assert.deepEqual(
+  analyzeSchemaValidationFailureDetails({
+    code: "invalid_type",
+    received: "null",
+    expected: "object",
+    path: ["dimensions"],
+  }),
+  {
+    validationReceivedType: "null",
+    validationExpectedType: "object",
+    validationIssueCode: "invalid_type",
+    expectedType: "object",
+    receivedType: "null",
+    requiredFieldMissing: false,
+    schemaFailureCategory: "type_mismatch",
+  },
+);
+const malformedScoringSchemaTelemetry =
+  analyzeSchemaValidationFailureDetails({
+    code: "invalid_type",
+    path: ["dimensions"],
+    actualValue: jsonParseSensitiveSentinel,
+  });
+assert.deepEqual(malformedScoringSchemaTelemetry, {
+  validationReceivedType: "unknown",
+  validationExpectedType: "unknown",
+  validationIssueCode: "invalid_type",
+  expectedType: "unknown",
+  receivedType: "unknown",
+  requiredFieldMissing: false,
+  schemaFailureCategory: "malformed_schema_issue",
+});
+assert.equal(
+  JSON.stringify(malformedScoringSchemaTelemetry).includes(
+    jsonParseSensitiveSentinel,
+  ),
+  false,
+);
 
 const normalizedHash = await createAnalysisHash({
   title: "  测试标题  ",
@@ -2282,6 +2409,35 @@ assert.deepEqual(sanitizedSchemaValidationTelemetry, {
   validationExpectedType: "array",
   validationIssueCode: "invalid_type",
 });
+const sanitizedScoringSchemaValidationTelemetry =
+  sanitizeGeoValidationTelemetry({
+    stage: "schema_validation",
+    issueCount: 1,
+    failureClassification: "required_field_missing",
+    fieldPaths: [["dimensions"]],
+    ...missingScoringDimensionsTelemetry,
+    actualValue: b1SensitiveSentinels[2],
+  });
+assert.deepEqual(sanitizedScoringSchemaValidationTelemetry, {
+  validationStage: "schema_validation",
+  validationIssueCount: 1,
+  validationFailureClassification: "required_field_missing",
+  validationFieldPaths: ["$.dimensions"],
+  validationActionTypes: [],
+  validationReceivedType: "missing",
+  validationExpectedType: "object",
+  validationIssueCode: "invalid_type",
+  expectedType: "object",
+  receivedType: "missing",
+  requiredFieldMissing: true,
+  schemaFailureCategory: "required_field_missing",
+});
+assert.equal(
+  JSON.stringify(sanitizedScoringSchemaValidationTelemetry).includes(
+    b1SensitiveSentinels[2],
+  ),
+  false,
+);
 const invalidSchemaValidationTelemetry = sanitizeGeoValidationTelemetry({
   stage: "schema_validation",
   issueCount: 1,
@@ -2289,6 +2445,11 @@ const invalidSchemaValidationTelemetry = sanitizeGeoValidationTelemetry({
   validationReceivedType: b1SensitiveSentinels[0] as "unknown",
   validationExpectedType: b1SensitiveSentinels[1] as "unknown",
   validationIssueCode: b1SensitiveSentinels[2] as "unknown",
+  receivedType: b1SensitiveSentinels[0] as "unknown",
+  expectedType: b1SensitiveSentinels[1] as "unknown",
+  requiredFieldMissing: b1SensitiveSentinels[3] as unknown as boolean,
+  schemaFailureCategory:
+    b1SensitiveSentinels[4] as "schema_validation_failed",
 });
 assert.equal(
   Object.hasOwn(invalidSchemaValidationTelemetry ?? {}, "validationReceivedType"),
@@ -2302,6 +2463,17 @@ assert.equal(
   Object.hasOwn(invalidSchemaValidationTelemetry ?? {}, "validationIssueCode"),
   false,
 );
+for (const field of [
+  "expectedType",
+  "receivedType",
+  "requiredFieldMissing",
+  "schemaFailureCategory",
+]) {
+  assert.equal(
+    Object.hasOwn(invalidSchemaValidationTelemetry ?? {}, field),
+    false,
+  );
+}
 assert.doesNotThrow(() =>
   markGeoValidationTelemetry({
       stage: "schema_validation",

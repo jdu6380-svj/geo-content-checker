@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { callOpenAICompatibleModel } from "@/lib/ai/openai-compatible";
+import { analyzeSchemaValidationFailureDetails } from "@/lib/ai/json";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
 import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 import {
@@ -129,10 +130,17 @@ async function evaluateWithModel(params: {
   }
   const parsedResult = modelScoringSchema.safeParse(modelJson);
   if (!parsedResult.success) {
+    const schemaFailure = analyzeSchemaValidationFailureDetails(
+      parsedResult.error.issues[0],
+    );
     markGeoValidationTelemetry({
       stage: "schema_validation",
       issueCount: parsedResult.error.issues.length,
+      failureClassification: schemaFailure.requiredFieldMissing
+        ? "required_field_missing"
+        : "schema_validation_failed",
       fieldPaths: parsedResult.error.issues.map((issue) => issue.path),
+      ...schemaFailure,
     });
     throw parsedResult.error;
   }

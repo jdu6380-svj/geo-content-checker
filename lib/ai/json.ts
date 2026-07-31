@@ -54,6 +54,8 @@ export type JsonLastCharacterCategory =
 
 export const VALIDATION_RECEIVED_TYPES = [
   "string",
+  "number",
+  "boolean",
   "array",
   "object",
   "null",
@@ -66,6 +68,8 @@ export type ValidationReceivedType =
 
 export const VALIDATION_EXPECTED_TYPES = [
   "string",
+  "number",
+  "boolean",
   "array",
   "object",
   "null",
@@ -101,6 +105,24 @@ export interface SchemaValidationFailureTelemetry {
   validationReceivedType: ValidationReceivedType;
   validationExpectedType: ValidationExpectedType;
   validationIssueCode: ValidationIssueCode;
+}
+
+export const SCHEMA_FAILURE_CATEGORIES = [
+  "required_field_missing",
+  "type_mismatch",
+  "schema_validation_failed",
+  "malformed_schema_issue",
+] as const;
+
+export type SchemaFailureCategory =
+  (typeof SCHEMA_FAILURE_CATEGORIES)[number];
+
+export interface SchemaValidationFailureDetails
+  extends SchemaValidationFailureTelemetry {
+  expectedType: ValidationExpectedType;
+  receivedType: ValidationReceivedType;
+  requiredFieldMissing: boolean;
+  schemaFailureCategory: SchemaFailureCategory;
 }
 
 export interface JsonParseFailureTelemetry {
@@ -241,6 +263,38 @@ export function analyzeSchemaValidationFailure(
     validationReceivedType,
     validationExpectedType,
     validationIssueCode,
+  };
+}
+
+export function analyzeSchemaValidationFailureDetails(
+  issue: unknown,
+): SchemaValidationFailureDetails {
+  const telemetry = analyzeSchemaValidationFailure(issue);
+  const malformedIssue =
+    !isRecord(issue) ||
+    telemetry.validationIssueCode === "unknown" ||
+    (
+      telemetry.validationIssueCode === "invalid_type" &&
+      telemetry.validationExpectedType === "unknown" &&
+      telemetry.validationReceivedType === "unknown"
+    );
+  const requiredFieldMissing =
+    telemetry.validationIssueCode === "invalid_type" &&
+    telemetry.validationReceivedType === "missing";
+  const schemaFailureCategory: SchemaFailureCategory = malformedIssue
+    ? "malformed_schema_issue"
+    : requiredFieldMissing
+      ? "required_field_missing"
+      : telemetry.validationIssueCode === "invalid_type"
+        ? "type_mismatch"
+        : "schema_validation_failed";
+
+  return {
+    ...telemetry,
+    expectedType: telemetry.validationExpectedType,
+    receivedType: telemetry.validationReceivedType,
+    requiredFieldMissing,
+    schemaFailureCategory,
   };
 }
 

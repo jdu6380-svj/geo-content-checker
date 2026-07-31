@@ -11,6 +11,7 @@ import {
   JSON_ERROR_CATEGORIES,
   JSON_LAST_CHARACTER_CATEGORIES,
   JSON_PARSER_ERROR_NAMES,
+  SCHEMA_FAILURE_CATEGORIES,
   VALIDATION_EXPECTED_TYPES,
   VALIDATION_ISSUE_CODES,
   VALIDATION_RECEIVED_TYPES,
@@ -19,6 +20,7 @@ import {
   type JsonLastCharacterCategory,
   type JsonParseFailureTelemetry,
   type JsonParserErrorName,
+  type SchemaFailureCategory,
   type SchemaValidationFailureTelemetry,
   type ValidationExpectedType,
   type ValidationIssueCode,
@@ -148,6 +150,10 @@ export interface GeoValidationTelemetryInput
   failureClassification?: GeoValidationFailureClassification;
   fieldPaths?: readonly (readonly (string | number)[])[];
   actionTypes?: readonly unknown[];
+  expectedType?: ValidationExpectedType;
+  receivedType?: ValidationReceivedType;
+  requiredFieldMissing?: boolean;
+  schemaFailureCategory?: SchemaFailureCategory;
 }
 
 export interface GeoValidationTelemetry {
@@ -159,6 +165,10 @@ export interface GeoValidationTelemetry {
   validationReceivedType?: ValidationReceivedType;
   validationExpectedType?: ValidationExpectedType;
   validationIssueCode?: ValidationIssueCode;
+  expectedType?: ValidationExpectedType;
+  receivedType?: ValidationReceivedType;
+  requiredFieldMissing?: boolean;
+  schemaFailureCategory?: SchemaFailureCategory;
   responseLength?: number;
   trimmedLength?: number;
   firstCharType?: JsonBoundaryCharacterType;
@@ -212,6 +222,10 @@ interface GeoRequestContext {
   validationReceivedType?: ValidationReceivedType;
   validationExpectedType?: ValidationExpectedType;
   validationIssueCode?: ValidationIssueCode;
+  expectedType?: ValidationExpectedType;
+  receivedType?: ValidationReceivedType;
+  requiredFieldMissing?: boolean;
+  schemaFailureCategory?: SchemaFailureCategory;
   responseLength?: number;
   trimmedLength?: number;
   firstCharType?: JsonBoundaryCharacterType;
@@ -447,6 +461,25 @@ export function sanitizeGeoValidationTelemetry(
     )
       ? (value.validationIssueCode as ValidationIssueCode)
       : undefined;
+    const receivedType = VALIDATION_RECEIVED_TYPES.includes(
+      value.receivedType as ValidationReceivedType,
+    )
+      ? (value.receivedType as ValidationReceivedType)
+      : undefined;
+    const expectedType = VALIDATION_EXPECTED_TYPES.includes(
+      value.expectedType as ValidationExpectedType,
+    )
+      ? (value.expectedType as ValidationExpectedType)
+      : undefined;
+    const requiredFieldMissing =
+      typeof value.requiredFieldMissing === "boolean"
+        ? value.requiredFieldMissing
+        : undefined;
+    const schemaFailureCategory = SCHEMA_FAILURE_CATEGORIES.includes(
+      value.schemaFailureCategory as SchemaFailureCategory,
+    )
+      ? (value.schemaFailureCategory as SchemaFailureCategory)
+      : undefined;
     const hasJsonParseFailureTelemetry =
       value.stage === "json_parse" &&
       validationFailureClassification === "json_parse_failed";
@@ -454,6 +487,20 @@ export function sanitizeGeoValidationTelemetry(
       value.stage === "schema_validation" &&
       (validationFailureClassification === "required_field_missing" ||
         validationFailureClassification === "schema_validation_failed");
+    const hasDetailedSchemaValidationFailureTelemetry =
+      hasSchemaValidationFailureTelemetry &&
+      validationReceivedType !== undefined &&
+      validationExpectedType !== undefined &&
+      validationIssueCode !== undefined &&
+      receivedType === validationReceivedType &&
+      expectedType === validationExpectedType &&
+      requiredFieldMissing !== undefined &&
+      schemaFailureCategory !== undefined &&
+      requiredFieldMissing ===
+        (schemaFailureCategory === "required_field_missing") &&
+      requiredFieldMissing ===
+        (validationFailureClassification === "required_field_missing") &&
+      (!requiredFieldMissing || receivedType === "missing");
 
     return {
       validationStage: value.stage as GeoValidationStage,
@@ -470,6 +517,14 @@ export function sanitizeGeoValidationTelemetry(
       ...(!hasSchemaValidationFailureTelemetry || validationIssueCode === undefined
         ? {}
         : { validationIssueCode }),
+      ...(!hasDetailedSchemaValidationFailureTelemetry
+        ? {}
+        : {
+            expectedType,
+            receivedType,
+            requiredFieldMissing,
+            schemaFailureCategory,
+          }),
       ...(!hasJsonParseFailureTelemetry || responseLength === undefined
         ? {}
         : { responseLength }),
@@ -613,6 +668,18 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
           ...(context.validationIssueCode === undefined
             ? {}
             : { validationIssueCode: context.validationIssueCode }),
+          ...(context.expectedType === undefined
+            ? {}
+            : { expectedType: context.expectedType }),
+          ...(context.receivedType === undefined
+            ? {}
+            : { receivedType: context.receivedType }),
+          ...(context.requiredFieldMissing === undefined
+            ? {}
+            : { requiredFieldMissing: context.requiredFieldMissing }),
+          ...(context.schemaFailureCategory === undefined
+            ? {}
+            : { schemaFailureCategory: context.schemaFailureCategory }),
           ...(context.responseLength === undefined
             ? {}
             : { responseLength: context.responseLength }),
@@ -826,6 +893,18 @@ export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput):
     }
     if (telemetry.validationIssueCode !== undefined) {
       context.validationIssueCode = telemetry.validationIssueCode;
+    }
+    if (telemetry.expectedType !== undefined) {
+      context.expectedType = telemetry.expectedType;
+    }
+    if (telemetry.receivedType !== undefined) {
+      context.receivedType = telemetry.receivedType;
+    }
+    if (telemetry.requiredFieldMissing !== undefined) {
+      context.requiredFieldMissing = telemetry.requiredFieldMissing;
+    }
+    if (telemetry.schemaFailureCategory !== undefined) {
+      context.schemaFailureCategory = telemetry.schemaFailureCategory;
     }
     if (telemetry.responseLength !== undefined) {
       context.responseLength = telemetry.responseLength;
