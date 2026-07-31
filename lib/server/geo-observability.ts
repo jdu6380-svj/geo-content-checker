@@ -131,6 +131,19 @@ export interface GeoProviderResponseParseTelemetryInput {
   responseParseFailureStage: unknown;
 }
 
+export interface DiagnosisSlowRequestTelemetry {
+  providerFirstByteDurationMs?: number;
+  responseBodyReadDurationMs?: number;
+  reasoningDurationMs?: number;
+  completionDurationMs?: number;
+}
+
+export interface DiagnosisSlowRequestTelemetryInput {
+  providerFirstByteDurationMs?: unknown;
+  responseBodyReadDurationMs?: unknown;
+  serverTiming?: unknown;
+}
+
 export const GEO_FALLBACK_REASONS = [
   "model_disabled",
   "model_unavailable",
@@ -270,6 +283,10 @@ interface GeoRequestContext {
   responseCompletedAt?: number;
   abortedAt?: number;
   streamDurationMs?: number;
+  providerFirstByteDurationMs?: number;
+  responseBodyReadDurationMs?: number;
+  reasoningDurationMs?: number;
+  completionDurationMs?: number;
   responseBodyPresent?: boolean;
   responseBodyLength?: number;
   responseContentType?: GeoProviderResponseContentType;
@@ -399,6 +416,73 @@ function normalizeProviderHttpStatus(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 100 && value <= 599
     ? value
     : undefined;
+}
+
+function normalizeDurationMs(value: unknown): number | undefined {
+  return typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= 300_000
+    ? Math.round(value)
+    : undefined;
+}
+
+function serverTimingDurationMs(
+  value: unknown,
+  metricNames: readonly string[],
+): number | undefined {
+  if (typeof value !== "string" || value.length > 2_048) return undefined;
+  for (const metric of value.split(",").slice(0, 20)) {
+    const [rawName, ...parameters] = metric.split(";");
+    const name = rawName?.trim().toLowerCase();
+    if (!name || !metricNames.includes(name)) continue;
+    for (const parameter of parameters) {
+      const match = parameter.trim().match(/^dur\s*=\s*"?(\d+(?:\.\d+)?)"?$/i);
+      if (!match) continue;
+      const durationMs = normalizeDurationMs(Number(match[1]));
+      if (durationMs !== undefined) return durationMs;
+    }
+  }
+  return undefined;
+}
+
+export function sanitizeDiagnosisSlowRequestTelemetry(
+  input: unknown,
+): DiagnosisSlowRequestTelemetry | null {
+  try {
+    if (!isRecord(input)) return null;
+    const providerFirstByteDurationMs = normalizeDurationMs(
+      input.providerFirstByteDurationMs,
+    );
+    const responseBodyReadDurationMs = normalizeDurationMs(
+      input.responseBodyReadDurationMs,
+    );
+    const reasoningDurationMs = serverTimingDurationMs(input.serverTiming, [
+      "reasoning",
+      "reasoning-time",
+      "reasoning_time",
+    ]);
+    const completionDurationMs = serverTimingDurationMs(input.serverTiming, [
+      "completion",
+      "completion-time",
+      "completion_time",
+    ]);
+    const telemetry: DiagnosisSlowRequestTelemetry = {
+      ...(providerFirstByteDurationMs === undefined
+        ? {}
+        : { providerFirstByteDurationMs }),
+      ...(responseBodyReadDurationMs === undefined
+        ? {}
+        : { responseBodyReadDurationMs }),
+      ...(reasoningDurationMs === undefined ? {} : { reasoningDurationMs }),
+      ...(completionDurationMs === undefined
+        ? {}
+        : { completionDurationMs }),
+    };
+    return Object.keys(telemetry).length > 0 ? telemetry : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeProviderResponseContentType(
@@ -608,6 +692,32 @@ export function markScoringProviderResponseParseTelemetry(
     context.responseParseFailureStage = telemetry.responseParseFailureStage;
   } catch {
     // Provider response telemetry must never affect the request path.
+  }
+}
+
+export function markDiagnosisSlowRequestTelemetry(
+  input: DiagnosisSlowRequestTelemetryInput,
+): void {
+  try {
+    const context = requestStorage.getStore();
+    if (context?.route !== "/api/qa-diagnostic") return;
+    const telemetry = sanitizeDiagnosisSlowRequestTelemetry(input);
+    if (!telemetry) return;
+    if (telemetry.providerFirstByteDurationMs !== undefined) {
+      context.providerFirstByteDurationMs =
+        telemetry.providerFirstByteDurationMs;
+    }
+    if (telemetry.responseBodyReadDurationMs !== undefined) {
+      context.responseBodyReadDurationMs = telemetry.responseBodyReadDurationMs;
+    }
+    if (telemetry.reasoningDurationMs !== undefined) {
+      context.reasoningDurationMs = telemetry.reasoningDurationMs;
+    }
+    if (telemetry.completionDurationMs !== undefined) {
+      context.completionDurationMs = telemetry.completionDurationMs;
+    }
+  } catch {
+    // Slow-request telemetry must never affect the request path.
   }
 }
 
@@ -903,6 +1013,18 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.streamDurationMs === undefined
       ? {}
       : { streamDurationMs: context.streamDurationMs }),
+    ...(context.providerFirstByteDurationMs === undefined
+      ? {}
+      : { providerFirstByteDurationMs: context.providerFirstByteDurationMs }),
+    ...(context.responseBodyReadDurationMs === undefined
+      ? {}
+      : { responseBodyReadDurationMs: context.responseBodyReadDurationMs }),
+    ...(context.reasoningDurationMs === undefined
+      ? {}
+      : { reasoningDurationMs: context.reasoningDurationMs }),
+    ...(context.completionDurationMs === undefined
+      ? {}
+      : { completionDurationMs: context.completionDurationMs }),
     ...(context.responseBodyPresent === undefined
       ? {}
       : { responseBodyPresent: context.responseBodyPresent }),

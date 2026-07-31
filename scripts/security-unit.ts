@@ -71,6 +71,7 @@ import {
   GEO_PROVIDER_RESPONSE_PARSE_FAILURE_STAGES,
   GEO_REQUEST_STAGES,
   geoFallbackReasonForModelError,
+  markDiagnosisSlowRequestTelemetry,
   markGeoFallbackTelemetry,
   markGeoParserFailureTelemetry,
   markGeoRequestOutcome,
@@ -81,6 +82,7 @@ import {
   sanitizeGeoProviderRequestId,
   sanitizeGeoProviderResponseParseTelemetry,
   sanitizeGeoValidationTelemetry,
+  sanitizeDiagnosisSlowRequestTelemetry,
   sanitizeModelProviderTelemetry,
   withGeoRequestLogging,
 } from "../lib/server/geo-observability.ts";
@@ -304,6 +306,8 @@ assert.match(
   modelAdapterSource,
   /markScoringProviderResponseParseTelemetry\(\{/,
 );
+assert.match(modelAdapterSource, /markDiagnosisSlowRequestTelemetry\(\{/);
+assert.match(modelAdapterSource, /headers\.get\("server-timing"\)/);
 assert.doesNotMatch(modelAdapterSource, /response\.json\(\)/);
 assert.match(
   modelAdapterSource,
@@ -570,6 +574,7 @@ function assertSafeStageEvents(
 try {
   const diagnosisContentSentinel = "PRIVATE_DIAGNOSIS_CONTENT";
   const diagnosisReasoningSentinel = "PRIVATE_DIAGNOSIS_REASONING";
+  const diagnosisServerTimingSentinel = "PRIVATE_SERVER_TIMING_DESCRIPTION";
   const successHandler = withGeoRequestLogging(
     "/api/qa-diagnostic",
     async () => {
@@ -590,6 +595,12 @@ try {
             reasoning_content: diagnosisReasoningSentinel,
           },
         }],
+      });
+      markDiagnosisSlowRequestTelemetry({
+        providerFirstByteDurationMs: 180.4,
+        responseBodyReadDurationMs: 31_823.6,
+        serverTiming:
+          `reasoning;dur=2638.4;desc="${diagnosisServerTimingSentinel}", completion-time;dur="1205.2"`,
       });
       markGeoRequestOutcome({
         modelStatus: "failed",
@@ -650,6 +661,14 @@ try {
   assert.equal(successRequestEvent?.reasoningRatio, 0.5);
   assert.equal(successRequestEvent?.budgetNearLimit, false);
   assert.equal(successRequestEvent?.modelLatencyMs, 321);
+  assert.equal(successRequestEvent?.providerFirstByteDurationMs, 180);
+  assert.equal(successRequestEvent?.responseBodyReadDurationMs, 31_824);
+  assert.equal(successRequestEvent?.reasoningDurationMs, 2_638);
+  assert.equal(successRequestEvent?.completionDurationMs, 1_205);
+  assert.equal(
+    JSON.stringify(successRequestEvent).includes(diagnosisServerTimingSentinel),
+    false,
+  );
 
   requestStageLogs.length = 0;
   const outputBudgetNearLimitHandler = withGeoRequestLogging(
@@ -723,6 +742,37 @@ try {
     ),
     false,
   );
+
+  requestStageLogs.length = 0;
+  const nonDiagnosisSlowRequestTelemetryHandler = withGeoRequestLogging(
+    "/api/evaluate-scoring",
+    async () => {
+      markDiagnosisSlowRequestTelemetry({
+        providerFirstByteDurationMs: 180,
+        responseBodyReadDurationMs: 31_823,
+        serverTiming: "reasoning;dur=2638, completion;dur=1205",
+      });
+      return Response.json({ ok: true });
+    },
+  );
+  await nonDiagnosisSlowRequestTelemetryHandler(
+    new Request("http://localhost/api/evaluate-scoring", {
+      method: "POST",
+    }) as never,
+  );
+  const nonDiagnosisSlowRequestTelemetryEvent =
+    telemetryEvents("geo_api_request")[0];
+  for (const field of [
+    "providerFirstByteDurationMs",
+    "responseBodyReadDurationMs",
+    "reasoningDurationMs",
+    "completionDurationMs",
+  ]) {
+    assert.equal(
+      Object.hasOwn(nonDiagnosisSlowRequestTelemetryEvent ?? {}, field),
+      false,
+    );
+  }
 
   requestStageLogs.length = 0;
   const scoringSchemaFailureHandler = withGeoRequestLogging(
@@ -2758,6 +2808,38 @@ const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
   evidence: b1SensitiveSentinels[2],
   response: b1SensitiveSentinels[4],
 });
+const diagnosisTimingDescriptionSentinel =
+  "PRIVATE_DIAGNOSIS_TIMING_DESCRIPTION";
+const sanitizedDiagnosisSlowRequestTelemetry =
+  sanitizeDiagnosisSlowRequestTelemetry({
+    providerFirstByteDurationMs: 180.4,
+    responseBodyReadDurationMs: 31_823.6,
+    serverTiming:
+      `cache;desc="${diagnosisTimingDescriptionSentinel}";dur=1, reasoning_time;dur=2638.4;desc="${diagnosisTimingDescriptionSentinel}", completion;dur="1205.2"`,
+    prompt: b1SensitiveSentinels[1],
+    response: b1SensitiveSentinels[4],
+  });
+assert.deepEqual(sanitizedDiagnosisSlowRequestTelemetry, {
+  providerFirstByteDurationMs: 180,
+  responseBodyReadDurationMs: 31_824,
+  reasoningDurationMs: 2_638,
+  completionDurationMs: 1_205,
+});
+assert.equal(
+  JSON.stringify(sanitizedDiagnosisSlowRequestTelemetry).includes(
+    diagnosisTimingDescriptionSentinel,
+  ),
+  false,
+);
+assert.deepEqual(
+  sanitizeDiagnosisSlowRequestTelemetry({
+    providerFirstByteDurationMs: -1,
+    responseBodyReadDurationMs: 300_001,
+    serverTiming:
+      "reasoning;dur=-1, completion;dur=300001, private;dur=12",
+  }),
+  null,
+);
 const invalidJsonErrorCategoryTelemetry = sanitizeGeoValidationTelemetry({
   stage: "json_parse",
   issueCount: 1,

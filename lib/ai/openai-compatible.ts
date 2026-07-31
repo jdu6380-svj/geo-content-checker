@@ -1,5 +1,6 @@
 import {
   classifyGeoProviderResponseReadError,
+  markDiagnosisSlowRequestTelemetry,
   markGeoRequestOutcome,
   markGeoRequestStage,
   markScoringProviderResponseParseTelemetry,
@@ -137,6 +138,10 @@ export async function callOpenAICompatibleModel({
       providerHttpStatus: response.status,
       ...(providerRequestId === undefined ? {} : { providerRequestId }),
     });
+    markDiagnosisSlowRequestTelemetry({
+      providerFirstByteDurationMs: firstByteAt - providerRequestStartAt,
+      serverTiming: response.headers.get("server-timing"),
+    });
     markGeoRequestStage("provider_response_received");
 
     if (!response.ok) {
@@ -169,6 +174,12 @@ export async function callOpenAICompatibleModel({
       const errorCategory = classifyGeoProviderResponseReadError(error);
       if (errorCategory === "provider_timeout") throw error;
       const responseCompletedAt = Date.now();
+      markDiagnosisSlowRequestTelemetry({
+        responseBodyReadDurationMs: Math.max(
+          0,
+          responseCompletedAt - firstByteAt,
+        ),
+      });
       markGeoRequestOutcome({
         modelStatus: "failed",
         modelLatencyMs: modelLatencyMs(),
@@ -184,6 +195,12 @@ export async function callOpenAICompatibleModel({
       });
     }
     const responseCompletedAt = Date.now();
+    markDiagnosisSlowRequestTelemetry({
+      responseBodyReadDurationMs: Math.max(
+        0,
+        responseCompletedAt - firstByteAt,
+      ),
+    });
     markGeoRequestOutcome({
       responseCompletedAt,
       streamDurationMs: Math.max(0, responseCompletedAt - firstByteAt),
@@ -220,6 +237,11 @@ export async function callOpenAICompatibleModel({
     if (error instanceof ModelCallError) throw error;
     if (error instanceof Error && error.name === "AbortError") {
       const abortedAt = Date.now();
+      if (firstByteAt !== undefined) {
+        markDiagnosisSlowRequestTelemetry({
+          responseBodyReadDurationMs: Math.max(0, abortedAt - firstByteAt),
+        });
+      }
       markGeoRequestOutcome({
         modelStatus: "timeout",
         modelLatencyMs: modelLatencyMs(),
