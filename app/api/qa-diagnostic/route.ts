@@ -32,7 +32,7 @@ import {
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
 export const runtime = "nodejs";
-export const maxDuration = 25;
+export const maxDuration = 36;
 
 const RISK_PATTERN = /保证|一定|绝对|全部|所有人|全网最|百分之百|彻底解决|必然|永久/;
 const STOP_PHRASES = ["这篇文章", "文章", "是否", "什么", "哪些", "如何", "为什么", "有没有", "读者"];
@@ -164,14 +164,15 @@ async function handlePost(request: NextRequest): Promise<Response> {
     let parserFallbackReason: GeoFallbackReason = "unexpected_format";
     try {
       markGeoRequestStage("adapter_called");
+      markGeoRequestOutcome({ modelOutputTokenLimit: 3_000 });
       const { content: raw } = await callOpenAICompatibleModel({
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         temperature: 0,
-        timeoutMs: 22_000,
-        maxTokens: 2_200,
+        timeoutMs: 32_000,
+        maxTokens: 3_000,
         rateLimitMode: authorization.mode,
       });
       markGeoRequestStage("parser_started");

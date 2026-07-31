@@ -212,6 +212,7 @@ interface GeoRequestContext {
   promptTokens?: number;
   completionTokens?: number;
   reasoningTokens?: number;
+  modelOutputTokenLimit?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
   validationStage?: GeoValidationStage;
@@ -260,6 +261,35 @@ function normalizeProviderTokenCount(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
     : undefined;
+}
+
+function modelOutputBudgetTelemetry(context: GeoRequestContext): {
+  reasoningRatio?: number;
+  budgetNearLimit?: boolean;
+} {
+  const completionTokens = normalizeProviderTokenCount(context.completionTokens);
+  const reasoningTokens = normalizeProviderTokenCount(context.reasoningTokens);
+  const modelOutputTokenLimit = normalizeProviderTokenCount(
+    context.modelOutputTokenLimit,
+  );
+  const reasoningRatio =
+    completionTokens !== undefined &&
+    completionTokens > 0 &&
+    reasoningTokens !== undefined &&
+    reasoningTokens <= completionTokens
+      ? Number((reasoningTokens / completionTokens).toFixed(4))
+      : undefined;
+  const budgetNearLimit =
+    completionTokens !== undefined &&
+    modelOutputTokenLimit !== undefined &&
+    modelOutputTokenLimit > 0
+      ? completionTokens >= Math.ceil(modelOutputTokenLimit * 0.9)
+      : undefined;
+
+  return {
+    ...(reasoningRatio === undefined ? {} : { reasoningRatio }),
+    ...(budgetNearLimit === undefined ? {} : { budgetNearLimit }),
+  };
 }
 
 function normalizeDiagnosticLength(value: unknown): number | undefined {
@@ -588,6 +618,7 @@ export function sanitizeGeoValidationTelemetry(
 }
 
 function writeRequestLog(context: GeoRequestContext, request: NextRequest, response: Response): void {
+  const outputBudgetTelemetry = modelOutputBudgetTelemetry(context);
   const event = {
     event: "geo_api_request",
     requestId: context.requestId,
@@ -642,6 +673,7 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.reasoningTokens === undefined
       ? {}
       : { reasoningTokens: context.reasoningTokens }),
+    ...outputBudgetTelemetry,
     ...(context.totalTokens === undefined ? {} : { totalTokens: context.totalTokens }),
     ...(context.estimatedCostUsd === undefined
       ? {}
@@ -786,6 +818,7 @@ export function markGeoRequestOutcome(params: {
   promptTokens?: number;
   completionTokens?: number;
   reasoningTokens?: number;
+  modelOutputTokenLimit?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
 }): void {
@@ -836,6 +869,12 @@ export function markGeoRequestOutcome(params: {
   if (params.promptTokens !== undefined) context.promptTokens = params.promptTokens;
   if (params.completionTokens !== undefined) context.completionTokens = params.completionTokens;
   if (params.reasoningTokens !== undefined) context.reasoningTokens = params.reasoningTokens;
+  const modelOutputTokenLimit = normalizeProviderTokenCount(
+    params.modelOutputTokenLimit,
+  );
+  if (modelOutputTokenLimit !== undefined && modelOutputTokenLimit > 0) {
+    context.modelOutputTokenLimit = modelOutputTokenLimit;
+  }
   if (params.totalTokens !== undefined) context.totalTokens = params.totalTokens;
   if (params.estimatedCostUsd !== undefined) context.estimatedCostUsd = params.estimatedCostUsd;
 }

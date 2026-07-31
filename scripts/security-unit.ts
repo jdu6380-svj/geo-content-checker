@@ -196,13 +196,15 @@ assert.ok(
   "qa-diagnostic temperature contract is missing",
 );
 assert.ok(
-  /timeoutMs:\s*22_000/.test(diagnosticRouteSource),
+  /timeoutMs:\s*32_000/.test(diagnosticRouteSource),
   "qa-diagnostic timeout contract is missing",
 );
 assert.ok(
-  /maxTokens:\s*2_200/.test(diagnosticRouteSource),
+  /maxTokens:\s*3_000/.test(diagnosticRouteSource),
   "qa-diagnostic token limit contract is missing",
 );
+assert.match(diagnosticRouteSource, /export const maxDuration = 36/);
+assert.match(diagnosticRouteSource, /modelOutputTokenLimit:\s*3_000/);
 assert.ok(
   /顶层字段必须且只能各出现一次/.test(diagnosticRouteSource),
   "qa-diagnostic strict top-level field contract is missing",
@@ -461,6 +463,8 @@ try {
         modelErrorCategory: "provider_http",
         finishReason: "length",
         completionTokens: 42,
+        reasoningTokens: 21,
+        modelOutputTokenLimit: 3_000,
       });
       return Response.json({ ok: true });
     },
@@ -492,7 +496,38 @@ try {
   assert.equal(successRequestEvent?.modelErrorCategory, "provider_http");
   assert.equal(successRequestEvent?.finishReason, "length");
   assert.equal(successRequestEvent?.completionTokens, 42);
+  assert.equal(successRequestEvent?.reasoningTokens, 21);
+  assert.equal(successRequestEvent?.reasoningRatio, 0.5);
+  assert.equal(successRequestEvent?.budgetNearLimit, false);
   assert.equal(successRequestEvent?.modelLatencyMs, 321);
+
+  requestStageLogs.length = 0;
+  const outputBudgetNearLimitHandler = withGeoRequestLogging(
+    "/api/qa-diagnostic",
+    async () => {
+      markGeoRequestOutcome({
+        modelStatus: "invalid-output",
+        completionTokens: 3_000,
+        reasoningTokens: 3_000,
+        modelOutputTokenLimit: 3_000,
+      });
+      return Response.json({ ok: true });
+    },
+  );
+  await outputBudgetNearLimitHandler(
+    new Request("http://localhost/api/qa-diagnostic", {
+      method: "POST",
+    }) as never,
+  );
+  const outputBudgetNearLimitEvent = telemetryEvents("geo_api_request")[0];
+  assert.equal(outputBudgetNearLimitEvent?.completionTokens, 3_000);
+  assert.equal(outputBudgetNearLimitEvent?.reasoningTokens, 3_000);
+  assert.equal(outputBudgetNearLimitEvent?.reasoningRatio, 1);
+  assert.equal(outputBudgetNearLimitEvent?.budgetNearLimit, true);
+  assert.equal(
+    Object.hasOwn(outputBudgetNearLimitEvent ?? {}, "modelOutputTokenLimit"),
+    false,
+  );
 
   requestStageLogs.length = 0;
   const scoringSchemaFailureHandler = withGeoRequestLogging(
