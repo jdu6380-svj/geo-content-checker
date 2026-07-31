@@ -23,7 +23,7 @@ import {
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
 export const runtime = "nodejs";
-export const maxDuration = 15;
+export const maxDuration = 36;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(value)));
@@ -113,7 +113,7 @@ async function evaluateWithModel(params: {
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
-    timeoutMs: 15_000,
+    timeoutMs: 32_000,
     maxTokens: 1_200,
     rateLimitMode: params.rateLimitMode,
   });
