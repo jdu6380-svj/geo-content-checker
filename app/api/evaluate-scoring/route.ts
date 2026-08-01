@@ -115,6 +115,7 @@ async function evaluateWithModel(params: {
     ],
     timeoutMs: 32_000,
     maxTokens: 2_400,
+    reasoningEffort: "low",
     rateLimitMode: params.rateLimitMode,
   });
   let modelJson: unknown;

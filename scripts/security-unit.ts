@@ -185,6 +185,7 @@ assert.doesNotMatch(scoringRouteSource, /timeoutMs:\s*15_000/);
 assert.match(scoringRouteSource, /export const maxDuration = 36/);
 assert.match(scoringRouteSource, /maxTokens:\s*2_400/);
 assert.doesNotMatch(scoringRouteSource, /maxTokens:\s*1_200/);
+assert.match(scoringRouteSource, /reasoningEffort:\s*"low"/);
 const predictQuestionsRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/predict-questions/route.ts", import.meta.url)),
   "utf8",
