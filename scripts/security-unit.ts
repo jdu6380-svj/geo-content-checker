@@ -280,6 +280,10 @@ assert.match(
 assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 3_600/);
 assert.match(
   patchesRouteSource,
+  /reasoningEffort:\s*mode === "content_draft" \? "low" : undefined/,
+);
+assert.match(
+  patchesRouteSource,
   /failureClassification:\s*finishReason === "length"\s*\?\s*"token_cap_truncation"/,
 );
 assert.match(
