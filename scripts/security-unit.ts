@@ -193,6 +193,7 @@ assert.match(predictQuestionsRouteSource, /timeoutMs:\s*32_000/);
 assert.doesNotMatch(predictQuestionsRouteSource, /timeoutMs:\s*10_000/);
 assert.match(predictQuestionsRouteSource, /export const maxDuration = 36/);
 assert.match(predictQuestionsRouteSource, /maxTokens:\s*1_600/);
+assert.match(predictQuestionsRouteSource, /reasoningEffort:\s*"low"/);
 assert.match(
   scoringRouteSource,
   /analyzeSchemaValidationFailureDetails\(\s*parsedResult\.error\.issues\[0\]/,
