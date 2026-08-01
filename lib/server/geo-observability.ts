@@ -207,6 +207,10 @@ export const GEO_VALIDATION_FAILURE_CLASSIFICATIONS = [
 export type GeoValidationFailureClassification =
   (typeof GEO_VALIDATION_FAILURE_CLASSIFICATIONS)[number];
 
+export const GEO_EVIDENCE_STATUSES = ["valid", "missing", "invalid"] as const;
+
+export type GeoEvidenceStatus = (typeof GEO_EVIDENCE_STATUSES)[number];
+
 const GEO_VALIDATION_ACTION_TYPES = [
   "author_evidence",
   "structure_change",
@@ -231,6 +235,11 @@ export interface GeoValidationTelemetryInput
   receivedType?: ValidationReceivedType;
   requiredFieldMissing?: boolean;
   schemaFailureCategory?: SchemaFailureCategory;
+  evidenceStatus?: GeoEvidenceStatus;
+  evidenceCount?: number;
+  paragraphIdMatchCount?: number;
+  validEvidenceCount?: number;
+  invalidEvidenceCount?: number;
 }
 
 export interface GeoValidationTelemetry {
@@ -246,6 +255,11 @@ export interface GeoValidationTelemetry {
   receivedType?: ValidationReceivedType;
   requiredFieldMissing?: boolean;
   schemaFailureCategory?: SchemaFailureCategory;
+  evidenceStatus?: GeoEvidenceStatus;
+  evidenceCount?: number;
+  paragraphIdMatchCount?: number;
+  validEvidenceCount?: number;
+  invalidEvidenceCount?: number;
   responseLength?: number;
   trimmedLength?: number;
   firstCharType?: JsonBoundaryCharacterType;
@@ -319,6 +333,11 @@ interface GeoRequestContext {
   receivedType?: ValidationReceivedType;
   requiredFieldMissing?: boolean;
   schemaFailureCategory?: SchemaFailureCategory;
+  evidenceStatus?: GeoEvidenceStatus;
+  evidenceCount?: number;
+  paragraphIdMatchCount?: number;
+  validEvidenceCount?: number;
+  invalidEvidenceCount?: number;
   responseLength?: number;
   trimmedLength?: number;
   firstCharType?: JsonBoundaryCharacterType;
@@ -753,7 +772,7 @@ export function sanitizeGeoValidationTelemetry(
       !GEO_VALIDATION_STAGES.includes(value.stage as GeoValidationStage) ||
       typeof value.issueCount !== "number" ||
       !Number.isSafeInteger(value.issueCount) ||
-      value.issueCount < 1
+      value.issueCount < (value.stage === "evidence_validation" ? 0 : 1)
     ) {
       return null;
     }
@@ -860,6 +879,15 @@ export function sanitizeGeoValidationTelemetry(
     )
       ? (value.schemaFailureCategory as SchemaFailureCategory)
       : undefined;
+    const evidenceStatus = GEO_EVIDENCE_STATUSES.includes(
+      value.evidenceStatus as GeoEvidenceStatus,
+    )
+      ? (value.evidenceStatus as GeoEvidenceStatus)
+      : undefined;
+    const evidenceCount = normalizeDiagnosticLength(value.evidenceCount);
+    const paragraphIdMatchCount = normalizeDiagnosticLength(value.paragraphIdMatchCount);
+    const validEvidenceCount = normalizeDiagnosticLength(value.validEvidenceCount);
+    const invalidEvidenceCount = normalizeDiagnosticLength(value.invalidEvidenceCount);
     const hasJsonParseFailureTelemetry =
       value.stage === "json_parse" &&
       validationFailureClassification === "json_parse_failed";
@@ -881,6 +909,23 @@ export function sanitizeGeoValidationTelemetry(
       requiredFieldMissing ===
         (validationFailureClassification === "required_field_missing") &&
       (!requiredFieldMissing || receivedType === "missing");
+    const hasEvidenceValidationTelemetry =
+      value.stage === "evidence_validation" &&
+      evidenceStatus !== undefined &&
+      evidenceCount !== undefined &&
+      paragraphIdMatchCount !== undefined &&
+      validEvidenceCount !== undefined &&
+      invalidEvidenceCount !== undefined &&
+      paragraphIdMatchCount <= evidenceCount &&
+      validEvidenceCount <= paragraphIdMatchCount &&
+      invalidEvidenceCount === evidenceCount - validEvidenceCount &&
+      evidenceStatus === (
+        invalidEvidenceCount > 0
+          ? "invalid"
+          : validEvidenceCount > 0
+            ? "valid"
+            : "missing"
+      );
 
     return {
       validationStage: value.stage as GeoValidationStage,
@@ -888,6 +933,15 @@ export function sanitizeGeoValidationTelemetry(
       validationFailureClassification,
       validationFieldPaths,
       validationActionTypes,
+      ...(!hasEvidenceValidationTelemetry
+        ? {}
+        : {
+            evidenceStatus,
+            evidenceCount,
+            paragraphIdMatchCount,
+            validEvidenceCount,
+            invalidEvidenceCount,
+          }),
       ...(!hasSchemaValidationFailureTelemetry || validationReceivedType === undefined
         ? {}
         : { validationReceivedType }),
@@ -1085,6 +1139,21 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
               }),
           validationFieldPaths: context.validationFieldPaths,
           validationActionTypes: context.validationActionTypes,
+          ...(context.evidenceStatus === undefined
+            ? {}
+            : { evidenceStatus: context.evidenceStatus }),
+          ...(context.evidenceCount === undefined
+            ? {}
+            : { evidenceCount: context.evidenceCount }),
+          ...(context.paragraphIdMatchCount === undefined
+            ? {}
+            : { paragraphIdMatchCount: context.paragraphIdMatchCount }),
+          ...(context.validEvidenceCount === undefined
+            ? {}
+            : { validEvidenceCount: context.validEvidenceCount }),
+          ...(context.invalidEvidenceCount === undefined
+            ? {}
+            : { invalidEvidenceCount: context.invalidEvidenceCount }),
           ...(context.validationReceivedType === undefined
             ? {}
             : { validationReceivedType: context.validationReceivedType }),
@@ -1364,6 +1433,21 @@ export function markGeoValidationTelemetry(params: GeoValidationTelemetryInput):
     }
     if (telemetry.schemaFailureCategory !== undefined) {
       context.schemaFailureCategory = telemetry.schemaFailureCategory;
+    }
+    if (telemetry.evidenceStatus !== undefined) {
+      context.evidenceStatus = telemetry.evidenceStatus;
+    }
+    if (telemetry.evidenceCount !== undefined) {
+      context.evidenceCount = telemetry.evidenceCount;
+    }
+    if (telemetry.paragraphIdMatchCount !== undefined) {
+      context.paragraphIdMatchCount = telemetry.paragraphIdMatchCount;
+    }
+    if (telemetry.validEvidenceCount !== undefined) {
+      context.validEvidenceCount = telemetry.validEvidenceCount;
+    }
+    if (telemetry.invalidEvidenceCount !== undefined) {
+      context.invalidEvidenceCount = telemetry.invalidEvidenceCount;
     }
     if (telemetry.responseLength !== undefined) {
       context.responseLength = telemetry.responseLength;

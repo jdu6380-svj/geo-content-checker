@@ -48,7 +48,10 @@ import {
 } from "../lib/constants/analysis-contract.ts";
 import { buildContentDraftEvidenceCandidates } from "../lib/geo/content-draft-evidence-candidates.ts";
 import { anchorContentActionQuotes } from "../lib/geo/content-draft-quote-anchor.ts";
-import { validateDiagnosticEvidence } from "../lib/geo/evidence.ts";
+import {
+  validateDiagnosticEvidence,
+  validateDiagnosticEvidenceWithTelemetry,
+} from "../lib/geo/evidence.ts";
 import { MAX_ARTICLE_CHARACTERS } from "../lib/constants/input-limits.ts";
 import { formatPatchMarkdown } from "../lib/markdown/patch-markdown.ts";
 import { betaEventSchema } from "../lib/schemas/beta-event.ts";
@@ -264,10 +267,33 @@ assert.ok(
   "qa-diagnostic fallback marker is missing",
 );
 assert.ok(
-  diagnosticRouteSource.indexOf("validateDiagnosticEvidence({ ...parsed") <
+  diagnosticRouteSource.indexOf("validateDiagnosticEvidenceWithTelemetry(") <
     diagnosticRouteSource.indexOf('markGeoRequestStage("parser_completed")'),
   "qa-diagnostic parser completion must follow response validation",
 );
+assert.match(
+  diagnosticRouteSource,
+  /validateDiagnosticEvidenceWithTelemetry\(/,
+  "qa-diagnostic evidence telemetry helper is missing",
+);
+assert.match(
+  diagnosticRouteSource,
+  /stage:\s*"evidence_validation"/,
+  "qa-diagnostic evidence validation telemetry stage is missing",
+);
+for (const field of [
+  "evidenceStatus",
+  "evidenceCount",
+  "paragraphIdMatchCount",
+  "validEvidenceCount",
+  "invalidEvidenceCount",
+] as const) {
+  assert.match(
+    `${diagnosticRouteSource}\n${geoObservabilitySource}`,
+    new RegExp(`\\b${field}\\b`),
+    `qa-diagnostic evidence telemetry field is missing: ${field}`,
+  );
+}
 assert.ok(
   /createSentryErrorContext\(/.test(globalErrorSource),
   "global Sentry capture must use the safe context builder",
@@ -1433,6 +1459,23 @@ const validDiagnostic = validateDiagnosticEvidence({
 assert.equal(validDiagnostic.evidenceStatus, "valid");
 assert.equal(validDiagnostic.answerability, "可以完全回答");
 assert.equal(validDiagnostic.evidence.length, 1);
+const validDiagnosticWithTelemetry = validateDiagnosticEvidenceWithTelemetry({
+  question: "文章提供了哪些事实依据？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [{ paragraphId: "Para-1", quote: "可以逐字验证的事实依据" }],
+  missingInfo: [],
+  recommendation: "保留当前事实依据。",
+  source: "model",
+}, evidenceParagraphs);
+assert.deepEqual(validDiagnosticWithTelemetry.result, validDiagnostic);
+assert.deepEqual(validDiagnosticWithTelemetry.telemetry, {
+  evidenceStatus: "valid",
+  evidenceCount: 1,
+  paragraphIdMatchCount: 1,
+  validEvidenceCount: 1,
+  invalidEvidenceCount: 0,
+});
 
 const missingDiagnostic = validateDiagnosticEvidence({
   question: "文章是否提供来源？",
@@ -1447,6 +1490,23 @@ assert.equal(missingDiagnostic.evidenceStatus, "missing");
 assert.equal(missingDiagnostic.answerability, "信息不足");
 assert.equal(missingDiagnostic.riskLevel, "medium");
 assert.equal(missingDiagnostic.source, "fallback");
+const missingDiagnosticWithTelemetry = validateDiagnosticEvidenceWithTelemetry({
+  question: "文章是否提供来源？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [],
+  missingInfo: [],
+  recommendation: "保留当前内容。",
+  source: "fallback",
+}, evidenceParagraphs);
+assert.deepEqual(missingDiagnosticWithTelemetry.result, missingDiagnostic);
+assert.deepEqual(missingDiagnosticWithTelemetry.telemetry, {
+  evidenceStatus: "missing",
+  evidenceCount: 0,
+  paragraphIdMatchCount: 0,
+  validEvidenceCount: 0,
+  invalidEvidenceCount: 0,
+});
 
 const invalidDiagnostic = validateDiagnosticEvidence({
   question: "文章是否说明限制？",
@@ -1460,6 +1520,23 @@ const invalidDiagnostic = validateDiagnosticEvidence({
 assert.equal(invalidDiagnostic.evidenceStatus, "invalid");
 assert.equal(invalidDiagnostic.answerability, "信息不足");
 assert.equal(invalidDiagnostic.evidence.length, 0);
+const invalidDiagnosticWithTelemetry = validateDiagnosticEvidenceWithTelemetry({
+  question: "文章是否说明限制？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [{ paragraphId: "Para-9", quote: "不存在的引用" }],
+  missingInfo: [],
+  recommendation: "保留当前内容。",
+  source: "model",
+}, evidenceParagraphs);
+assert.deepEqual(invalidDiagnosticWithTelemetry.result, invalidDiagnostic);
+assert.deepEqual(invalidDiagnosticWithTelemetry.telemetry, {
+  evidenceStatus: "invalid",
+  evidenceCount: 1,
+  paragraphIdMatchCount: 0,
+  validEvidenceCount: 0,
+  invalidEvidenceCount: 1,
+});
 
 const partiallyInvalidDiagnostic = validateDiagnosticEvidence({
   question: "文章说明了什么？",
@@ -1478,6 +1555,26 @@ assert.equal(partiallyInvalidDiagnostic.answerability, "信息不足");
 assert.deepEqual(partiallyInvalidDiagnostic.evidence, [
   { paragraphId: "Para-2", quote: "适用范围和限制条件" },
 ]);
+const partiallyInvalidDiagnosticWithTelemetry = validateDiagnosticEvidenceWithTelemetry({
+  question: "文章说明了什么？",
+  answerability: "可以完全回答",
+  riskLevel: "low",
+  evidence: [
+    { paragraphId: "Para-2", quote: "适用范围和限制条件" },
+    { paragraphId: "Para-2", quote: "被改写过的非连续引用" },
+  ],
+  missingInfo: [],
+  recommendation: "保留当前内容。",
+  source: "model",
+}, evidenceParagraphs);
+assert.deepEqual(partiallyInvalidDiagnosticWithTelemetry.result, partiallyInvalidDiagnostic);
+assert.deepEqual(partiallyInvalidDiagnosticWithTelemetry.telemetry, {
+  evidenceStatus: "invalid",
+  evidenceCount: 2,
+  paragraphIdMatchCount: 2,
+  validEvidenceCount: 1,
+  invalidEvidenceCount: 1,
+});
 
 const diagnosticQuestion = "文章说明了哪些适用范围和限制条件？";
 assert.deepEqual(
@@ -2912,6 +3009,83 @@ const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
   evidence: b1SensitiveSentinels[2],
   response: b1SensitiveSentinels[4],
 });
+const sanitizedValidEvidenceTelemetry = sanitizeGeoValidationTelemetry({
+  stage: "evidence_validation",
+  issueCount: 1,
+  evidenceStatus: "valid",
+  evidenceCount: 1,
+  paragraphIdMatchCount: 1,
+  validEvidenceCount: 1,
+  invalidEvidenceCount: 0,
+  quote: b1SensitiveSentinels[2],
+  article: b1SensitiveSentinels[0],
+});
+assert.deepEqual(sanitizedValidEvidenceTelemetry, {
+  validationStage: "evidence_validation",
+  validationIssueCount: 1,
+  validationFailureClassification: null,
+  validationFieldPaths: [],
+  validationActionTypes: [],
+  evidenceStatus: "valid",
+  evidenceCount: 1,
+  paragraphIdMatchCount: 1,
+  validEvidenceCount: 1,
+  invalidEvidenceCount: 0,
+});
+const sanitizedMissingEvidenceTelemetry = sanitizeGeoValidationTelemetry({
+  stage: "evidence_validation",
+  issueCount: 0,
+  evidenceStatus: "missing",
+  evidenceCount: 0,
+  paragraphIdMatchCount: 0,
+  validEvidenceCount: 0,
+  invalidEvidenceCount: 0,
+});
+assert.deepEqual(sanitizedMissingEvidenceTelemetry, {
+  validationStage: "evidence_validation",
+  validationIssueCount: 0,
+  validationFailureClassification: null,
+  validationFieldPaths: [],
+  validationActionTypes: [],
+  evidenceStatus: "missing",
+  evidenceCount: 0,
+  paragraphIdMatchCount: 0,
+  validEvidenceCount: 0,
+  invalidEvidenceCount: 0,
+});
+const sanitizedInvalidEvidenceTelemetry = sanitizeGeoValidationTelemetry({
+  stage: "evidence_validation",
+  issueCount: 1,
+  failureClassification: "quote_mismatch",
+  evidenceStatus: "invalid",
+  evidenceCount: 2,
+  paragraphIdMatchCount: 1,
+  validEvidenceCount: 1,
+  invalidEvidenceCount: 1,
+  response: b1SensitiveSentinels[4],
+});
+assert.deepEqual(sanitizedInvalidEvidenceTelemetry, {
+  validationStage: "evidence_validation",
+  validationIssueCount: 1,
+  validationFailureClassification: "quote_mismatch",
+  validationFieldPaths: [],
+  validationActionTypes: [],
+  evidenceStatus: "invalid",
+  evidenceCount: 2,
+  paragraphIdMatchCount: 1,
+  validEvidenceCount: 1,
+  invalidEvidenceCount: 1,
+});
+for (const telemetry of [
+  sanitizedValidEvidenceTelemetry,
+  sanitizedMissingEvidenceTelemetry,
+  sanitizedInvalidEvidenceTelemetry,
+]) {
+  const serialized = JSON.stringify(telemetry);
+  for (const sentinel of b1SensitiveSentinels) {
+    assert.doesNotMatch(serialized, new RegExp(sentinel));
+  }
+}
 const diagnosisTimingDescriptionSentinel =
   "PRIVATE_DIAGNOSIS_TIMING_DESCRIPTION";
 const sanitizedDiagnosisSlowRequestTelemetry =

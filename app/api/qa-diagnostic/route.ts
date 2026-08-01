@@ -7,7 +7,10 @@ import {
 } from "@/lib/ai/json";
 import { callOpenAICompatibleModel, ModelCallError } from "@/lib/ai/openai-compatible";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
-import { validateDiagnosticEvidence } from "@/lib/geo/evidence";
+import {
+  validateDiagnosticEvidence,
+  validateDiagnosticEvidenceWithTelemetry,
+} from "@/lib/geo/evidence";
 import {
   modelDiagnosticSchema,
   qaDiagnosticRequestSchema,
@@ -211,10 +214,20 @@ async function handlePost(request: NextRequest): Promise<Response> {
       }
       const parsed = parsedResult.data;
       parserFallbackReason = "unexpected_format";
-      const result = validateDiagnosticEvidence({ ...parsed, question, source: "model" }, paragraphs);
+      const validated = validateDiagnosticEvidenceWithTelemetry(
+        { ...parsed, question, source: "model" },
+        paragraphs,
+      );
+      markGeoValidationTelemetry({
+        stage: "evidence_validation",
+        issueCount: Math.max(1, validated.telemetry.invalidEvidenceCount),
+        failureClassification:
+          validated.telemetry.invalidEvidenceCount > 0 ? "quote_mismatch" : undefined,
+        ...validated.telemetry,
+      });
       markGeoRequestStage("parser_completed");
       markGeoRequestOutcome({ source: "model" });
-      return NextResponse.json(result, { headers });
+      return NextResponse.json(validated.result, { headers });
     } catch (error) {
       if (error instanceof ModelCallError && error.status === 429) {
         return NextResponse.json(
