@@ -235,6 +235,12 @@ assert.ok(
   "qa-diagnostic strict top-level field contract is missing",
 );
 assert.ok(
+  /输出必须直接从 \{ 开始并以 \} 结束；只能返回一个完整 JSON object；禁止 Markdown fence、任何解释文本、前后缀文本或 wrapper；JSON 字符串中的双引号、反斜杠和换行必须按 JSON escape 规则编码；禁止未转义的控制字符/.test(
+    diagnosticRouteSource,
+  ),
+  "qa-diagnostic JSON boundary contract is missing",
+);
+assert.ok(
   /question、recommendation、answerability/.test(diagnosticRouteSource),
   "qa-diagnostic required field contract is missing",
 );
