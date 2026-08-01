@@ -290,7 +290,10 @@ assert.match(
   patchesRouteSource,
   /timeoutMs:\s*mode === "advice" \? 45_000 : CONTENT_DRAFT_TIMEOUT_MS/,
 );
-assert.match(patchesRouteSource, /maxTokens:\s*mode === "advice" \? 3_600/);
+assert.match(
+  patchesRouteSource,
+  /maxTokens:\s*mode === "advice" \? 3_600 : CONTENT_DRAFT_MAX_TOKENS/,
+);
 assert.match(
   patchesRouteSource,
   /reasoningEffort:\s*mode === "advice" \|\| mode === "content_draft" \? "low" : undefined/,
@@ -1567,7 +1570,7 @@ assert.equal(
   contentDraftPrompts.system.includes("不得自行从 paragraphs 提取、总结、改写或压缩引用"),
   true,
 );
-assert.equal(CONTENT_DRAFT_MAX_TOKENS, 2_600);
+assert.equal(CONTENT_DRAFT_MAX_TOKENS, 3_600);
 
 const contentDraftEvidenceCandidates = buildContentDraftEvidenceCandidates(
   [
