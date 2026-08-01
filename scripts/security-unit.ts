@@ -206,14 +206,14 @@ assert.ok(
   "qa-diagnostic temperature contract is missing",
 );
 assert.ok(
-  /timeoutMs:\s*32_000/.test(diagnosticRouteSource),
+  /timeoutMs:\s*45_000/.test(diagnosticRouteSource),
   "qa-diagnostic timeout contract is missing",
 );
 assert.ok(
   /maxTokens:\s*4_000/.test(diagnosticRouteSource),
   "qa-diagnostic token limit contract is missing",
 );
-assert.match(diagnosticRouteSource, /export const maxDuration = 36/);
+assert.match(diagnosticRouteSource, /export const maxDuration = 50/);
 assert.match(diagnosticRouteSource, /modelOutputTokenLimit:\s*4_000/);
 assert.ok(
   /顶层字段必须且只能各出现一次/.test(diagnosticRouteSource),
