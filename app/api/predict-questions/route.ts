@@ -25,7 +25,7 @@ import {
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
 export const runtime = "nodejs";
-export const maxDuration = 15;
+export const maxDuration = 36;
 
 function fallbackQuestions(title: string): PredictQuestionsResponse {
   return {
@@ -79,7 +79,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        timeoutMs: 10_000,
+        timeoutMs: 32_000,
         maxTokens: 1_600,
         rateLimitMode: authorization.mode,
       });
