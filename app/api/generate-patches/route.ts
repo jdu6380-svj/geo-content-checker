@@ -320,7 +320,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
         temperature: 0,
         timeoutMs: mode === "advice" ? 45_000 : CONTENT_DRAFT_TIMEOUT_MS,
         maxTokens: mode === "advice" ? 3_600 : CONTENT_DRAFT_MAX_TOKENS,
-        reasoningEffort: mode === "content_draft" ? "low" : undefined,
+        reasoningEffort:
+          mode === "advice" || mode === "content_draft" ? "low" : undefined,
         rateLimitMode: authorization.mode,
       });
       let json: unknown;
