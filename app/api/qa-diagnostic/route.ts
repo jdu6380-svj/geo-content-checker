@@ -24,6 +24,7 @@ import {
 } from "@/lib/server/analysis-operation";
 import {
   geoFallbackReasonForModelError,
+  markGeoEvidenceValidationTelemetry,
   markGeoFallbackTelemetry,
   markGeoParserFailureTelemetry,
   markGeoRequestOutcome,
@@ -218,13 +219,14 @@ async function handlePost(request: NextRequest): Promise<Response> {
         { ...parsed, question, source: "model" },
         paragraphs,
       );
-      markGeoValidationTelemetry({
-        stage: "evidence_validation",
-        issueCount: Math.max(1, validated.telemetry.invalidEvidenceCount),
-        failureClassification:
-          validated.telemetry.invalidEvidenceCount > 0 ? "quote_mismatch" : undefined,
-        ...validated.telemetry,
-      });
+      markGeoEvidenceValidationTelemetry(validated.telemetry);
+      if (validated.telemetry.invalidEvidenceCount > 0) {
+        markGeoValidationTelemetry({
+          stage: "evidence_validation",
+          issueCount: validated.telemetry.invalidEvidenceCount,
+          failureClassification: "quote_mismatch",
+        });
+      }
       markGeoRequestStage("parser_completed");
       markGeoRequestOutcome({ source: "model" });
       return NextResponse.json(validated.result, { headers });

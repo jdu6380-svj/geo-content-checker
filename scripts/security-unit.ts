@@ -75,6 +75,7 @@ import {
   GEO_REQUEST_STAGES,
   geoFallbackReasonForModelError,
   markDiagnosisSlowRequestTelemetry,
+  markGeoEvidenceValidationTelemetry,
   markGeoFallbackTelemetry,
   markGeoParserFailureTelemetry,
   markGeoRequestOutcome,
@@ -84,6 +85,7 @@ import {
   normalizeGeoModelFinishReason,
   sanitizeGeoProviderRequestId,
   sanitizeGeoProviderResponseParseTelemetry,
+  sanitizeGeoEvidenceValidationTelemetry,
   sanitizeGeoValidationTelemetry,
   sanitizeDiagnosisSlowRequestTelemetry,
   sanitizeModelProviderTelemetry,
@@ -278,8 +280,8 @@ assert.match(
 );
 assert.match(
   diagnosticRouteSource,
-  /stage:\s*"evidence_validation"/,
-  "qa-diagnostic evidence validation telemetry stage is missing",
+  /markGeoEvidenceValidationTelemetry\(validated\.telemetry\)/,
+  "qa-diagnostic evidence validation telemetry marker is missing",
 );
 for (const field of [
   "evidenceStatus",
@@ -660,6 +662,13 @@ try {
         serverTiming:
           `reasoning;dur=2638.4;desc="${diagnosisServerTimingSentinel}", completion-time;dur="1205.2"`,
       });
+      markGeoEvidenceValidationTelemetry({
+        evidenceStatus: "valid",
+        evidenceCount: 2,
+        paragraphIdMatchCount: 2,
+        validEvidenceCount: 2,
+        invalidEvidenceCount: 0,
+      });
       markGeoRequestOutcome({
         modelStatus: "failed",
         modelLatencyMs: 321,
@@ -723,6 +732,11 @@ try {
   assert.equal(successRequestEvent?.responseBodyReadDurationMs, 31_824);
   assert.equal(successRequestEvent?.reasoningDurationMs, 2_638);
   assert.equal(successRequestEvent?.completionDurationMs, 1_205);
+  assert.equal(successRequestEvent?.evidenceStatus, "valid");
+  assert.equal(successRequestEvent?.evidenceCount, 2);
+  assert.equal(successRequestEvent?.paragraphIdMatchCount, 2);
+  assert.equal(successRequestEvent?.validEvidenceCount, 2);
+  assert.equal(successRequestEvent?.invalidEvidenceCount, 0);
   assert.equal(
     JSON.stringify(successRequestEvent).includes(diagnosisServerTimingSentinel),
     false,
@@ -810,6 +824,13 @@ try {
         responseBodyReadDurationMs: 31_823,
         serverTiming: "reasoning;dur=2638, completion;dur=1205",
       });
+      markGeoEvidenceValidationTelemetry({
+        evidenceStatus: "valid",
+        evidenceCount: 1,
+        paragraphIdMatchCount: 1,
+        validEvidenceCount: 1,
+        invalidEvidenceCount: 0,
+      });
       return Response.json({ ok: true });
     },
   );
@@ -825,6 +846,11 @@ try {
     "responseBodyReadDurationMs",
     "reasoningDurationMs",
     "completionDurationMs",
+    "evidenceStatus",
+    "evidenceCount",
+    "paragraphIdMatchCount",
+    "validEvidenceCount",
+    "invalidEvidenceCount",
   ]) {
     assert.equal(
       Object.hasOwn(nonDiagnosisSlowRequestTelemetryEvent ?? {}, field),
@@ -3009,9 +3035,7 @@ const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
   evidence: b1SensitiveSentinels[2],
   response: b1SensitiveSentinels[4],
 });
-const sanitizedValidEvidenceTelemetry = sanitizeGeoValidationTelemetry({
-  stage: "evidence_validation",
-  issueCount: 1,
+const sanitizedValidEvidenceTelemetry = sanitizeGeoEvidenceValidationTelemetry({
   evidenceStatus: "valid",
   evidenceCount: 1,
   paragraphIdMatchCount: 1,
@@ -3021,20 +3045,13 @@ const sanitizedValidEvidenceTelemetry = sanitizeGeoValidationTelemetry({
   article: b1SensitiveSentinels[0],
 });
 assert.deepEqual(sanitizedValidEvidenceTelemetry, {
-  validationStage: "evidence_validation",
-  validationIssueCount: 1,
-  validationFailureClassification: null,
-  validationFieldPaths: [],
-  validationActionTypes: [],
   evidenceStatus: "valid",
   evidenceCount: 1,
   paragraphIdMatchCount: 1,
   validEvidenceCount: 1,
   invalidEvidenceCount: 0,
 });
-const sanitizedMissingEvidenceTelemetry = sanitizeGeoValidationTelemetry({
-  stage: "evidence_validation",
-  issueCount: 0,
+const sanitizedMissingEvidenceTelemetry = sanitizeGeoEvidenceValidationTelemetry({
   evidenceStatus: "missing",
   evidenceCount: 0,
   paragraphIdMatchCount: 0,
@@ -3042,21 +3059,13 @@ const sanitizedMissingEvidenceTelemetry = sanitizeGeoValidationTelemetry({
   invalidEvidenceCount: 0,
 });
 assert.deepEqual(sanitizedMissingEvidenceTelemetry, {
-  validationStage: "evidence_validation",
-  validationIssueCount: 0,
-  validationFailureClassification: null,
-  validationFieldPaths: [],
-  validationActionTypes: [],
   evidenceStatus: "missing",
   evidenceCount: 0,
   paragraphIdMatchCount: 0,
   validEvidenceCount: 0,
   invalidEvidenceCount: 0,
 });
-const sanitizedInvalidEvidenceTelemetry = sanitizeGeoValidationTelemetry({
-  stage: "evidence_validation",
-  issueCount: 1,
-  failureClassification: "quote_mismatch",
+const sanitizedInvalidEvidenceTelemetry = sanitizeGeoEvidenceValidationTelemetry({
   evidenceStatus: "invalid",
   evidenceCount: 2,
   paragraphIdMatchCount: 1,
@@ -3065,11 +3074,6 @@ const sanitizedInvalidEvidenceTelemetry = sanitizeGeoValidationTelemetry({
   response: b1SensitiveSentinels[4],
 });
 assert.deepEqual(sanitizedInvalidEvidenceTelemetry, {
-  validationStage: "evidence_validation",
-  validationIssueCount: 1,
-  validationFailureClassification: "quote_mismatch",
-  validationFieldPaths: [],
-  validationActionTypes: [],
   evidenceStatus: "invalid",
   evidenceCount: 2,
   paragraphIdMatchCount: 1,
@@ -3086,6 +3090,25 @@ for (const telemetry of [
     assert.doesNotMatch(serialized, new RegExp(sentinel));
   }
 }
+assert.equal(
+  sanitizeGeoEvidenceValidationTelemetry({
+    evidenceStatus: "valid",
+    evidenceCount: 2,
+    paragraphIdMatchCount: 1,
+    validEvidenceCount: 2,
+    invalidEvidenceCount: 0,
+  }),
+  null,
+);
+assert.doesNotThrow(() =>
+  markGeoEvidenceValidationTelemetry({
+    evidenceStatus: "missing",
+    evidenceCount: 0,
+    paragraphIdMatchCount: 0,
+    validEvidenceCount: 0,
+    invalidEvidenceCount: 0,
+  }),
+);
 const diagnosisTimingDescriptionSentinel =
   "PRIVATE_DIAGNOSIS_TIMING_DESCRIPTION";
 const sanitizedDiagnosisSlowRequestTelemetry =
