@@ -191,6 +191,12 @@ assert.match(scoringRouteSource, /export const maxDuration = 36/);
 assert.match(scoringRouteSource, /maxTokens:\s*2_400/);
 assert.doesNotMatch(scoringRouteSource, /maxTokens:\s*1_200/);
 assert.match(scoringRouteSource, /reasoningEffort:\s*"low"/);
+assert.ok(
+  /输出必须直接从 \{ 开始并以 \} 结束；只能返回单个完整 JSON object；禁止 Markdown fence；禁止任何前置说明、解释文本、wrapper 或尾部字符；JSON 字符串中的双引号必须转义，反斜杠必须符合 JSON escape 规则，换行和控制字符不得直接出现、必须按 JSON escape 规则编码；不允许输出半截 JSON/.test(
+    scoringRouteSource,
+  ),
+  "evaluate-scoring JSON boundary contract is missing",
+);
 const predictQuestionsRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/predict-questions/route.ts", import.meta.url)),
   "utf8",
