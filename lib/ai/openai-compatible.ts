@@ -25,6 +25,7 @@ type ChatCompletionOptions = {
   temperature?: number;
   timeoutMs?: number;
   maxTokens?: number;
+  reasoningEffort?: "low" | "high" | "max";
   rateLimitMode?: ModelCallBudgetMode;
 };
 
@@ -69,6 +70,7 @@ export async function callOpenAICompatibleModel({
   temperature = 0.1,
   timeoutMs = 10_000,
   maxTokens,
+  reasoningEffort,
   rateLimitMode = process.env.NODE_ENV === "production" ? "fallback" : "memory",
 }: ChatCompletionOptions): Promise<ModelCallResult> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -127,6 +129,7 @@ export async function callOpenAICompatibleModel({
         temperature,
         response_format: { type: "json_object" },
         ...(maxTokens ? { max_tokens: maxTokens } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       }),
       signal: controller.signal,
       cache: "no-store",

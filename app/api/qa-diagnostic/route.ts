@@ -173,6 +173,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         temperature: 0,
         timeoutMs: 45_000,
         maxTokens: 4_000,
+        reasoningEffort: "low",
         rateLimitMode: authorization.mode,
       });
       markGeoRequestStage("parser_started");

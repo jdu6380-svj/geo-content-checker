@@ -213,6 +213,7 @@ assert.ok(
   /maxTokens:\s*4_000/.test(diagnosticRouteSource),
   "qa-diagnostic token limit contract is missing",
 );
+assert.match(diagnosticRouteSource, /reasoningEffort:\s*"low"/);
 assert.match(diagnosticRouteSource, /export const maxDuration = 50/);
 assert.match(diagnosticRouteSource, /modelOutputTokenLimit:\s*4_000/);
 assert.ok(
@@ -295,6 +296,10 @@ const modelAdapterSource = readFileSync(
   "utf8",
 );
 assert.match(modelAdapterSource, /response_format:\s*\{ type: "json_object" \}/);
+assert.match(
+  modelAdapterSource,
+  /reasoning_effort:\s*reasoningEffort/,
+);
 assert.doesNotMatch(modelAdapterSource, /json_schema/);
 assert.match(modelAdapterSource, /markGeoRequestStage\("provider_request_sent"\)/);
 assert.match(modelAdapterSource, /markGeoRequestStage\("provider_response_received"\)/);
