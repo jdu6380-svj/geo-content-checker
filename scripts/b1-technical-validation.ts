@@ -26,6 +26,12 @@ import {
   validatePreviewDeploymentMetadata,
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
+import {
+  assertB2ContentDraftArtifactInput,
+  b2ContentDraftArtifactFilename,
+  buildB2ContentDraftArtifact,
+  writeB2ContentDraftArtifactAtomic,
+} from "./b2-validation-artifacts.ts";
 
 export const B1_QUESTION_TYPES = [
   "core",
@@ -583,6 +589,7 @@ interface B1Arguments {
   stage?: B1Stage;
   round?: B1Round;
   resume: boolean;
+  saveContentDraftArtifacts: boolean;
 }
 
 export interface B1Checkpoint {
@@ -1067,12 +1074,18 @@ export function resolveB1CampaignDirectory(
 }
 
 export function parseB1Arguments(argv: string[]): B1Arguments {
-  const result: B1Arguments = { help: false, resume: false };
+  const result: B1Arguments = {
+    help: false,
+    resume: false,
+    saveContentDraftArtifacts: false,
+  };
   for (const argument of argv) {
     if (argument === "--help" || argument === "-h") {
       result.help = true;
     } else if (argument === "--resume") {
       result.resume = true;
+    } else if (argument === "--save-content-draft-artifacts") {
+      result.saveContentDraftArtifacts = true;
     } else if (argument.startsWith("--corpus=")) {
       result.corpusPath = argument.slice("--corpus=".length);
     } else if (argument.startsWith("--stage=")) {
@@ -3246,6 +3259,7 @@ async function runPipeline(params: {
   bypassSecret: string;
   callDelayMs: number;
   runtimeLogCollector: B1RuntimeLogCollector;
+  contentDraftArtifactDirectory?: string;
 }): Promise<B1PipelineRecord> {
   const paragraphs = createNumberedParagraphs(params.article.content);
   const clientId = randomUUID();
@@ -3374,7 +3388,39 @@ async function runPipeline(params: {
       token,
     );
     calls.push(contentDraftCall.record);
-    if (isModelResult(contentDraftCall.result)) contentDraft = contentDraftCall.result.payload;
+    if (isModelResult(contentDraftCall.result)) {
+      const contentDraftPayload = contentDraftCall.result.payload;
+      contentDraft = contentDraftPayload;
+      if (params.contentDraftArtifactDirectory) {
+        const markdown = contentDraftPayload.markdown;
+        const requestId = contentDraftCall.record.requestId;
+        if (typeof markdown !== "string" || !markdown.trim() || !requestId) {
+          throw new Error("B.2 Content Draft artifact source is incomplete.");
+        }
+        const artifact = buildB2ContentDraftArtifact({
+          articleId: params.article.id,
+          stage: params.stage,
+          sourceRequestId: requestId,
+          generatedAt: new Date().toISOString(),
+          title: params.article.title,
+          content: params.article.content,
+          markdown,
+        });
+        assertB2ContentDraftArtifactInput(artifact, {
+          title: params.article.title,
+          content: params.article.content,
+        });
+        await writeB2ContentDraftArtifactAtomic(
+          params.contentDraftArtifactDirectory,
+          artifact,
+          b2ContentDraftArtifactFilename(
+            params.article.id,
+            params.stage,
+            params.round,
+          ),
+        );
+      }
+    }
   } else {
     calls.push(
       skippedCall("advice", "/api/generate-patches"),
@@ -3997,6 +4043,7 @@ function usage(): string {
     "  npm run b1:validate -- --corpus=/absolute/path/corpus.json --stage=2 --round=1",
     "  npm run b1:validate -- --corpus=/absolute/path/corpus.json --stage=2 --round=2",
     "  npm run b1:validate -- --corpus=/absolute/path/corpus.json --stage=2 --round=3",
+    "  Add --save-content-draft-artifacts to persist verified Content Draft Markdown.",
     "",
     "Add --resume only to continue an incomplete matching checkpoint.",
   ].join("\n");
@@ -4026,6 +4073,9 @@ async function main(): Promise<void> {
   const round = args.round as B1Round;
   const campaignDirectory = resolveB1CampaignDirectory(cwd, corpusSha256, baseUrl, stage);
   await mkdir(campaignDirectory, { recursive: true });
+  const contentDraftArtifactDirectory = args.saveContentDraftArtifacts
+    ? join(campaignDirectory, "content-draft-artifacts")
+    : undefined;
   await verifyHealth(baseUrl, bypassSecret);
 
   const existing = await loadCheckpoint(campaignDirectory, stage, round);
@@ -4106,6 +4156,7 @@ async function main(): Promise<void> {
         bypassSecret,
         callDelayMs,
         runtimeLogCollector,
+        contentDraftArtifactDirectory,
       });
       checkpoint.records.push(record);
       await writeCheckpointAtomic(

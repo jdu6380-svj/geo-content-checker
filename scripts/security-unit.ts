@@ -129,6 +129,15 @@ import {
   type B1StabilityObservation,
 } from "./b1-technical-validation.ts";
 import {
+  B2_CONTENT_DRAFT_ARTIFACT_SCHEMA_VERSION,
+  assertB2ContentDraftArtifactInput,
+  b2ContentDraftArtifactFilename,
+  buildB2ContentDraftArtifact,
+  parseB2ContentDraftArtifact,
+  serializeB2ContentDraftArtifact,
+  writeB2ContentDraftArtifactAtomic,
+} from "./b2-validation-artifacts.ts";
+import {
   B15_ADVICE_DIAGNOSTICS_CORPUS_REFERENCE,
   B15_ADVICE_DIAGNOSTICS_SCHEMA_VERSION,
   B15_CALIBRATION_SCHEMA_VERSION,
@@ -2251,7 +2260,16 @@ assert.deepEqual(
     corpusPath: b1FixturePath,
     stage: 2,
     round: 2,
+    saveContentDraftArtifacts: false,
   },
+);
+assert.equal(
+  parseB1Arguments([
+    `--corpus=${b1FixturePath}`,
+    "--stage=1",
+    "--save-content-draft-artifacts",
+  ]).saveContentDraftArtifacts,
+  true,
 );
 assert.throws(() => parseB1Arguments([`--corpus=${b1FixturePath}`, "--stage=2"]));
 assert.throws(() =>
@@ -2804,6 +2822,69 @@ try {
   );
 } finally {
   rmSync(b1ArtifactDirectory, { recursive: true, force: true });
+}
+
+const b2ContentDraftTitle = "B2_ARTIFACT_TITLE_SENTINEL";
+const b2ContentDraftContent = "B2_ARTIFACT_SOURCE_CONTENT_SENTINEL";
+const b2ContentDraftMarkdown = "## 已验证补充\n\n只保存受控测试产物。";
+const b2ContentDraftArtifact = buildB2ContentDraftArtifact({
+  articleId: "B1-A01",
+  stage: 2,
+  sourceRequestId: "123e4567-e89b-42d3-a456-426614174000",
+  generatedAt: "2026-08-01T00:00:00.000Z",
+  title: b2ContentDraftTitle,
+  content: b2ContentDraftContent,
+  markdown: b2ContentDraftMarkdown,
+});
+assert.equal(
+  b2ContentDraftArtifact.artifactSchemaVersion,
+  B2_CONTENT_DRAFT_ARTIFACT_SCHEMA_VERSION,
+);
+assertB2ContentDraftArtifactInput(b2ContentDraftArtifact, {
+  title: b2ContentDraftTitle,
+  content: b2ContentDraftContent,
+});
+assert.equal(
+  b2ContentDraftArtifact.markdownSha256.length,
+  64,
+);
+const serializedB2ContentDraftArtifact = serializeB2ContentDraftArtifact(
+  b2ContentDraftArtifact,
+);
+assert.match(serializedB2ContentDraftArtifact, /"markdownSha256":/);
+assert.match(serializedB2ContentDraftArtifact, /已验证补充/);
+assert.doesNotMatch(serializedB2ContentDraftArtifact, /B2_ARTIFACT_TITLE_SENTINEL/);
+assert.doesNotMatch(serializedB2ContentDraftArtifact, /B2_ARTIFACT_SOURCE_CONTENT_SENTINEL/);
+assert.throws(() =>
+  parseB2ContentDraftArtifact({
+    ...b2ContentDraftArtifact,
+    markdown: "B2_TAMPERED_MARKDOWN",
+  }),
+);
+
+const b2ContentDraftArtifactDirectory = mkdtempSync(
+  join(tmpdir(), "b2-content-draft-artifact-"),
+);
+try {
+  const b2ContentDraftArtifactPath = await writeB2ContentDraftArtifactAtomic(
+    b2ContentDraftArtifactDirectory,
+    b2ContentDraftArtifact,
+    b2ContentDraftArtifactFilename("B1-A01", 2, 1),
+  );
+  assert.equal(
+    readFileSync(b2ContentDraftArtifactPath, "utf8"),
+    serializedB2ContentDraftArtifact,
+  );
+  assert.equal(statSync(b2ContentDraftArtifactDirectory).mode & 0o777, 0o700);
+  assert.equal(statSync(b2ContentDraftArtifactPath).mode & 0o777, 0o600);
+  assert.equal(
+    parseB2ContentDraftArtifact(
+      JSON.parse(readFileSync(b2ContentDraftArtifactPath, "utf8")),
+    ).markdownSha256,
+    b2ContentDraftArtifact.markdownSha256,
+  );
+} finally {
+  rmSync(b2ContentDraftArtifactDirectory, { recursive: true, force: true });
 }
 
 const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
