@@ -25,20 +25,20 @@ export function AppHeader({
   onFeedbackClick,
 }: AppHeaderProps) {
   return (
-    <header className="app-header sticky top-0 z-40 border-b border-[#dfe4e8] bg-white">
+    <header className="app-header sticky top-0 z-40 border-b">
       <div className="mx-auto flex h-[var(--app-header-height)] max-w-[1440px] items-center gap-5 px-4 sm:px-6 lg:px-10">
         <button
           type="button"
           onClick={onShowEditor}
-          className="group flex shrink-0 items-center gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#0f766e]/15"
+          className="app-brand group flex shrink-0 items-center gap-3 text-left"
           aria-label="返回内容体检工作台"
         >
-          <span className="brand-mark grid size-9 place-items-center rounded-md bg-[#15181d] text-xs font-bold text-white">
+          <span className="brand-mark grid size-9 place-items-center rounded-md text-xs font-bold text-white">
             理
           </span>
           <span className="leading-none">
-            <span className="block text-sm font-semibold text-[#111827]">理据 GEO</span>
-            <span className="mt-1 block text-[10px] font-medium text-[#89919c]">内容可信度工作台</span>
+            <span className="app-brand-name block">理据 GEO</span>
+            <span className="app-brand-subtitle mt-1 block">内容可信度工作台</span>
           </span>
         </button>
 
@@ -80,13 +80,13 @@ export function AppHeader({
           <span className="hidden items-center gap-3 lg:inline-flex">
             <Link
               href="/privacy"
-              className="text-xs font-medium text-[#7c8591] hover:text-[#111827] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#0f766e]/15"
+              className="app-utility-link"
             >
               隐私
             </Link>
             <Link
               href="/terms"
-              className="text-xs font-medium text-[#7c8591] hover:text-[#111827] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#0f766e]/15"
+              className="app-utility-link"
             >
               条款
             </Link>
@@ -97,7 +97,7 @@ export function AppHeader({
               target="_blank"
               rel="noreferrer"
               onClick={onFeedbackClick}
-              className="text-xs font-medium text-[#66707c] underline-offset-4 hover:text-[#111827] hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#0f766e]/15"
+              className="app-feedback-link underline-offset-4 hover:underline"
             >
               反馈
             </a>
@@ -107,12 +107,12 @@ export function AppHeader({
             正文不保存
           </span>
           {analysisStarted ? (
-            <Button type="button" onClick={onNewAnalysis} className="h-9 rounded-md bg-[#15181d] px-3.5 text-xs font-semibold text-white shadow-none hover:bg-[#252a32]">
+            <Button type="button" onClick={onNewAnalysis} className="app-new-analysis h-9 px-3.5 text-xs font-semibold">
               <Plus aria-hidden="true" className="size-3.5" />
               新建体检
             </Button>
           ) : (
-            <span className="hidden items-center gap-1.5 text-[11px] font-medium text-[#7c8591] min-[480px]:inline-flex">
+            <span className="app-local-status hidden items-center gap-1.5 min-[480px]:inline-flex">
               <Circle aria-hidden="true" className="size-1.5 fill-[#159587] text-[#159587]" />
               本地运行
             </span>
