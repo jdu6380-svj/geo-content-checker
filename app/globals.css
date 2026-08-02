@@ -572,6 +572,10 @@ h1, h2, h3, p { letter-spacing: 0; }
   .patch-review-loop > * + * {
     border-top: 1px solid var(--geo-border);
   }
+  .patch-mode-guidance > * + *,
+  .recheck-summary-grid > * + * {
+    border-top: 1px solid var(--geo-border);
+  }
   .surface-enter { animation: surface-enter 180ms ease-out both; }
   .prose p { margin: 0 0 12px; line-height: 1.8; }
 }
@@ -602,7 +606,9 @@ h1, h2, h3, p { letter-spacing: 0; }
 
 @media (min-width: 640px) {
   .evidence-status-summary > * + *,
-  .patch-review-loop > * + * {
+  .patch-review-loop > * + *,
+  .patch-mode-guidance > * + *,
+  .recheck-summary-grid > * + * {
     border-top: 0;
     border-left: 1px solid var(--geo-border);
   }

@@ -8,6 +8,7 @@ import {
   History,
   ListChecks,
   Lock,
+  RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 
@@ -50,6 +51,7 @@ type EditorWorkspaceProps = {
   contentRef: RefObject<HTMLTextAreaElement | null>;
   samples: EditorWorkspaceSample[];
   dimensions: EditorWorkspaceDimension[];
+  recheckContext: { score: number; issueCount: number } | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDraftChange: (field: keyof EditorDraft, value: string) => void;
   onLoadSample: (index: number) => void;
@@ -66,6 +68,7 @@ export function EditorWorkspace({
   contentRef,
   samples,
   dimensions,
+  recheckContext,
   onSubmit,
   onDraftChange,
   onLoadSample,
@@ -97,10 +100,29 @@ export function EditorWorkspace({
           </div>
         </header>
 
+        {recheckContext ? (
+          <div className="mb-3 flex flex-col gap-3 border-l-[3px] border-[#5964cf] bg-[#f3f4fb] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[#5964cf]" />
+              <div>
+                <p className="text-sm font-semibold text-[#343a65]">正在准备重新验证</p>
+                <p className="mt-1 text-xs leading-5 text-[#69708a]">将人工核对后的修改应用到正文，再运行同一套完整审查。</p>
+              </div>
+            </div>
+            <span className="shrink-0 font-mono text-xs font-semibold text-[#5964cf]">
+              修改前 {recheckContext.score} 分 · {recheckContext.issueCount} 项需关注
+            </span>
+          </div>
+        ) : null}
+
         <div className="editor-purpose-strip mb-2 flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="editor-purpose-label">这次审查会关注</span>
-            <p className="editor-purpose-copy">事实是否完整、结构是否清晰，以及 AI 搜索能否准确理解你的内容。</p>
+            <p className="editor-purpose-copy">
+              {recheckContext
+                ? "修改后的事实、结构和证据状态是否发生真实变化。"
+                : "事实是否完整、结构是否清晰，以及 AI 搜索能否准确理解你的内容。"}
+            </p>
           </div>
           <div className="editor-purpose-list flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="审查范围">
             <span><span aria-hidden="true" className="editor-purpose-dot bg-[#0f766e]" />可信度</span>
@@ -120,9 +142,9 @@ export function EditorWorkspace({
                 <p className="mt-0.5 text-[11px] text-[#8b939e]">标题、正文和发布日期会用于生成报告</p>
               </div>
             </div>
-            <span className="editor-status inline-flex shrink-0 items-center gap-1.5 border border-[#cfe1de] bg-[#f1f9f7] px-2.5 py-1 text-[10px] font-semibold text-[#0f766e]">
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-[#159587]" />
-              等待输入
+              <span className="editor-status inline-flex shrink-0 items-center gap-1.5 border border-[#cfe1de] bg-[#f1f9f7] px-2.5 py-1 text-[10px] font-semibold text-[#0f766e]">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-[#159587]" />
+                {recheckContext ? "等待修改" : "等待输入"}
             </span>
           </div>
 
@@ -196,10 +218,10 @@ export function EditorWorkspace({
               ) : null}
 
               <div className="editor-result-preview mb-4">
-                <span className="editor-result-label">提交后你会看到</span>
+                <span className="editor-result-label">{recheckContext ? "重新验证后你会看到" : "提交后你会看到"}</span>
                 <span>GEO 综合得分</span>
                 <span>问题诊断</span>
-                <span>修改建议与重新验证入口</span>
+                <span>{recheckContext ? "修改前后变化与未解决问题" : "修改建议与重新验证入口"}</span>
               </div>
 
               <footer className="flex flex-col gap-4 border-t border-[#e9ecef] pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -218,7 +240,7 @@ export function EditorWorkspace({
                   </span>
                 </div>
                 <Button type="submit" className="editor-primary h-11 w-full shrink-0 rounded-md px-6 font-semibold text-white sm:w-auto lg:h-9">
-                  开始分析
+                  {recheckContext ? "运行重新验证" : "开始分析"}
                   <ArrowRight aria-hidden="true" className="size-4" />
                 </Button>
               </footer>

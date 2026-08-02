@@ -26,6 +26,11 @@ import {
   type DiagnosticsState,
   type LoadState,
 } from "@/lib/client/report-state";
+import {
+  createReportComparisonSnapshot,
+  isReportIssue,
+  type ReportComparisonSnapshot,
+} from "@/lib/client/report-comparison";
 import { MAX_ARTICLE_CHARACTERS } from "@/lib/constants/input-limits";
 import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 import type {
@@ -246,6 +251,7 @@ export default function Home() {
   const reportViewedRunIdsRef = useRef(new Set<string>());
   const reportViewDwellRef = useRef(new Map<string, number>());
   const [activeSessionRunId, setActiveSessionRunId] = useState<string | null>(null);
+  const [recheckBaseline, setRecheckBaseline] = useState<ReportComparisonSnapshot | null>(null);
 
   const contentText = draft?.content ?? "";
   const contentLength = contentText.length;
@@ -478,6 +484,7 @@ export default function Home() {
     setError("");
     setFieldErrors({});
     setRestoredFromCache(false);
+    setRecheckBaseline(null);
   }
 
   function handleLoadSample(sample: (typeof SAMPLES)[number]) {
@@ -690,6 +697,25 @@ export default function Home() {
     setError("");
   }
 
+  function openEditorForRecheck() {
+    const allDiagnosticsComplete = questionOrder.length > 0 && questionOrder.every(
+      (question) => diagnostics[question]?.status === "success",
+    );
+    if (scoring.status === "success" && allDiagnosticsComplete) {
+      setRecheckBaseline((current) => current ?? createReportComparisonSnapshot(
+        scoring.data,
+        questionOrder,
+        diagnostics,
+      ));
+    }
+    backToEditor();
+  }
+
+  function startNewAnalysis() {
+    setRecheckBaseline(null);
+    backToEditor();
+  }
+
   function scrollToSection(sectionId: string) {
     const section = document.getElementById(sectionId);
     if (!section) return;
@@ -792,10 +818,10 @@ export default function Home() {
     <main className="app-shell">
       <AppHeader
         analysisStarted={analysisStarted}
-        onShowEditor={() => analysisStarted && backToEditor()}
+        onShowEditor={() => analysisStarted && openEditorForRecheck()}
         onShowReport={() => scrollToSection("report-overview")}
         onShowPatches={() => scrollToSection("patch-workshop")}
-        onNewAnalysis={backToEditor}
+        onNewAnalysis={startNewAnalysis}
         feedbackUrl={process.env.NEXT_PUBLIC_FEEDBACK_URL}
         onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
       />
@@ -813,6 +839,7 @@ export default function Home() {
             scoreBand={currentScoreBand}
             questionOrder={questionOrder}
             diagnostics={diagnostics}
+            recheckBaseline={recheckBaseline}
             runId={activeSessionRunId}
             completedCount={completedCount}
             expandedQuestion={expandedQuestion}
@@ -832,7 +859,7 @@ export default function Home() {
               const item = diagnostics[question];
               return Boolean(item && item.errorCount < 2 && paragraphs.length > 0);
             }}
-            onBackToEditor={backToEditor}
+            onBackToEditor={openEditorForRecheck}
             onRestartAnalysis={() => void startAnalysis(draft, true)}
             onRetryScoring={retryScoring}
             onRetryQuestions={retryQuestions}
@@ -860,6 +887,10 @@ export default function Home() {
             contentRef={contentRef}
             samples={EDITOR_SAMPLES}
             dimensions={EDITOR_DIMENSIONS}
+            recheckContext={recheckBaseline ? {
+              score: recheckBaseline.totalScore,
+              issueCount: recheckBaseline.diagnostics.filter(isReportIssue).length,
+            } : null}
             onSubmit={submit}
             onDraftChange={updateDraft}
             onLoadSample={(index) => handleLoadSample(SAMPLES[index])}

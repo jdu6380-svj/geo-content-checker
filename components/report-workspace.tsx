@@ -9,9 +9,14 @@ import { PatchWorkshop } from "@/components/patch-workshop";
 import { ReportActionRail } from "@/components/report-action-rail";
 import { ReportContextRail } from "@/components/report-context-rail";
 import { ReportEvidencePanel } from "@/components/report-evidence-panel";
+import { RecheckComparison } from "@/components/recheck-comparison";
 import type { ReportScoreBand } from "@/components/report-score-rail";
 import { Button } from "@/components/ui/button";
 import type { DiagnosticsState, LoadState } from "@/lib/client/report-state";
+import {
+  createReportComparisonSnapshot,
+  type ReportComparisonSnapshot,
+} from "@/lib/client/report-comparison";
 import type {
   EvaluateScoringResponse,
   Paragraph,
@@ -39,6 +44,7 @@ type ReportWorkspaceProps = {
   scoreBand: ReportScoreBand | null;
   questionOrder: string[];
   diagnostics: DiagnosticsState;
+  recheckBaseline: ReportComparisonSnapshot | null;
   completedCount: number;
   expandedQuestion: string | null;
   latestQuestion: string | null;
@@ -78,6 +84,7 @@ export function ReportWorkspace({
   scoreBand,
   questionOrder,
   diagnostics,
+  recheckBaseline,
   completedCount,
   expandedQuestion,
   latestQuestion,
@@ -119,6 +126,18 @@ export function ReportWorkspace({
   const sessionComplete = session.status === "success" || restoredFromCache;
   const flowHasError = session.status === "error" || scoring.status === "error" || questions.status === "error" || diagnosticsFailed;
   const flowComplete = sessionComplete && scoring.status === "success" && questions.status === "success" && diagnosticsComplete;
+  const comparisonComplete = sessionComplete && scoring.status === "success" && questions.status === "success" &&
+    questionOrder.length > 0 && questionOrder.every((question) => diagnostics[question]?.status === "success");
+  const currentComparison = comparisonComplete && scoring.status === "success"
+    ? createReportComparisonSnapshot(scoring.data, questionOrder, diagnostics)
+    : null;
+  const recheckStatus = restoredFromCache
+    ? "cached" as const
+    : flowHasError
+      ? "error" as const
+      : comparisonComplete
+        ? "complete" as const
+        : "running" as const;
   const loadingMessage = session.status === "loading"
     ? "正在建立分析会话并整理文章结构。"
     : scoring.status === "loading" && questions.status === "loading"
@@ -196,8 +215,10 @@ export function ReportWorkspace({
         }
     : flowComplete
       ? {
-          title: "报告已就绪",
-          description: "评分、问题识别和逐项诊断已完成。下一步查看关键诊断，再决定是否生成修改建议。",
+          title: recheckBaseline ? "重新验证已完成" : "报告已就绪",
+          description: recheckBaseline
+            ? "同一套评分与诊断已经完成。请对照修改前结果，继续处理未改善或不可直接对照的问题。"
+            : "评分、问题识别和逐项诊断已完成。下一步查看关键诊断，再决定是否生成修改建议。",
           tone: "success" as const,
         }
       : {
@@ -263,6 +284,14 @@ export function ReportWorkspace({
         tone={flowPresentation.tone}
         steps={flowSteps}
       />
+
+      {recheckBaseline ? (
+        <RecheckComparison
+          baseline={recheckBaseline}
+          current={currentComparison}
+          status={recheckStatus}
+        />
+      ) : null}
 
       {session.status === "error" ? (
         <div role="alert" className="surface-flat mt-4 border-l-[3px] border-l-[#c85745] bg-[#fff8f6] p-5 sm:p-6">

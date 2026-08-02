@@ -50,7 +50,7 @@ export function ReportActionRail({
       meta: restoredFromCache
         ? "恢复正文后重新运行分析"
         : evidenceCount
-          ? `${evidenceCount} 条原文证据可供复核`
+          ? `保存当前结果，对比修改后的 ${evidenceCount} 条证据`
           : "应用修改后再次分析",
       ready: false,
       onClick: onBackToEditor,

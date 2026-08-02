@@ -1,7 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Copy, ListChecks, RefreshCw, RotateCcw, Sparkles, TextSelect } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ClipboardCheck,
+  Copy,
+  FileCheck2,
+  Link2,
+  ListChecks,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Sparkles,
+  TextSelect,
+  UserRoundCheck,
+} from "lucide-react";
 
 import { postGeoBetaEvent, postGeoJson } from "@/lib/client/geo-api";
 import type { DiagnosticsState } from "@/lib/client/report-state";
@@ -80,11 +94,14 @@ async function copyWithClipboard(text: string): Promise<void> {
 function actionPresentation(action: PatchAction) {
   if (action.type === "author_evidence") {
     return {
-      eyebrow: "作者补充",
+      eyebrow: "证据缺口",
       title: action.field,
       body: action.reason,
-      meta: action.relatedQuestion ? `关联问题：${action.relatedQuestion}` : null,
+      sourceLabel: "来自诊断",
+      source: action.relatedQuestion ?? "需要作者补充事实依据",
+      decision: "需要人工确认事实、来源与适用边界",
       accent: "border-t-[#a86313]",
+      sourceClassName: "bg-[#fff7e8] text-[#8a5b12]",
     };
   }
   if (action.type === "structure_change") {
@@ -92,8 +109,11 @@ function actionPresentation(action: PatchAction) {
       eyebrow: "结构调整",
       title: action.title,
       body: action.instruction,
-      meta: `目标段落：${action.targetParagraphIds.join(", ")}`,
+      sourceLabel: "作用范围",
+      source: action.targetParagraphIds.join(", "),
+      decision: "需要人工判断结构调整是否改变原意",
       accent: "border-t-[#5964cf]",
+      sourceClassName: "bg-[#eef1ff] text-[#4d58bf]",
     };
   }
   if (action.type === "faq") {
@@ -101,16 +121,22 @@ function actionPresentation(action: PatchAction) {
       eyebrow: "FAQ 草稿",
       title: action.question,
       body: action.answer,
-      meta: `原文证据：${action.evidence.paragraphId}`,
+      sourceLabel: "逐字证据",
+      source: action.evidence.paragraphId,
+      decision: "核对问答是否完整表达原文边界",
       accent: "border-t-[#08766e]",
+      sourceClassName: "bg-[#e7f4f1] text-[#0f766e]",
     };
   }
   return {
     eyebrow: "事实卡片草稿",
     title: action.label,
     body: action.value,
-    meta: `原文证据：${action.evidence.paragraphId}`,
+    sourceLabel: "逐字证据",
+    source: action.evidence.paragraphId,
+    decision: "核对事实卡片是否脱离上下文或扩大结论",
     accent: "border-t-[#416b8a]",
+    sourceClassName: "bg-[#edf3f7] text-[#416b8a]",
   };
 }
 
@@ -125,6 +151,9 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
   const activePatch = patches[activeMode];
   const diagnosticResults = Object.values(diagnostics).flatMap((item) => item.data ? [item.data] : []);
   const canGenerate = paragraphs.length > 0 && diagnosticResults.length > 0;
+  const evidenceGapCount = diagnosticResults.filter(
+    (item) => item.evidenceStatus !== "valid" || item.missingInfo.length > 0,
+  ).length;
 
   useEffect(() => {
     if (activePatch.status !== "success" || !restoreActionFocusRef.current) return;
@@ -185,8 +214,8 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
 
   const modeTitle = activeMode === "advice" ? "修改建议" : "内容草稿";
   const modeDescription = activeMode === "advice"
-    ? "优先整理作者需补充的证据和结构调整，不替你编造事实。"
-    : "从原文摘录生成 FAQ 与事实卡片草稿，仍需人工核对。";
+    ? "把诊断中的证据缺口和结构问题整理为可执行清单，最终判断仍由你完成。"
+    : "基于已验证的原文证据生成辅助修改材料，不替代完整改稿与事实审核。";
 
   return (
     <section id="patch-workshop" className="patch-workshop section-anchor min-w-0" aria-busy={activePatch.status === "loading"}>
@@ -244,6 +273,32 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
         </button>
       </div>
 
+      <div className="patch-mode-guidance mt-4 grid overflow-hidden rounded-lg border border-[#dfe5e5] bg-white sm:grid-cols-3">
+        {(activeMode === "advice"
+          ? [
+              { icon: Link2, label: "关联诊断", value: `${diagnosticResults.length} 项问题 · ${evidenceGapCount} 项证据或信息缺口` },
+              { icon: UserRoundCheck, label: "人工决策", value: "事实补充、来源可靠性与表达边界均需人工确认" },
+              { icon: ShieldCheck, label: "能力边界", value: "建议不代表问题已解决，也不保证外部平台结果" },
+            ]
+          : [
+              { icon: FileCheck2, label: "材料用途", value: "用于补充 FAQ 与事实卡片，不是 AI 自动改稿" },
+              { icon: Link2, label: "证据约束", value: "每项内容均应回到原文证据和上下文核对" },
+              { icon: UserRoundCheck, label: "发布前审核", value: "确认事实、语气、边界与全文衔接后再应用" },
+            ]
+        ).map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="min-w-0 px-4 py-3.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#4f5864]">
+                <Icon aria-hidden="true" className="size-3.5 text-[#0f766e]" />
+                {item.label}
+              </div>
+              <p className="mt-1.5 text-xs leading-5 text-[#7a8490]">{item.value}</p>
+            </div>
+          );
+        })}
+      </div>
+
       {!paragraphs.length ? (
         <p className="mt-4 border-l-2 border-[#d8e4e1] pl-4 text-sm leading-6 text-[#687386]">
           缓存报告不含正文，请重新运行体检后生成内容补丁。
@@ -299,7 +354,18 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
 
       {activePatch.status === "success" ? (
         <div className="mt-4">
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e3e7eb] pb-4">
+            <div>
+              <p className="text-sm font-semibold text-[#252a31]">
+                {activeMode === "advice" ? "审查建议清单" : "辅助修改材料"}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[#858c97]">
+                {activeMode === "advice"
+                  ? "逐项确认哪些事实能补充、哪些结构适合调整。"
+                  : "复制后在编辑器中人工整合，不要直接替换全文。"}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-3">
             <span role="status" aria-live="polite" className="inline-flex min-h-4 items-center gap-1.5 text-xs">
               {copyStatus === "copying" ? <span className="text-[#687681]">正在复制</span> : null}
               {copyStatus === "copied" ? (
@@ -320,7 +386,24 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
               <Copy aria-hidden="true" className={`size-4 ${copyStatus === "copying" ? "animate-pulse motion-reduce:animate-none" : ""}`} />
               {copyStatus === "copying" ? "正在复制" : "复制全部 Markdown"}
             </button>
+            </div>
           </div>
+
+          {copyStatus === "copied" ? (
+            <div className="mt-4 flex flex-col gap-3 border-l-[3px] border-[#0f766e] bg-[#eef8f6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <ClipboardCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[#0f766e]" />
+                <div>
+                  <p className="text-sm font-semibold text-[#185f59]">材料已复制，下一步回到原文人工应用</p>
+                  <p className="mt-1 text-xs leading-5 text-[#587773]">核对事实与表达边界后，再运行完整重新验证；分数不保证提升。</p>
+                </div>
+              </div>
+              <button type="button" onClick={onBackToEditor} className="secondary-button h-9 w-full shrink-0 px-4 text-xs font-semibold sm:w-auto">
+                返回编辑器
+                <ArrowRight aria-hidden="true" className="size-3.5" />
+              </button>
+            </div>
+          ) : null}
 
           {copyStatus === "manual" ? (
             <div className="mt-4 border border-[#ead9ab] bg-[#fffaf0] p-4">
@@ -351,12 +434,21 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
               const presentation = actionPresentation(action);
               return (
                 <article key={action.id} className={`card border-t-[3px] p-5 ${presentation.accent}`}>
-                  <span className="text-xs font-bold text-[#687681]">{presentation.eyebrow}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-[#687681]">{presentation.eyebrow}</span>
+                    <span className={`status-badge px-2 py-1 text-[10px] font-semibold ${presentation.sourceClassName}`}>
+                      {presentation.sourceLabel}
+                    </span>
+                  </div>
                   <h3 className="mt-2 text-sm font-bold leading-6">{presentation.title}</h3>
                   <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#465266]">{presentation.body}</p>
-                  {presentation.meta ? (
-                    <span className="mt-4 block break-words font-mono text-xs font-bold text-[#687681]">{presentation.meta}</span>
-                  ) : null}
+                  <div className="mt-4 grid gap-2 border-t border-[#edf0f2] pt-3 text-xs leading-5">
+                    <p className="break-words text-[#687681]"><span className="font-semibold text-[#4f5864]">{presentation.sourceLabel}：</span>{presentation.source}</p>
+                    <p className="flex items-start gap-2 text-[#7a6540]">
+                      <UserRoundCheck aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+                      <span>{presentation.decision}</span>
+                    </p>
+                  </div>
                 </article>
               );
             })}
@@ -366,8 +458,8 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
 
       <div className="mt-5 flex flex-col items-start justify-between gap-4 border-t border-[#dbe2df] pt-5 sm:flex-row sm:items-center">
         <div>
-          <h3 className="text-sm font-semibold text-[#252a31]">完成修改后，回到编辑器重新验证</h3>
-          <p className="mt-1 text-xs leading-5 text-[#737d89]">系统不会自动改动原文。请人工应用并核对修改，再运行新的完整分析。</p>
+          <h3 className="text-sm font-semibold text-[#252a31]">完成修改后，用同一套审查重新验证</h3>
+          <p className="mt-1 text-xs leading-5 text-[#737d89]">系统会保留本次结果作为修改前基线；只有真实重跑完成后，才会展示改善、未改善与不可直接对照项。</p>
         </div>
         <button type="button" onClick={onBackToEditor} className="secondary-button h-10 w-full shrink-0 px-4 text-sm font-semibold sm:w-auto">
           <RotateCcw aria-hidden="true" className="size-4" />
