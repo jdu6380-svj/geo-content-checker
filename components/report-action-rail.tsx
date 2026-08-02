@@ -56,13 +56,15 @@ export function ReportActionRail({
       onClick: onBackToEditor,
     },
   ];
+  const nextStepIndex = steps.findIndex((step) => !step.ready);
+  const highlightedStepIndex = nextStepIndex < 0 ? steps.length - 1 : nextStepIndex;
 
   return (
-    <aside className="report-action-rail surface-flat min-w-0 p-4 sm:p-5">
+    <aside className="report-action-rail surface-flat min-w-0 p-4 sm:p-5" aria-label="下一步操作">
       <div className="border-b border-[#e7e9ed] pb-4">
-        <p className="section-kicker">REVIEW LOOP</p>
-        <h2 className="mt-1.5 text-base font-semibold text-[#111827]">从问题到复核</h2>
-        <p className="mt-2 text-xs leading-5 text-[#737d89]">每一步都保留人工判断，不自动改写原文。</p>
+        <p className="section-kicker">NEXT ACTION</p>
+        <h2 className="mt-1.5 text-base font-semibold text-[#111827]">下一步操作</h2>
+        <p className="mt-2 text-xs leading-5 text-[#737d89]">发现问题、人工判断、修改后再复检。</p>
       </div>
 
       <ol className="mt-3 grid gap-2">
@@ -73,7 +75,7 @@ export function ReportActionRail({
               <button
                 type="button"
                 onClick={step.onClick}
-                className="group grid w-full grid-cols-[28px_minmax(0,1fr)_16px] items-center gap-3 rounded-md border border-transparent px-2 py-3 text-left hover:border-[#e1e5ea] hover:bg-[#fafbfc]"
+                className={`report-action-step group grid w-full grid-cols-[28px_minmax(0,1fr)_16px] items-center gap-3 rounded-md border border-transparent px-2 py-3 text-left hover:border-[#e1e5ea] hover:bg-[#fafbfc] ${index === highlightedStepIndex ? "is-next" : ""}`}
               >
                 <span className={`grid size-7 place-items-center rounded-md border text-[10px] font-bold ${step.ready ? STEP_STYLE.ready : STEP_STYLE.neutral}`}>
                   {String(index + 1).padStart(2, "0")}

@@ -6,6 +6,11 @@ import { AppHeader } from "@/components/app-header";
 import { EditorWorkspace } from "@/components/editor-workspace";
 import { ReportWorkspace } from "@/components/report-workspace";
 import {
+  WorkspaceCommandBar,
+  type WorkspaceStage,
+  type WorkspaceStatus,
+} from "@/components/workspace-command-bar";
+import {
   createAnalysisHash,
   markDraftAnalysis,
   readDraftSession,
@@ -252,6 +257,7 @@ export default function Home() {
   const reportViewDwellRef = useRef(new Map<string, number>());
   const [activeSessionRunId, setActiveSessionRunId] = useState<string | null>(null);
   const [recheckBaseline, setRecheckBaseline] = useState<ReportComparisonSnapshot | null>(null);
+  const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("review");
 
   const contentText = draft?.content ?? "";
   const contentLength = contentText.length;
@@ -273,6 +279,35 @@ export default function Home() {
       const status = diagnostics[question]?.status;
       return status === "success" || status === "error";
     });
+  const diagnosticsComplete = questionOrder.length > 0 && questionOrder.every(
+    (question) => diagnostics[question]?.status === "success",
+  );
+  const workspaceFlowComplete = analysisStarted && scoring.status === "success" &&
+    questions.status === "success" && diagnosticsComplete;
+  const workspaceHasError = session.status === "error" || scoring.status === "error" ||
+    questions.status === "error" || Object.values(diagnostics).some((item) => item.status === "error");
+  const workspaceIsAnalyzing = session.status === "loading" || scoring.status === "loading" ||
+    questions.status === "loading" || Object.values(diagnostics).some(
+      (item) => item.status === "queued" || item.status === "loading",
+    );
+  const editorReady = Boolean(draft.title.trim() && contentText.trim() && remaining >= 0);
+  const workspaceStatus: WorkspaceStatus = !analysisStarted
+    ? error || Object.values(fieldErrors).some(Boolean)
+      ? "error"
+      : editorReady
+        ? "ready"
+        : "empty"
+    : workspaceHasError
+      ? "error"
+      : restoredFromCache
+        ? "warning"
+        : workspaceFlowComplete
+          ? "completed"
+          : workspaceIsAnalyzing
+            ? "analyzing"
+            : "warning";
+  const canOpenAdvice = analysisStarted && (workspaceFlowComplete || restoredFromCache);
+  const canOpenRecheck = canOpenAdvice && Boolean(contentText.trim());
 
   const restoreCachedAnalysis = useCallback((cached: CacheEnvelope, restoredDraft: ArticleDraft) => {
     activeAnalysisHashRef.current = cached.analysisHash;
@@ -296,6 +331,7 @@ export default function Home() {
     setFeedbackByQuestion({});
     setAnalysisStarted(true);
     setRestoredFromCache(true);
+    setWorkspaceStage("report");
   }, []);
 
   useEffect(() => {
@@ -471,6 +507,7 @@ export default function Home() {
     activeRunRef.current += 1;
     setDraft({ title: sample.title, content: sample.content, publishedAt: sample.publishedAt });
     setAnalysisStarted(false);
+    setWorkspaceStage("review");
     setSession({ status: "idle" });
     setScoring({ status: "idle" });
     setQuestions({ status: "idle" });
@@ -637,6 +674,7 @@ export default function Home() {
     markDraftAnalysis(article, analysisHash, "running");
     setParagraphs(articleParagraphs);
     setAnalysisStarted(true);
+    setWorkspaceStage("report");
     setSession({ status: "loading" });
     setRestoredFromCache(false);
     setExpandedQuestion(null);
@@ -708,15 +746,23 @@ export default function Home() {
         diagnostics,
       ));
     }
+    setWorkspaceStage("recheck");
     backToEditor();
+    focusEditor();
   }
 
   function startNewAnalysis() {
     setRecheckBaseline(null);
+    setWorkspaceStage("review");
     backToEditor();
+    focusEditor();
   }
 
   function scrollToSection(sectionId: string) {
+    if (sectionId === "patch-workshop") setWorkspaceStage("advice");
+    else if (sectionId === "report-overview" || sectionId === "report-core" || sectionId === "diagnostic-section" || sectionId === "evidence-section") {
+      setWorkspaceStage("report");
+    }
     const section = document.getElementById(sectionId);
     if (!section) return;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -739,7 +785,7 @@ export default function Home() {
       return { label: "正在建立会话", className: "status-warning" };
     }
     if (session.status === "error" || scoring.status === "error" || questions.status === "error") {
-      return { label: "需要重新体检", className: "status-danger" };
+      return { label: "需要重新审查", className: "status-danger" };
     }
     if (scoring.status === "loading" || questions.status === "loading") {
       return { label: "正在分析", className: "status-info" };
@@ -761,6 +807,34 @@ export default function Home() {
     void scheduleGeoDiagnostic(() =>
       diagnoseQuestion(activeRunRef.current, draft.title, paragraphs, question),
     );
+  }
+
+  function focusEditor() {
+    window.requestAnimationFrame(() => titleRef.current?.focus());
+  }
+
+  function openReviewStage() {
+    if (analysisStarted) {
+      startNewAnalysis();
+      return;
+    }
+    setWorkspaceStage("review");
+    focusEditor();
+  }
+
+  function openReportStage() {
+    if (!analysisStarted) return;
+    scrollToSection("report-overview");
+  }
+
+  function openAdviceStage() {
+    if (!canOpenAdvice) return;
+    scrollToSection("patch-workshop");
+  }
+
+  function openRecheckStage() {
+    if (!canOpenRecheck) return;
+    openEditorForRecheck();
   }
 
   function submitFollowUp(event: FormEvent<HTMLFormElement>) {
@@ -814,16 +888,37 @@ export default function Home() {
     });
   }
 
+  const workspaceAction = workspaceStage === "review" || workspaceStage === "recheck"
+    ? { label: workspaceStage === "recheck" ? "编辑原文" : "开始输入", onAction: focusEditor }
+    : workspaceStage === "advice"
+      ? { label: "查看修改建议", onAction: openAdviceStage }
+      : workspaceFlowComplete
+        ? { label: "查看关键诊断", onAction: () => scrollToSection("diagnostic-section") }
+        : undefined;
+
   return (
     <main className="app-shell">
       <AppHeader
         analysisStarted={analysisStarted}
-        onShowEditor={() => analysisStarted && openEditorForRecheck()}
-        onShowReport={() => scrollToSection("report-overview")}
-        onShowPatches={() => scrollToSection("patch-workshop")}
+        onShowEditor={() => (analysisStarted ? openEditorForRecheck() : focusEditor())}
         onNewAnalysis={startNewAnalysis}
         feedbackUrl={process.env.NEXT_PUBLIC_FEEDBACK_URL}
         onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
+      />
+
+      <WorkspaceCommandBar
+        stage={workspaceStage}
+        status={workspaceStatus}
+        title={draft.title}
+        canOpenReport={analysisStarted}
+        canOpenAdvice={canOpenAdvice}
+        canOpenRecheck={canOpenRecheck}
+        onOpenReview={openReviewStage}
+        onOpenReport={openReportStage}
+        onOpenAdvice={openAdviceStage}
+        onOpenRecheck={openRecheckStage}
+        actionLabel={workspaceAction?.label}
+        onAction={workspaceAction?.onAction}
       />
 
       <div>

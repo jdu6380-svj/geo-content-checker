@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Circle, FileText, Lock, Plus, Sparkles } from "lucide-react";
+import { Circle, Lock, Plus } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,6 @@ import { EvidraBrandMark } from "@/components/evidra-brand-mark";
 type AppHeaderProps = {
   analysisStarted: boolean;
   onShowEditor: () => void;
-  onShowReport: () => void;
-  onShowPatches: () => void;
   onNewAnalysis: () => void;
   feedbackUrl?: string;
   onFeedbackClick: () => void;
@@ -19,8 +17,6 @@ type AppHeaderProps = {
 export function AppHeader({
   analysisStarted,
   onShowEditor,
-  onShowReport,
-  onShowPatches,
   onNewAnalysis,
   feedbackUrl,
   onFeedbackClick,
@@ -41,39 +37,10 @@ export function AppHeader({
           </span>
         </button>
 
-        <nav className="hidden h-full items-center gap-1 md:flex" aria-label="产品导航">
-          <button
-            type="button"
-            data-active={!analysisStarted}
-            aria-current={!analysisStarted ? "page" : undefined}
-            onClick={onShowEditor}
-            className="app-nav-item"
-          >
-            <FileText aria-hidden="true" className="size-3.5" />
-            审查
-          </button>
-          <button
-            type="button"
-            data-active={analysisStarted}
-            aria-current={analysisStarted ? "page" : undefined}
-            disabled={!analysisStarted}
-            onClick={onShowReport}
-            className="app-nav-item disabled:cursor-default disabled:opacity-35"
-          >
-            <BarChart3 aria-hidden="true" className="size-3.5" />
-            报告
-          </button>
-          <button
-            type="button"
-            data-active={false}
-            disabled={!analysisStarted}
-            onClick={onShowPatches}
-            className="app-nav-item disabled:cursor-default disabled:opacity-35"
-          >
-            <Sparkles aria-hidden="true" className="size-3.5" />
-            改写建议
-          </button>
-        </nav>
+        <span className="app-workspace-label hidden items-center gap-2 md:inline-flex">
+          <span aria-hidden="true" className="size-1.5 rounded-full bg-[#0f766e]" />
+          内容可信度审查工作台
+        </span>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <span className="hidden items-center gap-3 lg:inline-flex">

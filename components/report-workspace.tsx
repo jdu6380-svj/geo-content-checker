@@ -1,17 +1,15 @@
 "use client";
 
 import type { FormEvent, RefObject } from "react";
-import { FileText, ListChecks, Sparkles } from "lucide-react";
-
 import { AnalysisFlowStatus, type AnalysisFlowStep } from "@/components/analysis-flow-status";
 import { DiagnosisSection } from "@/components/diagnosis-section";
 import { PatchWorkshop } from "@/components/patch-workshop";
 import { ReportActionRail } from "@/components/report-action-rail";
 import { ReportContextRail } from "@/components/report-context-rail";
 import { ReportEvidencePanel } from "@/components/report-evidence-panel";
+import { ReportSectionRail } from "@/components/report-section-rail";
 import { RecheckComparison } from "@/components/recheck-comparison";
 import type { ReportScoreBand } from "@/components/report-score-rail";
-import { Button } from "@/components/ui/button";
 import type { DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import {
   createReportComparisonSnapshot,
@@ -233,51 +231,6 @@ export function ReportWorkspace({
       className="report-workspace section-anchor surface-enter mx-auto max-w-[1480px] px-4 py-4 sm:px-6 sm:py-5 lg:px-8"
       aria-busy={Boolean(loadingMessage)}
     >
-      <div className="report-command-bar surface-flat flex flex-wrap items-center gap-2 px-3 py-2">
-        <div className="inline-flex h-9 shrink-0 items-center gap-2 px-2 text-sm font-semibold text-[#252a31]">
-          <span className="grid size-7 place-items-center rounded-md border border-[#d7e5e2] bg-[#eef8f6] text-[#0f766e]">
-            <FileText aria-hidden="true" className="size-3.5" />
-          </span>
-          报告工作台
-        </div>
-
-        <nav className="order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto border-t border-[#e9ecef] pt-2 sm:order-none sm:w-auto sm:flex-1 sm:justify-center sm:border-t-0 sm:pt-0" aria-label="报告章节导航">
-          <button
-            type="button"
-            onClick={() => onScrollToSection("diagnostic-section")}
-            className="report-nav-active inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold"
-          >
-            <ListChecks aria-hidden="true" className="size-3.5" />
-            关键诊断
-          </button>
-          <button
-            type="button"
-            onClick={() => onScrollToSection("evidence-section")}
-            className="report-nav-item inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold"
-          >
-            <FileText aria-hidden="true" className="size-3.5" />
-            证据验证
-          </button>
-          <button
-            type="button"
-            onClick={() => onScrollToSection("patch-workshop")}
-            className="report-nav-item inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold"
-          >
-            <Sparkles aria-hidden="true" className="size-3.5" />
-            修改与复核
-          </button>
-        </nav>
-
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onBackToEditor}
-          className="ml-auto h-9 shrink-0 rounded-md border-[#dfe3e7] bg-white px-3.5 text-xs font-semibold shadow-none hover:bg-[#f8fafc]"
-        >
-          编辑原文
-        </Button>
-      </div>
-
       <AnalysisFlowStatus
         title={flowPresentation.title}
         description={flowPresentation.description}
@@ -314,72 +267,86 @@ export function ReportWorkspace({
       ) : null}
 
       <div hidden={session.status === "error"}>
-        <div className="report-cockpit mt-4 min-w-0">
-          <ReportContextRail
-            title={title}
-            publishedAt={publishedAt}
-            reportStatus={reportStatus}
-            scoring={scoring}
-            scoreBand={scoreBand}
-            diagnostics={diagnostics}
-            questionOrder={questionOrder}
-            contentAvailable={contentAvailable}
-            restoredFromCache={restoredFromCache}
-            announceLoading={session.status !== "loading"}
-            canRetry={!restoredFromCache && contentAvailable}
-            onRetryScoring={onRetryScoring}
-            onFocusQuestion={(question) => {
-              if (expandedQuestion !== question) onToggleQuestion(question);
-              onScrollToSection("diagnostic-section");
-            }}
+        <div className="report-workspace-grid mt-4 min-w-0">
+          <ReportSectionRail
+            completedCount={completedCount}
+            totalCount={questionOrder.length}
+            evidenceCount={evidenceCount}
+            patchAvailable={contentAvailable}
             onScrollToSection={onScrollToSection}
-            onBackToEditor={onBackToEditor}
           />
 
-          <div className="mt-6 min-w-0 space-y-6">
-            <div className="report-diagnosis-stage grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
-              <DiagnosisSection
-                questions={questions}
-                sessionLoading={session.status === "loading"}
-                questionOrder={questionOrder}
-                diagnostics={diagnostics}
-                completedCount={completedCount}
-                totalCount={questionOrder.length}
-                expandedQuestion={expandedQuestion}
-                latestQuestion={latestQuestion}
-                latestQuestionRef={latestQuestionRef}
-                restoredFromCache={restoredFromCache}
-                canRetryQuestions={!restoredFromCache && paragraphs.length > 0}
-                canRetryDiagnostic={canRetryDiagnostic}
-                followUpQuestion={followUpQuestion}
-                followUpError={followUpError}
-                canAskFollowUp={canAskFollowUp}
-                canSubmitFollowUp={canSubmitFollowUp}
-                customQuestionCount={customQuestionCount}
-                answeredCustomQuestionCount={answeredCustomQuestionCount}
-                feedbackByQuestion={feedbackByQuestion}
-                feedbackEnabled={feedbackEnabled}
-                onRetryQuestions={onRetryQuestions}
-                onRetryDiagnostic={onRetryDiagnostic}
-                onToggleQuestion={onToggleQuestion}
-                onFollowUpQuestionChange={onFollowUpQuestionChange}
-                onSubmitFollowUp={onSubmitFollowUp}
-                onDiagnosisFeedback={onDiagnosisFeedback}
-              />
+          <div className="report-overview-stage min-w-0">
+            <ReportContextRail
+              title={title}
+              publishedAt={publishedAt}
+              reportStatus={reportStatus}
+              scoring={scoring}
+              scoreBand={scoreBand}
+              diagnostics={diagnostics}
+              questionOrder={questionOrder}
+              contentAvailable={contentAvailable}
+              restoredFromCache={restoredFromCache}
+              announceLoading={session.status !== "loading"}
+              canRetry={!restoredFromCache && contentAvailable}
+              onRetryScoring={onRetryScoring}
+              onFocusQuestion={(question) => {
+                if (expandedQuestion !== question) onToggleQuestion(question);
+                onScrollToSection("diagnostic-section");
+              }}
+              onScrollToSection={onScrollToSection}
+              onBackToEditor={onBackToEditor}
+            />
+          </div>
 
-              <ReportActionRail
-                completedCount={completedCount}
-                totalCount={questionOrder.length}
-                evidenceCount={evidenceCount}
-                contentAvailable={contentAvailable}
-                restoredFromCache={restoredFromCache}
-                onScrollToSection={onScrollToSection}
-                onBackToEditor={onBackToEditor}
-              />
-            </div>
-
+          <div className="report-evidence-stage min-w-0">
             <ReportEvidencePanel diagnostics={diagnostics} restoredFromCache={restoredFromCache} />
+          </div>
 
+          <div className="report-action-stage min-w-0">
+            <ReportActionRail
+              completedCount={completedCount}
+              totalCount={questionOrder.length}
+              evidenceCount={evidenceCount}
+              contentAvailable={contentAvailable}
+              restoredFromCache={restoredFromCache}
+              onScrollToSection={onScrollToSection}
+              onBackToEditor={onBackToEditor}
+            />
+          </div>
+
+          <div className="report-diagnosis-stage min-w-0">
+            <DiagnosisSection
+              questions={questions}
+              sessionLoading={session.status === "loading"}
+              questionOrder={questionOrder}
+              diagnostics={diagnostics}
+              completedCount={completedCount}
+              totalCount={questionOrder.length}
+              expandedQuestion={expandedQuestion}
+              latestQuestion={latestQuestion}
+              latestQuestionRef={latestQuestionRef}
+              restoredFromCache={restoredFromCache}
+              canRetryQuestions={!restoredFromCache && paragraphs.length > 0}
+              canRetryDiagnostic={canRetryDiagnostic}
+              followUpQuestion={followUpQuestion}
+              followUpError={followUpError}
+              canAskFollowUp={canAskFollowUp}
+              canSubmitFollowUp={canSubmitFollowUp}
+              customQuestionCount={customQuestionCount}
+              answeredCustomQuestionCount={answeredCustomQuestionCount}
+              feedbackByQuestion={feedbackByQuestion}
+              feedbackEnabled={feedbackEnabled}
+              onRetryQuestions={onRetryQuestions}
+              onRetryDiagnostic={onRetryDiagnostic}
+              onToggleQuestion={onToggleQuestion}
+              onFollowUpQuestionChange={onFollowUpQuestionChange}
+              onSubmitFollowUp={onSubmitFollowUp}
+              onDiagnosisFeedback={onDiagnosisFeedback}
+            />
+          </div>
+
+          <div className="report-patch-stage min-w-0">
             <PatchWorkshop
               title={title}
               paragraphs={paragraphs}
