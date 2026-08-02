@@ -231,19 +231,19 @@ export function ReportWorkspace({
           </button>
           <button
             type="button"
-            onClick={() => onScrollToSection("patch-workshop")}
-            className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold text-[#69717d] hover:bg-[#f6f8f9] hover:text-[#14161b]"
-          >
-            <Sparkles aria-hidden="true" className="size-3.5" />
-            改写建议
-          </button>
-          <button
-            type="button"
             onClick={() => onScrollToSection("evidence-section")}
             className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold text-[#69717d] hover:bg-[#f6f8f9] hover:text-[#14161b]"
           >
             <FileText aria-hidden="true" className="size-3.5" />
-            证据锚点
+            证据验证
+          </button>
+          <button
+            type="button"
+            onClick={() => onScrollToSection("patch-workshop")}
+            className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold text-[#69717d] hover:bg-[#f6f8f9] hover:text-[#14161b]"
+          >
+            <Sparkles aria-hidden="true" className="size-3.5" />
+            修改与复核
           </button>
         </nav>
 
@@ -285,20 +285,29 @@ export function ReportWorkspace({
       ) : null}
 
       <div hidden={session.status === "error"}>
-        <div className="report-cockpit mt-4 grid items-start gap-4 lg:grid-cols-[232px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="report-cockpit mt-4 min-w-0">
           <ReportContextRail
             title={title}
             publishedAt={publishedAt}
             reportStatus={reportStatus}
             scoring={scoring}
             scoreBand={scoreBand}
+            diagnostics={diagnostics}
+            questionOrder={questionOrder}
+            contentAvailable={contentAvailable}
+            restoredFromCache={restoredFromCache}
             announceLoading={session.status !== "loading"}
             canRetry={!restoredFromCache && contentAvailable}
-            onBackToEditor={onBackToEditor}
             onRetryScoring={onRetryScoring}
+            onFocusQuestion={(question) => {
+              if (expandedQuestion !== question) onToggleQuestion(question);
+              onScrollToSection("diagnostic-section");
+            }}
+            onScrollToSection={onScrollToSection}
+            onBackToEditor={onBackToEditor}
           />
 
-          <div className="min-w-0 space-y-5">
+          <div className="mt-6 min-w-0 space-y-6">
             <div className="report-diagnosis-stage grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
               <DiagnosisSection
                 questions={questions}
@@ -336,13 +345,19 @@ export function ReportWorkspace({
                 contentAvailable={contentAvailable}
                 restoredFromCache={restoredFromCache}
                 onScrollToSection={onScrollToSection}
+                onBackToEditor={onBackToEditor}
               />
             </div>
 
-            <div className="report-action-stage grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-              <PatchWorkshop title={title} paragraphs={paragraphs} diagnostics={diagnostics} runId={runId} />
-              <ReportEvidencePanel diagnostics={diagnostics} restoredFromCache={restoredFromCache} />
-            </div>
+            <ReportEvidencePanel diagnostics={diagnostics} restoredFromCache={restoredFromCache} />
+
+            <PatchWorkshop
+              title={title}
+              paragraphs={paragraphs}
+              diagnostics={diagnostics}
+              runId={runId}
+              onBackToEditor={onBackToEditor}
+            />
           </div>
         </div>
       </div>

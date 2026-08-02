@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, RefreshCw, Sparkles, TextSelect } from "lucide-react";
+import { ArrowRight, Check, Copy, ListChecks, RefreshCw, RotateCcw, Sparkles, TextSelect } from "lucide-react";
 
 import { postGeoBetaEvent, postGeoJson } from "@/lib/client/geo-api";
 import type { DiagnosticsState } from "@/lib/client/report-state";
@@ -17,6 +17,7 @@ type PatchWorkshopProps = {
   paragraphs: Paragraph[];
   diagnostics: DiagnosticsState;
   runId: string | null;
+  onBackToEditor: () => void;
 };
 
 type PatchState =
@@ -113,7 +114,7 @@ function actionPresentation(action: PatchAction) {
   };
 }
 
-export function PatchWorkshop({ title, paragraphs, diagnostics, runId }: PatchWorkshopProps) {
+export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToEditor }: PatchWorkshopProps) {
   const [activeMode, setActiveMode] = useState<PatchMode>("advice");
   const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(initialPatchStates);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
@@ -191,8 +192,9 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId }: PatchWo
     <section id="patch-workshop" className="patch-workshop section-anchor min-w-0" aria-busy={activePatch.status === "loading"}>
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#dbe2df] pb-4">
         <div>
-          <p className="section-kicker">内容优化</p>
-          <h2 className="mt-1 text-xl font-bold sm:text-2xl">补丁工坊</h2>
+          <p className="section-kicker">APPLY & RECHECK</p>
+          <h2 className="mt-1 text-xl font-bold sm:text-2xl">修改与重新验证</h2>
+          <p className="mt-2 text-sm leading-6 text-[#687386]">先理解问题，再生成修改材料；应用后重新分析，确认风险是否真正消除。</p>
         </div>
         {activePatch.status === "success" ? (
           <span className="status-badge border border-[#d8e4e1] bg-white px-3 py-1.5 text-xs text-[#687681]">
@@ -200,6 +202,28 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId }: PatchWo
           </span>
         ) : null}
       </div>
+
+      <ol className="patch-review-loop mt-4 grid overflow-hidden rounded-lg border border-[#d8e0dd] bg-white sm:grid-cols-3" aria-label="修改与重新验证流程">
+        {[
+          { label: "发现问题", meta: `${diagnosticResults.length} 项诊断可用`, icon: ListChecks },
+          { label: "优化建议", meta: "生成建议或内容草稿", icon: Sparkles },
+          { label: "重新验证", meta: "应用修改后再次分析", icon: RotateCcw },
+        ].map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <li key={step.label} className="flex min-w-0 items-center gap-3 px-4 py-3.5">
+              <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#d7e5e2] bg-[#eef8f6] text-[#0f766e]">
+                <Icon aria-hidden="true" className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-[#252a31]">{step.label}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-[#858c97]">{step.meta}</span>
+              </span>
+              {index < 2 ? <ArrowRight aria-hidden="true" className="ml-auto hidden size-4 shrink-0 text-[#a0a7b1] sm:block" /> : null}
+            </li>
+          );
+        })}
+      </ol>
 
       <div className="mt-4 inline-flex rounded-lg border border-[#d8e0dd] bg-white p-1" aria-label="补丁模式">
         <button
@@ -339,6 +363,17 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId }: PatchWo
           </div>
         </div>
       ) : null}
+
+      <div className="mt-5 flex flex-col items-start justify-between gap-4 border-t border-[#dbe2df] pt-5 sm:flex-row sm:items-center">
+        <div>
+          <h3 className="text-sm font-semibold text-[#252a31]">完成修改后，回到编辑器重新验证</h3>
+          <p className="mt-1 text-xs leading-5 text-[#737d89]">系统不会自动改动原文。请人工应用并核对修改，再运行新的完整分析。</p>
+        </div>
+        <button type="button" onClick={onBackToEditor} className="secondary-button h-10 w-full shrink-0 px-4 text-sm font-semibold sm:w-auto">
+          <RotateCcw aria-hidden="true" className="size-4" />
+          返回编辑并重新验证
+        </button>
+      </div>
     </section>
   );
 }

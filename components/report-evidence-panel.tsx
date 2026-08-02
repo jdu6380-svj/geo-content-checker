@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleSlash2, FileText } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import type { DiagnosticsState } from "@/lib/client/report-state";
@@ -17,26 +17,66 @@ export function ReportEvidencePanel({ diagnostics, restoredFromCache }: ReportEv
     (result, item) => ({ ...result, [item.evidenceStatus]: result[item.evidenceStatus] + 1 }),
     { valid: 0, missing: 0, invalid: 0 },
   );
+  const evidenceStates = [
+    {
+      status: "valid" as const,
+      label: "Valid",
+      description: "段落编号与引用均可逐字定位",
+      count: counts.valid,
+      icon: CheckCircle2,
+      className: "text-[#0e766e]",
+    },
+    {
+      status: "missing" as const,
+      label: "Missing",
+      description: "原文没有足够证据支持该判断",
+      count: counts.missing,
+      icon: CircleSlash2,
+      className: "text-[#8a5b12]",
+    },
+    {
+      status: "invalid" as const,
+      label: "Invalid",
+      description: "模型引用无法通过逐字校验",
+      count: counts.invalid,
+      icon: AlertTriangle,
+      className: "text-[#a43e2b]",
+    },
+  ];
 
   return (
     <section id="evidence-section" className="report-evidence-panel section-anchor surface-flat min-w-0">
-      <div className="flex items-start justify-between gap-3 border-b border-[#e5e8ed] px-4 py-4 sm:px-5">
+      <div className="flex items-start justify-between gap-3 border-b border-[#e5e8ed] px-4 py-4 sm:px-6 sm:py-5">
         <div>
           <p className="section-kicker">EVIDENCE REVIEW</p>
-          <h2 className="mt-1.5 text-base font-semibold text-[#111827]">证据验证</h2>
-          {items.length ? (
-            <p className="mt-2 text-xs leading-5 text-[#737d89]">
-              有效 {counts.valid} · 缺失 {counts.missing} · 无效 {counts.invalid}
-            </p>
-          ) : null}
+          <h2 className="mt-1.5 text-xl font-semibold text-[#111827] sm:text-2xl">证据链</h2>
+          <p className="mt-2 text-sm leading-6 text-[#687386]">每条诊断都标明证据是否能在原文中逐字定位。</p>
         </div>
         <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#dce4e2] bg-[#f3f8f7] text-[#0f766e]">
           <FileText aria-hidden="true" className="size-4" />
         </span>
       </div>
 
+      <div className="evidence-status-summary grid border-b border-[#e5e8ed] sm:grid-cols-3">
+        {evidenceStates.map((state) => {
+          const Icon = state.icon;
+          return (
+            <div key={state.status} className="flex min-w-0 items-start gap-3 px-4 py-4 sm:px-5">
+              <Icon aria-hidden="true" className={`mt-0.5 size-4 shrink-0 ${state.className}`} />
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-xs font-semibold uppercase ${state.className}`}>{state.label}</span>
+                  <strong className="text-base tabular-nums text-[#111827]">{state.count}</strong>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-[#737d89]">{state.description}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {items.length ? (
-        <div className="divide-y divide-[#eceef1]">
+        <div className="evidence-item-grid grid lg:grid-cols-2">
           {items.map((item) => {
             const evidence = Array.from(
               new Map(
@@ -48,7 +88,7 @@ export function ReportEvidencePanel({ diagnostics, restoredFromCache }: ReportEv
             );
 
             return (
-              <article key={item.question} className="grid gap-3 px-4 py-4 sm:px-5">
+              <article key={item.question} className="grid content-start gap-3 border-b border-[#eceef1] px-4 py-5 sm:px-5">
                 <div className="grid gap-2">
                   <EvidenceStatusBadge status={item.evidenceStatus} />
                   <h3 className="break-words text-xs font-semibold leading-5 text-[#343a42]">{item.question}</h3>
@@ -61,7 +101,7 @@ export function ReportEvidencePanel({ diagnostics, restoredFromCache }: ReportEv
                 {evidence.length ? (
                   <div className="grid gap-3">
                     {evidence.map((entry) => (
-                      <blockquote key={`${entry.paragraphId}:${entry.quote}`} className="border-l-2 border-[#72aaa2] pl-3 text-xs leading-6 text-[#59636f]">
+                      <blockquote key={`${entry.paragraphId}:${entry.quote}`} className="border-l-2 border-[#72aaa2] pl-3 text-sm leading-6 text-[#59636f]">
                         <span className="mb-1 block font-mono text-[11px] font-bold text-[#08766e]">{entry.paragraphId}</span>
                         {entry.quote}
                       </blockquote>

@@ -93,9 +93,12 @@ export function DiagnosticDetailPanel({
 
   return (
     <div id="diagnosis-detail-panel" className="min-h-[420px] bg-[#fafbfc]">
-      <div className="border-b border-[#e3e7eb] bg-white px-5 py-5">
+      <section className="border-b border-[#e3e7eb] bg-white px-5 py-5" aria-labelledby="diagnosis-problem-heading">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h3 className="max-w-2xl text-base font-semibold leading-7 text-[#111827]">{item.question}</h3>
+          <div className="max-w-2xl">
+            <p id="diagnosis-problem-heading" className="section-kicker">问题</p>
+            <h3 className="mt-2 text-base font-semibold leading-7 text-[#111827]">{item.question}</h3>
+          </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
               {item.data.answerability}
@@ -106,7 +109,7 @@ export function DiagnosticDetailPanel({
             <EvidenceStatusBadge status={item.data.evidenceStatus} />
           </div>
         </div>
-      </div>
+      </section>
 
       <div className="grid">
         <section className="px-5 py-5">

@@ -96,6 +96,7 @@ export function DiagnosticAccordionItem({
             {id}
           </span>
           <span className="min-w-0">
+            <span className="section-kicker block text-[10px]">问题 {id}</span>
             <span className="block break-words text-sm font-semibold leading-6 sm:text-[15px]">{item.question}</span>
             <span className="mt-1.5 flex min-h-5 flex-wrap items-center gap-2">
               {item.status === "queued" ? (
@@ -163,8 +164,8 @@ export function DiagnosticAccordionItem({
         <div className="overflow-hidden">
           {item.data ? (
             <div className="grid bg-[#f7f9f8] text-sm min-[760px]:grid-cols-[1.1fr_.9fr]">
-              <div className="px-4 py-5 sm:px-5">
-                <h3 className="text-sm font-bold">原文证据</h3>
+              <section className="px-4 py-5 sm:px-5">
+                <p className="section-kicker">原文证据</p>
                 {item.data.evidenceStatus === "invalid" ? (
                   <p className="mt-3 border-l-2 border-[#c85745] bg-[#fff8f6] px-3 py-2 text-xs leading-5 text-[#963d2e]">
                     无法定位的引用已被移除。
@@ -182,12 +183,12 @@ export function DiagnosticAccordionItem({
                 ) : (
                   <p className="mt-3 leading-6 text-[#687386]">{presentation.evidenceEmptyMessage}</p>
                 )}
-              </div>
+              </section>
 
               <div className="grid content-start gap-5 border-t border-[#e1e6ea] px-4 py-5 sm:px-5 min-[760px]:border-l min-[760px]:border-t-0">
-                <div>
+                <section>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-bold">缺失信息</h3>
+                    <p className="section-kicker">缺失信息</p>
                     <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${RISK_STYLE[item.data.riskLevel].className}`}>
                       {RISK_STYLE[item.data.riskLevel].label}
                     </span>
@@ -204,11 +205,11 @@ export function DiagnosticAccordionItem({
                   ) : (
                     <p className="mt-2 text-[#687386]">{presentation.missingInfoEmptyMessage}</p>
                   )}
-                </div>
-                <div className="border-l-2 border-[#6f8ca4] bg-[#edf3f7] px-3 py-3">
-                  <h3 className="font-bold text-[#416b8a]">修改建议</h3>
+                </section>
+                <section className="border-l-2 border-[#6f8ca4] bg-[#edf3f7] px-3 py-3">
+                  <p className="section-kicker text-[#416b8a]">修改建议</p>
                   <p className="mt-2 leading-6 text-[#46545e]">{item.data.recommendation}</p>
-                </div>
+                </section>
                 <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
               </div>
             </div>

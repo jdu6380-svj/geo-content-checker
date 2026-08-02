@@ -473,6 +473,16 @@ h1, h2, h3, p { letter-spacing: 0; }
   .patch-callout { box-shadow: inset 3px 0 0 #58a99f; }
   .section-anchor { scroll-margin-top: var(--report-anchor-offset); }
   .score-rail { min-width: 0; }
+  .report-overview-panel {
+    box-shadow: var(--geo-shadow-surface);
+  }
+  .report-overview-grid > * + * {
+    border-top: 1px solid var(--geo-border);
+  }
+  .report-priority-risk,
+  .report-next-action {
+    min-height: 318px;
+  }
   .report-command-bar {
     box-shadow: 0 1px 2px rgba(17, 24, 39, .03), 0 8px 24px rgba(17, 24, 39, .025);
   }
@@ -556,6 +566,12 @@ h1, h2, h3, p { letter-spacing: 0; }
   .report-evidence-panel {
     overflow: hidden;
   }
+  .evidence-status-summary > * + * {
+    border-top: 1px solid var(--geo-border);
+  }
+  .patch-review-loop > * + * {
+    border-top: 1px solid var(--geo-border);
+  }
   .surface-enter { animation: surface-enter 180ms ease-out both; }
   .prose p { margin: 0 0 12px; line-height: 1.8; }
 }
@@ -575,10 +591,20 @@ h1, h2, h3, p { letter-spacing: 0; }
 }
 
 @media (min-width: 1024px) {
-  .report-context-rail {
-    position: sticky;
-    top: var(--sticky-score-offset);
-    align-self: start;
+  .report-overview-grid > * + * {
+    border-top: 0;
+    border-left: 1px solid var(--geo-border);
+  }
+  .evidence-item-grid > article:nth-child(odd) {
+    border-right: 1px solid var(--geo-border);
+  }
+}
+
+@media (min-width: 640px) {
+  .evidence-status-summary > * + *,
+  .patch-review-loop > * + * {
+    border-top: 0;
+    border-left: 1px solid var(--geo-border);
   }
 }
 
