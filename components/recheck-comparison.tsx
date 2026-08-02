@@ -75,7 +75,7 @@ function statusCopy(status: RecheckComparisonProps["status"]) {
       title: "尚未生成新的复检结果",
       description: "当前内容与上次分析输入一致，因此显示的是缓存报告。修改正文后再次分析，才会形成可比较的新结果。",
       icon: RotateCcw,
-      className: "border-[#ead8ac] bg-[#fffaf0] text-[#8a5b12]",
+      className: "status-warning",
     };
   }
   if (status === "error") {
@@ -83,14 +83,14 @@ function statusCopy(status: RecheckComparisonProps["status"]) {
       title: "复检尚未完整结束",
       description: "本轮分析存在未完成模块。已保留修改前基线，待完整分析成功后再显示变化判断。",
       icon: AlertTriangle,
-      className: "border-[#f0d6d1] bg-[#fff8f6] text-[#a43e2b]",
+      className: "status-danger",
     };
   }
   return {
     title: "正在重新验证修改结果",
     description: "系统正在运行同一套完整审查。结果完成前，不提前判断风险是否改善。",
     icon: RotateCcw,
-    className: "border-[#d5e0e8] bg-[#f2f6f8] text-[#416b8a]",
+    className: "status-info",
   };
 }
 
@@ -149,7 +149,7 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
             只对问题文本完全一致的诊断判断改善；问题集合变化不会自动视为风险消除。
           </p>
         </div>
-        <span className="status-badge inline-flex w-fit items-center gap-1.5 border border-[#cfd4f1] bg-[#f1f2fb] px-2.5 py-1 text-xs font-semibold text-[#4d58bf]">
+        <span className="status-badge status-secondary inline-flex w-fit items-center gap-1.5 px-2.5 py-1 text-xs font-semibold">
           <CheckCircle2 aria-hidden="true" className="size-3.5" />
           完整复检已完成
         </span>

@@ -87,27 +87,27 @@ const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
 ];
 
 const DIMENSION_META = [
-  { key: "questionCoverage", label: "问题覆盖度", bar: "bg-[#08766e]" },
-  { key: "factCompleteness", label: "事实完整度", bar: "bg-[#416b8a]" },
-  { key: "structureClarity", label: "结构清晰度", bar: "bg-[#b7791f]" },
-  { key: "freshness", label: "时效性", bar: "bg-[#c65d4b]" },
+  { key: "questionCoverage", label: "问题覆盖度", bar: "score-bar-question" },
+  { key: "factCompleteness", label: "事实完整度", bar: "score-bar-fact" },
+  { key: "structureClarity", label: "结构清晰度", bar: "score-bar-structure" },
+  { key: "freshness", label: "时效性", bar: "score-bar-freshness" },
 ] as const;
 
 const SAMPLE_META: Record<number, SamplePresentationMeta> = {
   0: {
     status: "已通过",
     description: "结构完整且信息源真实",
-    badgeClassName: "border-[#b9d9d4] bg-[#ecfdf5] text-[#0f766e]",
+    badgeClassName: "status-success",
   },
   1: {
     status: "风险",
     description: "缺乏必要的事实证据支撑",
-    badgeClassName: "border-[#f1d69b] bg-[#fffbeb] text-[#a16207]",
+    badgeClassName: "status-warning",
   },
   2: {
     status: "待优化",
     description: "时效性模糊且结构混乱",
-    badgeClassName: "border-[#f1c8c0] bg-[#fff1f2] text-[#be123c]",
+    badgeClassName: "status-danger",
   },
 };
 
@@ -123,12 +123,12 @@ const EDITOR_DIMENSIONS = DIMENSION_META.map(({ label }, index) => ({
   label,
   indicatorClassName:
     index === 0
-      ? "bg-[#0f766e]"
+      ? "score-bar-question"
       : index === 1
-        ? "bg-[#5964cf]"
+        ? "score-bar-fact"
         : index === 2
-          ? "bg-[#a86313]"
-          : "bg-[#c85745]",
+          ? "score-bar-structure"
+          : "score-bar-freshness",
 }));
 
 function scoreBand(score: number): { label: string; note: string } {
@@ -733,21 +733,21 @@ export default function Home() {
 
   function reportStatus() {
     if (restoredFromCache) {
-      return { label: "本地缓存报告", className: "border-[#d8e4e1] text-[#687386]" };
+      return { label: "本地缓存报告", className: "status-neutral" };
     }
     if (session.status === "loading") {
-      return { label: "正在建立会话", className: "border-[#ead8ac] bg-[#fffaf0] text-[#8a5b12]" };
+      return { label: "正在建立会话", className: "status-warning" };
     }
     if (session.status === "error" || scoring.status === "error" || questions.status === "error") {
-      return { label: "需要重新体检", className: "border-[#f0d6d1] bg-[#fff8f6] text-[#a43e2b]" };
+      return { label: "需要重新体检", className: "status-danger" };
     }
     if (scoring.status === "loading" || questions.status === "loading") {
-      return { label: "正在分析", className: "border-[#d8e4e1] bg-[#f3f7f6] text-[#0e766e]" };
+      return { label: "正在分析", className: "status-info" };
     }
     if (scoring.status === "success" && scoring.data.source === "model") {
-      return { label: "AI 模型分析", className: "border-[#b9d9d4] bg-[#e7f4f1] text-[#0e766e]" };
+      return { label: "AI 模型分析", className: "status-success" };
     }
-    return { label: "安全降级结果", className: "border-[#d8e4e1] text-[#687386]" };
+    return { label: "安全降级结果", className: "status-neutral" };
   }
 
   function retryDiagnostic(question: string) {

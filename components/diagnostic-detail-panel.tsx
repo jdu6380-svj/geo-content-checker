@@ -17,15 +17,15 @@ type DiagnosticDetailPanelProps = {
 };
 
 const STATUS_STYLE = {
-  "可以完全回答": "bg-[#e4f2ef] text-[#0b6b63]",
-  "信息不足": "bg-[#fff5dc] text-[#8a5b12]",
-  "有风险": "bg-[#fff0ed] text-[#a43e2b]",
+  "可以完全回答": "status-success",
+  "信息不足": "status-warning",
+  "有风险": "status-danger",
 } as const;
 
 const RISK_STYLE = {
-  low: { label: "低风险", className: "bg-[#e4f2ef] text-[#0b6b63]" },
-  medium: { label: "中风险", className: "bg-[#fff5dc] text-[#8a5b12]" },
-  high: { label: "高风险", className: "bg-[#fff0ed] text-[#a43e2b]" },
+  low: { label: "低风险", className: "status-success" },
+  medium: { label: "中风险", className: "status-warning" },
+  high: { label: "高风险", className: "status-danger" },
 } as const;
 
 export function DiagnosticDetailPanel({

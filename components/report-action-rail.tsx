@@ -13,8 +13,8 @@ type ReportActionRailProps = {
 };
 
 const STEP_STYLE = {
-  ready: "border-[#cfe1de] bg-[#eef8f6] text-[#0f766e]",
-  neutral: "border-[#e1e5ea] bg-[#f8fafc] text-[#69717d]",
+  ready: "status-success",
+  neutral: "status-neutral",
 } as const;
 
 export function ReportActionRail({

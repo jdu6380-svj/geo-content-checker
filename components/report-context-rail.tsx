@@ -31,15 +31,15 @@ type ReportContextRailProps = {
 const RISK_PRIORITY = { low: 1, medium: 2, high: 3 } as const;
 
 const RISK_META = {
-  low: { label: "低风险", className: "bg-[#e4f2ef] text-[#0b6b63]" },
-  medium: { label: "中风险", className: "bg-[#fff5dc] text-[#8a5b12]" },
-  high: { label: "高风险", className: "bg-[#fff0ed] text-[#a43e2b]" },
+  low: { label: "低风险", className: "status-success" },
+  medium: { label: "中风险", className: "status-warning" },
+  high: { label: "高风险", className: "status-danger" },
 } as const;
 
 const ANSWERABILITY_STYLE = {
-  "可以完全回答": "bg-[#e4f2ef] text-[#0b6b63]",
-  "信息不足": "bg-[#fff5dc] text-[#8a5b12]",
-  "有风险": "bg-[#fff0ed] text-[#a43e2b]",
+  "可以完全回答": "status-success",
+  "信息不足": "status-warning",
+  "有风险": "status-danger",
 } as const;
 
 export function ReportContextRail({
@@ -85,7 +85,7 @@ export function ReportContextRail({
   );
 
   return (
-    <section id="report-core" className="report-overview-panel surface-flat min-w-0 overflow-hidden border-t-[3px] border-t-[#0f766e]">
+    <section id="report-core" className="report-overview-panel surface-flat min-w-0 overflow-hidden border-t-[3px] border-t-[var(--geo-primary)]">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e7e9ed] px-5 py-4 sm:px-6 sm:py-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[11px] font-semibold text-[#858c97]">
@@ -158,7 +158,7 @@ export function ReportContextRail({
           )}
         </section>
 
-        <section className="report-next-action min-w-0 bg-[#f7faf9] p-5 sm:p-6">
+        <section className="report-next-action min-w-0 p-5 sm:p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="section-kicker text-[#60706e]">下一步行动</p>
             <Sparkles aria-hidden="true" className="size-4 text-[#5964cf]" />

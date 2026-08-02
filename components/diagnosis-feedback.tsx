@@ -24,8 +24,8 @@ export function DiagnosisFeedback({ value, enabled, onSubmit }: DiagnosisFeedbac
         onClick={() => onSubmit(true)}
         className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors motion-reduce:transition-none ${
           value === true
-            ? "border-[#b9d9d4] bg-[#e7f4f1] text-[#0e766e]"
-            : "border-[#dfe4e8] bg-white text-[#687386] hover:border-[#b9d9d4] hover:text-[#0e766e]"
+            ? "status-success"
+            : "feedback-button hover:text-[var(--geo-status-success)]"
         } disabled:cursor-default disabled:opacity-70`}
       >
         <ThumbsUp aria-hidden="true" className="size-3.5" />
@@ -40,8 +40,8 @@ export function DiagnosisFeedback({ value, enabled, onSubmit }: DiagnosisFeedbac
         onClick={() => onSubmit(false)}
         className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors motion-reduce:transition-none ${
           value === false
-            ? "border-[#f0d6d1] bg-[#fff8f6] text-[#a43e2b]"
-            : "border-[#dfe4e8] bg-white text-[#687386] hover:border-[#f0d6d1] hover:text-[#a43e2b]"
+            ? "status-danger"
+            : "feedback-button hover:text-[var(--geo-status-danger)]"
         } disabled:cursor-default disabled:opacity-70`}
       >
         <ThumbsDown aria-hidden="true" className="size-3.5" />

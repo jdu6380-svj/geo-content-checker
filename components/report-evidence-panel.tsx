@@ -24,7 +24,7 @@ export function ReportEvidencePanel({ diagnostics, restoredFromCache }: ReportEv
       description: "段落编号与引用均可逐字定位",
       count: counts.valid,
       icon: CheckCircle2,
-      className: "text-[#0e766e]",
+      className: "geo-tone-success",
     },
     {
       status: "missing" as const,
@@ -32,7 +32,7 @@ export function ReportEvidencePanel({ diagnostics, restoredFromCache }: ReportEv
       description: "原文没有足够证据支持该判断",
       count: counts.missing,
       icon: CircleSlash2,
-      className: "text-[#8a5b12]",
+      className: "geo-tone-warning",
     },
     {
       status: "invalid" as const,
@@ -40,7 +40,7 @@ export function ReportEvidencePanel({ diagnostics, restoredFromCache }: ReportEv
       description: "模型引用无法通过逐字校验",
       count: counts.invalid,
       icon: AlertTriangle,
-      className: "text-[#a43e2b]",
+      className: "geo-tone-danger",
     },
   ];
 
@@ -49,7 +49,7 @@ export function ReportEvidencePanel({ diagnostics, restoredFromCache }: ReportEv
       <div className="flex items-start justify-between gap-3 border-b border-[#e5e8ed] px-4 py-4 sm:px-6 sm:py-5">
         <div>
           <p className="section-kicker">EVIDENCE REVIEW</p>
-          <h2 className="mt-1.5 text-xl font-semibold text-[#111827] sm:text-2xl">证据链</h2>
+          <h2 className="geo-heading mt-1.5 text-xl font-semibold sm:text-2xl">证据链</h2>
           <p className="mt-2 text-sm leading-6 text-[#687386]">每条诊断都标明证据是否能在原文中逐字定位。</p>
         </div>
         <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#dce4e2] bg-[#f3f8f7] text-[#0f766e]">

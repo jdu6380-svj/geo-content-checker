@@ -142,7 +142,7 @@ export function EditorWorkspace({
                 <p className="mt-0.5 text-[11px] text-[#8b939e]">标题、正文和发布日期会用于生成报告</p>
               </div>
             </div>
-              <span className="editor-status inline-flex shrink-0 items-center gap-1.5 border border-[#cfe1de] bg-[#f1f9f7] px-2.5 py-1 text-[10px] font-semibold text-[#0f766e]">
+              <span className="editor-status status-success inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold">
                 <span aria-hidden="true" className="size-1.5 rounded-full bg-[#159587]" />
                 {recheckContext ? "等待修改" : "等待输入"}
             </span>

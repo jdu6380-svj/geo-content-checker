@@ -102,7 +102,7 @@ export function AppHeader({
               反馈
             </a>
           ) : null}
-          <span className="privacy-badge hidden items-center gap-1.5 border border-[#dfe4e8] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] font-medium text-[#66707c] sm:inline-flex">
+          <span className="privacy-badge hidden items-center gap-1.5 border px-2.5 py-1.5 text-[11px] font-medium sm:inline-flex">
             <Lock aria-hidden="true" className="size-3" />
             正文不保存
           </span>

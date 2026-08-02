@@ -100,8 +100,8 @@ function actionPresentation(action: PatchAction) {
       sourceLabel: "来自诊断",
       source: action.relatedQuestion ?? "需要作者补充事实依据",
       decision: "需要人工确认事实、来源与适用边界",
-      accent: "border-t-[#a86313]",
-      sourceClassName: "bg-[#fff7e8] text-[#8a5b12]",
+      accent: "border-t-[var(--geo-amber)]",
+      sourceClassName: "status-warning",
     };
   }
   if (action.type === "structure_change") {
@@ -112,8 +112,8 @@ function actionPresentation(action: PatchAction) {
       sourceLabel: "作用范围",
       source: action.targetParagraphIds.join(", "),
       decision: "需要人工判断结构调整是否改变原意",
-      accent: "border-t-[#5964cf]",
-      sourceClassName: "bg-[#eef1ff] text-[#4d58bf]",
+      accent: "border-t-[var(--geo-secondary)]",
+      sourceClassName: "status-secondary",
     };
   }
   if (action.type === "faq") {
@@ -124,8 +124,8 @@ function actionPresentation(action: PatchAction) {
       sourceLabel: "逐字证据",
       source: action.evidence.paragraphId,
       decision: "核对问答是否完整表达原文边界",
-      accent: "border-t-[#08766e]",
-      sourceClassName: "bg-[#e7f4f1] text-[#0f766e]",
+      accent: "border-t-[var(--geo-primary)]",
+      sourceClassName: "status-success",
     };
   }
   return {
@@ -135,8 +135,8 @@ function actionPresentation(action: PatchAction) {
     sourceLabel: "逐字证据",
     source: action.evidence.paragraphId,
     decision: "核对事实卡片是否脱离上下文或扩大结论",
-    accent: "border-t-[#416b8a]",
-    sourceClassName: "bg-[#edf3f7] text-[#416b8a]",
+    accent: "border-t-[var(--geo-info)]",
+    sourceClassName: "status-info",
   };
 }
 
@@ -226,7 +226,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
           <p className="mt-2 text-sm leading-6 text-[#687386]">先理解问题，再生成修改材料；应用后重新分析，确认风险是否真正消除。</p>
         </div>
         {activePatch.status === "success" ? (
-          <span className="status-badge border border-[#d8e4e1] bg-white px-3 py-1.5 text-xs text-[#687681]">
+          <span className="status-badge status-neutral px-3 py-1.5 text-xs">
             {activePatch.data.source === "model" ? "AI 模型生成" : "安全降级生成"}
           </span>
         ) : null}
@@ -259,7 +259,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
           type="button"
           aria-pressed={activeMode === "advice"}
           onClick={() => selectMode("advice")}
-          className={`h-8 rounded-md px-4 text-sm font-semibold ${activeMode === "advice" ? "bg-[#e4f3f0] text-[#08766e]" : "text-[#687681]"}`}
+          className={`h-8 rounded-md px-4 text-sm font-semibold ${activeMode === "advice" ? "patch-tab-active-advice" : "geo-muted"}`}
         >
           修改建议
         </button>
@@ -267,7 +267,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
           type="button"
           aria-pressed={activeMode === "content_draft"}
           onClick={() => selectMode("content_draft")}
-          className={`h-8 rounded-md px-4 text-sm font-semibold ${activeMode === "content_draft" ? "bg-[#edf0fb] text-[#4d58bf]" : "text-[#687681]"}`}
+          className={`h-8 rounded-md px-4 text-sm font-semibold ${activeMode === "content_draft" ? "patch-tab-active-draft" : "geo-muted"}`}
         >
           内容草稿
         </button>
@@ -310,7 +310,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
       ) : null}
 
       {canGenerate && activePatch.status !== "success" ? (
-        <div className={`patch-callout mt-4 grid items-center gap-4 rounded-lg border p-4 sm:grid-cols-[1fr_auto] sm:p-5 ${activePatch.status === "error" ? "border-[#f0d6d1] bg-[#fff8f6]" : "border-[#cdded9] bg-[#eef6f4]"}`}>
+        <div className={`patch-callout mt-4 grid items-center gap-4 rounded-lg border p-4 sm:grid-cols-[1fr_auto] sm:p-5 ${activePatch.status === "error" ? "patch-callout-error" : "patch-callout-ready"}`}>
           <div>
             <h3 className="text-sm font-bold text-[#24323a]">
               {activePatch.status === "error" ? `${modeTitle}生成失败` : modeTitle}

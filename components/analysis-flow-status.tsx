@@ -54,12 +54,12 @@ export function AnalysisFlowStatus({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`analysis-flow-summary-dot analysis-flow-summary-dot-${tone}`} aria-hidden="true" />
-            <h2 className="text-sm font-semibold text-[#252a31]">{title}</h2>
+            <h2 className="geo-heading text-sm font-semibold">{title}</h2>
           </div>
-          <p className="mt-1 text-xs leading-5 text-[#68747a] sm:ml-4">{description}</p>
+          <p className="geo-muted mt-1 text-xs leading-5 sm:ml-4">{description}</p>
         </div>
         {tone === "loading" ? (
-          <span className="shrink-0 text-[11px] font-medium text-[#7a858a]">评分与问题识别可能并行进行</span>
+          <span className="geo-soft shrink-0 text-[11px] font-medium">评分与问题识别可能并行进行</span>
         ) : null}
       </div>
 
@@ -74,12 +74,12 @@ export function AnalysisFlowStatus({
             </span>
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="text-[10px] font-bold tabular-nums text-[#929b9f]">{String(index + 1).padStart(2, "0")}</span>
-                <span className="text-xs font-semibold text-[#343b3a]">{step.label}</span>
+                <span className="geo-soft text-[10px] font-bold tabular-nums">{String(index + 1).padStart(2, "0")}</span>
+                <span className="geo-body text-xs font-semibold">{step.label}</span>
                 <span className="analysis-flow-step-state text-[10px] font-semibold">{STATUS_LABEL[step.status]}</span>
               </span>
-              <span className="mt-1 block text-[11px] leading-5 text-[#7b858a]">{step.description}</span>
-              {step.meta ? <span className="mt-1 block text-[10px] font-medium text-[#68747a]">{step.meta}</span> : null}
+              <span className="geo-muted mt-1 block text-[11px] leading-5">{step.description}</span>
+              {step.meta ? <span className="geo-muted mt-1 block text-[10px] font-medium">{step.meta}</span> : null}
             </span>
           </li>
         ))}

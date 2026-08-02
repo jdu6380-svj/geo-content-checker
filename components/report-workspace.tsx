@@ -245,7 +245,7 @@ export function ReportWorkspace({
           <button
             type="button"
             onClick={() => onScrollToSection("diagnostic-section")}
-            className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md bg-[#eef8f6] px-3 text-xs font-semibold text-[#0f766e]"
+            className="report-nav-active inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold"
           >
             <ListChecks aria-hidden="true" className="size-3.5" />
             关键诊断
@@ -253,7 +253,7 @@ export function ReportWorkspace({
           <button
             type="button"
             onClick={() => onScrollToSection("evidence-section")}
-            className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold text-[#69717d] hover:bg-[#f6f8f9] hover:text-[#14161b]"
+            className="report-nav-item inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold"
           >
             <FileText aria-hidden="true" className="size-3.5" />
             证据验证
@@ -261,7 +261,7 @@ export function ReportWorkspace({
           <button
             type="button"
             onClick={() => onScrollToSection("patch-workshop")}
-            className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold text-[#69717d] hover:bg-[#f6f8f9] hover:text-[#14161b]"
+            className="report-nav-item inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-semibold"
           >
             <Sparkles aria-hidden="true" className="size-3.5" />
             修改与复核
@@ -294,7 +294,7 @@ export function ReportWorkspace({
       ) : null}
 
       {session.status === "error" ? (
-        <div role="alert" className="surface-flat mt-4 border-l-[3px] border-l-[#c85745] bg-[#fff8f6] p-5 sm:p-6">
+        <div role="alert" className="report-error-state surface-flat mt-4 border-l-[3px] p-5 sm:p-6">
           <h2 className="text-base font-semibold text-[#963d2e]">分析会话未能建立</h2>
           <p className="mt-2 text-sm leading-6 text-[#765047]">{session.error}</p>
           <p className="mt-2 text-xs leading-5 text-[#8b655d]">文章内容仍保留在本地。重新开始会运行完整分析，返回编辑不会丢失草稿。</p>

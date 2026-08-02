@@ -19,10 +19,10 @@ type ReportScoreRailProps = {
 };
 
 const DIMENSION_META = [
-  { key: "questionCoverage", label: "问题覆盖度", barClassName: "bg-[#08766e]" },
-  { key: "factCompleteness", label: "事实完整度", barClassName: "bg-[#416b8a]" },
-  { key: "structureClarity", label: "结构清晰度", barClassName: "bg-[#b7791f]" },
-  { key: "freshness", label: "时效性", barClassName: "bg-[#c65d4b]" },
+  { key: "questionCoverage", label: "问题覆盖度", barClassName: "score-bar-question" },
+  { key: "factCompleteness", label: "事实完整度", barClassName: "score-bar-fact" },
+  { key: "structureClarity", label: "结构清晰度", barClassName: "score-bar-structure" },
+  { key: "freshness", label: "时效性", barClassName: "score-bar-freshness" },
 ] as const;
 
 function ScoreSkeleton({ announce }: { announce: boolean }) {
@@ -99,7 +99,7 @@ export function ReportScoreRail({
       </div>
       {band ? (
         <div className="mt-4">
-          <span className="status-badge inline-flex border border-[#cfe1de] bg-[#eef8f6] px-2.5 py-1 text-[11px] font-semibold text-[#0f766e]">
+          <span className="status-badge status-success inline-flex px-2.5 py-1 text-[11px] font-semibold">
             {band.label}
           </span>
           <p className="mt-2 text-xs leading-5 text-[#687386]">{band.note}</p>

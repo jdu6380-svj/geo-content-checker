@@ -38,9 +38,9 @@ type DiagnosisSectionProps = {
 };
 
 const STATUS_STYLE = {
-  "可以完全回答": "bg-[#e4f2ef] text-[#0b6b63]",
-  "信息不足": "bg-[#fff5dc] text-[#8a5b12]",
-  "有风险": "bg-[#fff0ed] text-[#a43e2b]",
+  "可以完全回答": "status-success",
+  "信息不足": "status-warning",
+  "有风险": "status-danger",
 } as const;
 
 function createDiagnosticItem(question: string, diagnostics: DiagnosticsState): DiagnosticItem {
