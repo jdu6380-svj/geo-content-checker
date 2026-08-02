@@ -77,12 +77,12 @@ export function EditorWorkspace({
 
   return (
     <section className="editor-workspace min-h-[calc(100vh-var(--app-header-height))] px-4 py-4 text-[#111827] sm:px-6 sm:py-5 lg:px-10 lg:py-4">
-      <h1 className="sr-only">理据 GEO：AI 搜索时代的内容可信度审查</h1>
+      <h1 className="sr-only">Evidra：AI 搜索时代的内容可信度审查平台</h1>
 
       <div className="mx-auto max-w-[1360px]">
         <header className="editor-page-heading mb-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 max-w-[780px]">
-            <p className="editor-kicker">AI SEARCH CONTENT REVIEW</p>
+            <p className="editor-kicker">EVIDRA · AI EVIDENCE REVIEW</p>
             <h2 className="editor-page-title mt-1">让内容更容易被 AI 正确理解与引用</h2>
             <p className="editor-page-summary mt-3">
               面向内容编辑、运营和知识型创作者，在发布前检查内容的可信度、结构和 AI 搜索理解风险。

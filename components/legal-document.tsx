@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { EvidraBrandMark } from "@/components/evidra-brand-mark";
+
 type LegalSection = {
   title: string;
   content: ReactNode;
@@ -17,8 +19,9 @@ export function LegalDocument({ title, summary, sections }: LegalDocumentProps) 
     <main className="min-h-screen bg-[#f8fafc] text-[#111827]">
       <header className="border-b border-[#e5e7eb] bg-white">
         <div className="mx-auto flex min-h-16 max-w-3xl items-center justify-between gap-4 px-5 sm:px-8">
-          <Link href="/" className="text-sm font-semibold text-[#111827]">
-            理据 GEO
+          <Link href="/" className="inline-flex items-center gap-2.5 text-sm font-semibold text-[#111827]">
+            <EvidraBrandMark className="size-7" />
+            Evidra
           </Link>
           <nav className="flex items-center gap-4 text-xs text-[#66707c]" aria-label="法律页面导航">
             <Link href="/privacy" className="hover:text-[#111827]">

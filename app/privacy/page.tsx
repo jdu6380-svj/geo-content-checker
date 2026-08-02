@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { LegalDocument } from "@/components/legal-document";
 
 export const metadata: Metadata = {
-  title: "隐私说明 · 理据 GEO",
+  title: "隐私说明",
 };
 
 export default function PrivacyPage() {
@@ -19,7 +19,7 @@ export default function PrivacyPage() {
           content: (
             <>
               <p>提交分析后，文章标题、正文和必要上下文会发送给已配置的大模型服务 DeepSeek，用于生成评分、诊断与修改建议。</p>
-              <p>理据 GEO 不将文章正文或完整报告写入服务端数据库。报告默认保存在当前浏览器的本地存储中，清除站点数据即可删除。</p>
+              <p>Evidra 不将文章正文或完整报告写入服务端数据库。报告默认保存在当前浏览器的本地存储中，清除站点数据即可删除。</p>
               <p>模型服务商对请求的处理受其服务条款和隐私规则约束。请不要提交密码、身份证件、未公开商业秘密或其他敏感信息。</p>
             </>
           ),

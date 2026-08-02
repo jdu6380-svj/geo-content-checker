@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { LegalDocument } from "@/components/legal-document";
 
 export const metadata: Metadata = {
-  title: "使用条款 · 理据 GEO",
+  title: "使用条款",
 };
 
 export default function TermsPage() {
@@ -12,7 +12,7 @@ export default function TermsPage() {
   return (
     <LegalDocument
       title="使用条款"
-      summary="理据 GEO 当前为公开测试版。使用产品即表示你理解模型输出存在不确定性，并同意在发布内容前自行复核。"
+      summary="Evidra 当前为公开测试版。使用产品即表示你理解模型输出存在不确定性，并同意在发布内容前自行复核。"
       sections={[
         {
           title: "服务范围",

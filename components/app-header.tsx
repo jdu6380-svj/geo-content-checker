@@ -4,6 +4,7 @@ import { BarChart3, Circle, FileText, Lock, Plus, Sparkles } from "lucide-react"
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { EvidraBrandMark } from "@/components/evidra-brand-mark";
 
 type AppHeaderProps = {
   analysisStarted: boolean;
@@ -31,14 +32,12 @@ export function AppHeader({
           type="button"
           onClick={onShowEditor}
           className="app-brand group flex shrink-0 items-center gap-3 text-left"
-          aria-label="返回内容体检工作台"
+          aria-label="返回 Evidra 内容审查工作台"
         >
-          <span className="brand-mark grid size-9 place-items-center rounded-md text-xs font-bold text-white">
-            理
-          </span>
+          <EvidraBrandMark className="brand-mark size-9 shrink-0" />
           <span className="leading-none">
-            <span className="app-brand-name block">理据 GEO</span>
-            <span className="app-brand-subtitle mt-1 block">内容可信度工作台</span>
+            <span className="app-brand-name block">Evidra</span>
+            <span className="app-brand-subtitle mt-1 block">AI 内容可信度审查</span>
           </span>
         </button>
 

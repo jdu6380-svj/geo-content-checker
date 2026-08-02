@@ -28,29 +28,56 @@
 }
 
 :root {
-  --geo-canvas: #f7f9fb;
-  --geo-surface: #ffffff;
-  --geo-surface-subtle: #f3f6f7;
-  --geo-surface-inset: #edf3f3;
-  --geo-surface-wash: #f8fbfa;
-  --geo-text: #17201f;
-  --geo-text-heading: #182523;
-  --geo-text-body: #394947;
-  --geo-text-muted: #68747a;
-  --geo-text-soft: #8a959a;
-  --geo-border: #dfe7e6;
-  --geo-border-strong: #c8d4d3;
-  --geo-primary: #0f766e;
-  --geo-primary-hover: #0d635c;
-  --geo-on-primary: #ffffff;
-  --geo-secondary: #5964cf;
-  --geo-secondary-soft: #eef1ff;
-  --geo-info: #416b8a;
-  --geo-info-soft: #edf3f7;
-  --geo-amber: #a86313;
-  --geo-amber-soft: #fff7e8;
-  --geo-coral: #c85745;
-  --geo-coral-soft: #fff1ee;
+  --evidra-canvas: #f7f9fb;
+  --evidra-surface: #ffffff;
+  --evidra-surface-subtle: #f3f6f7;
+  --evidra-surface-inset: #edf3f3;
+  --evidra-surface-wash: #f8fbfa;
+  --evidra-ink: #17201f;
+  --evidra-heading: #182523;
+  --evidra-body: #394947;
+  --evidra-muted: #68747a;
+  --evidra-soft: #8a959a;
+  --evidra-border: #dfe7e6;
+  --evidra-border-strong: #c8d4d3;
+  --evidra-evidence: #0f766e;
+  --evidra-evidence-hover: #0d635c;
+  --evidra-evidence-node: #31a99b;
+  --evidra-workflow: #5964cf;
+  --evidra-workflow-soft: #eef1ff;
+  --evidra-proof: #416b8a;
+  --evidra-proof-soft: #edf3f7;
+  --evidra-caution: #a86313;
+  --evidra-caution-soft: #fff7e8;
+  --evidra-critical: #c85745;
+  --evidra-critical-soft: #fff1ee;
+  --evidra-on-ink: #ffffff;
+  --evidra-focus-ring: rgba(15, 118, 110, .2);
+  --evidra-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --evidra-font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --geo-canvas: var(--evidra-canvas);
+  --geo-surface: var(--evidra-surface);
+  --geo-surface-subtle: var(--evidra-surface-subtle);
+  --geo-surface-inset: var(--evidra-surface-inset);
+  --geo-surface-wash: var(--evidra-surface-wash);
+  --geo-text: var(--evidra-ink);
+  --geo-text-heading: var(--evidra-heading);
+  --geo-text-body: var(--evidra-body);
+  --geo-text-muted: var(--evidra-muted);
+  --geo-text-soft: var(--evidra-soft);
+  --geo-border: var(--evidra-border);
+  --geo-border-strong: var(--evidra-border-strong);
+  --geo-primary: var(--evidra-evidence);
+  --geo-primary-hover: var(--evidra-evidence-hover);
+  --geo-on-primary: var(--evidra-on-ink);
+  --geo-secondary: var(--evidra-workflow);
+  --geo-secondary-soft: var(--evidra-workflow-soft);
+  --geo-info: var(--evidra-proof);
+  --geo-info-soft: var(--evidra-proof-soft);
+  --geo-amber: var(--evidra-caution);
+  --geo-amber-soft: var(--evidra-caution-soft);
+  --geo-coral: var(--evidra-critical);
+  --geo-coral-soft: var(--evidra-critical-soft);
   --geo-status-success: #0f766e;
   --geo-status-warning: #a86313;
   --geo-status-danger: #c85745;
@@ -65,9 +92,9 @@
   --geo-status-info-border: #d5e0e8;
   --geo-status-neutral-border: #dfe7e6;
   --geo-status-neutral-soft: #f3f6f7;
-  --geo-focus-ring: rgba(15, 118, 110, .2);
-  --geo-font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --geo-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --geo-focus-ring: var(--evidra-focus-ring);
+  --geo-font-ui: var(--evidra-font-sans);
+  --geo-font-mono: var(--evidra-font-data);
   --geo-space-1: 4px;
   --geo-space-2: 8px;
   --geo-space-3: 12px;
@@ -179,8 +206,9 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .app-brand-name {
     color: var(--geo-text);
-    font-size: 14px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 760;
+    letter-spacing: 0;
   }
   .app-brand-subtitle {
     color: var(--geo-text-soft);
@@ -188,9 +216,19 @@ h1, h2, h3, p { letter-spacing: 0; }
     font-weight: 600;
   }
   .brand-mark {
-    background: var(--geo-text);
-    box-shadow: 0 1px 2px rgba(23, 32, 31, .18), inset 0 -3px 0 var(--geo-primary);
+    border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(23, 32, 31, .18), 0 5px 14px rgba(23, 32, 31, .1);
   }
+  .evidra-brand-mark { display: block; }
+  .evidra-brand-mark-surface { fill: var(--evidra-ink); }
+  .evidra-brand-mark-line {
+    fill: none;
+    stroke: var(--evidra-surface-wash);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.35;
+  }
+  .evidra-brand-mark-node { fill: var(--evidra-evidence-node); }
   .app-nav-item {
     position: relative;
     display: inline-flex;
@@ -256,7 +294,7 @@ h1, h2, h3, p { letter-spacing: 0; }
     color: var(--geo-text-soft);
     font-size: 10px;
     font-weight: 750;
-    letter-spacing: .08em;
+    letter-spacing: 0;
   }
   .editor-page-title {
     color: var(--geo-text);
