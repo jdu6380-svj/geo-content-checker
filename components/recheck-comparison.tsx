@@ -138,68 +138,164 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
   const beforeRisk = baselineIssues.filter((item) => item.riskLevel === "high" || item.riskLevel === "medium").length;
   const afterIssues = current.diagnostics.filter(isReportIssue);
   const afterRisk = afterIssues.filter((item) => item.riskLevel === "high" || item.riskLevel === "medium").length;
+  const notComparableItems = [
+    ...unpaired.map((item) => ({ question: item.question, context: "修改前问题未在本轮以相同文本出现" })),
+    ...newIssues.map((item) => ({ question: item.question, context: "本轮新增关注项" })),
+  ];
+  const outcomeGroups = [
+    {
+      label: "改善",
+      count: improved.length,
+      icon: CheckCircle2,
+      className: "recheck-outcome-improved",
+      description: "同一问题至少一项判断改善，且没有出现下降。",
+      empty: "暂无可确认的逐项改善。",
+      items: improved.map(({ after }) => ({ question: after.question, context: "同一问题可直接对照" })),
+    },
+    {
+      label: "无变化",
+      count: unchanged.length,
+      icon: Minus,
+      className: "recheck-outcome-unchanged",
+      description: "同一问题的风险、回答度与 Evidence 状态均未变化。",
+      empty: "暂无完全不变的同名问题。",
+      items: unchanged.map(({ after }) => ({ question: after.question, context: "判断结果保持一致" })),
+    },
+    {
+      label: "下降",
+      count: regressed.length,
+      icon: ArrowDownRight,
+      className: "recheck-outcome-regressed",
+      description: "同一问题至少一项判断下降，需要优先人工核对。",
+      empty: "同名问题中未发现明确下降。",
+      items: regressed.map(({ after }) => ({ question: after.question, context: "至少一项判断出现下降" })),
+    },
+    {
+      label: "不可比较",
+      count: notComparableItems.length,
+      icon: CircleDot,
+      className: "recheck-outcome-unpaired",
+      description: "问题文本没有一一对应，不推断为改善或下降。",
+      empty: "所有问题均可与修改前直接对照。",
+      items: notComparableItems,
+    },
+  ];
+  const scoreChangeClassName = scoreChange > 0
+    ? "recheck-change-positive"
+    : scoreChange < 0
+      ? "recheck-change-negative"
+      : "recheck-change-neutral";
 
   return (
-    <section id="recheck-comparison" className="recheck-comparison surface-flat mt-4 overflow-hidden border-t-[3px] border-t-[#5964cf]">
-      <header className="flex flex-col gap-3 border-b border-[#e3e7eb] px-5 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+    <section id="recheck-comparison" className="recheck-comparison surface-flat mt-4 overflow-hidden border-t-[3px] border-t-[var(--geo-secondary)]">
+      <header className="flex flex-col gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
         <div className="min-w-0">
-          <p className="section-kicker text-[#5964cf]">RECHECK RESULT</p>
-          <h2 className="mt-1.5 text-lg font-semibold text-[#111827]">修改前与重新验证结果</h2>
-          <p className="mt-2 max-w-3xl text-xs leading-5 text-[#737d89]">
-            只对问题文本完全一致的诊断判断改善；问题集合变化不会自动视为风险消除。
+          <p className="section-kicker text-[var(--geo-secondary)]">RECHECK / BEFORE & AFTER</p>
+          <h2 className="mt-1.5 text-lg font-semibold text-[var(--geo-text)]">Baseline 与 New Result</h2>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--geo-text-muted)]">
+            只对问题文本完全一致的诊断进行逐项比较；问题集合变化不会自动视为风险消除。
           </p>
         </div>
         <span className="status-badge status-secondary inline-flex w-fit items-center gap-1.5 px-2.5 py-1 text-xs font-semibold">
           <CheckCircle2 aria-hidden="true" className="size-3.5" />
-          完整复检已完成
+          同一审查规则已完成
         </span>
       </header>
 
-      <div className="recheck-summary-grid grid sm:grid-cols-3">
-        <div className="px-5 py-4 sm:px-6">
-          <p className="data-label">GEO 得分</p>
-          <div className="mt-2 flex items-end gap-2">
-            <span className="text-2xl font-semibold tabular-nums text-[#111827]">{baseline.totalScore}</span>
-            <ArrowRight aria-hidden="true" className="mb-1 size-4 text-[#9aa2ac]" />
-            <span className="text-2xl font-semibold tabular-nums text-[#111827]">{current.totalScore}</span>
+      <div className="recheck-snapshot-grid grid md:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]">
+        <section className="recheck-snapshot px-4 py-5 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="data-label">BASELINE / 修改前</p>
+            <span className="status-badge status-neutral px-2 py-0.5 text-[10px]">已固化</span>
           </div>
-          <span className="mt-2 block text-xs font-semibold text-[#5964cf]">变化 {scoreChangeLabel(scoreChange)}</span>
-        </div>
-        <div className="px-5 py-4 sm:px-6">
-          <p className="data-label">中高风险诊断</p>
-          <div className="mt-2 flex items-end gap-2">
-            <span className="text-2xl font-semibold tabular-nums text-[#111827]">{beforeRisk}</span>
-            <ArrowRight aria-hidden="true" className="mb-1 size-4 text-[#9aa2ac]" />
-            <span className="text-2xl font-semibold tabular-nums text-[#111827]">{afterRisk}</span>
+          <div className="mt-3 flex items-end gap-2">
+            <span className="text-3xl font-semibold tabular-nums text-[var(--geo-text)]">{baseline.totalScore}</span>
+            <span className="mb-1 text-xs text-[var(--geo-text-soft)]">/ 100</span>
           </div>
-          <span className="mt-2 block text-xs text-[#737d89]">仅统计已完成诊断</span>
+          <dl className="recheck-snapshot-meta mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <dt>中高风险</dt>
+              <dd>{beforeRisk} 项</dd>
+            </div>
+            <div>
+              <dt>需关注诊断</dt>
+              <dd>{baselineIssues.length} 项</dd>
+            </div>
+          </dl>
+        </section>
+
+        <div className="recheck-transition" aria-label={`总分变化 ${scoreChangeLabel(scoreChange)}`}>
+          <ArrowRight aria-hidden="true" className="size-4" />
+          <span className={scoreChangeClassName}>{scoreChangeLabel(scoreChange)}</span>
         </div>
-        <div className="px-5 py-4 sm:px-6">
-          <p className="data-label">逐项对照</p>
-          <div className="mt-2 flex items-end gap-2">
-            <span className="text-2xl font-semibold tabular-nums text-[#0f766e]">{improved.length}</span>
-            <span className="mb-1 text-xs text-[#737d89]">项确认改善</span>
+
+        <section className="recheck-snapshot is-current px-4 py-5 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="data-label">NEW RESULT / 修改后</p>
+            <span className="status-badge status-secondary px-2 py-0.5 text-[10px]">本轮复检</span>
           </div>
-          <span className="mt-2 block text-xs text-[#737d89]">
-            {improved.length} 改善 · {unchanged.length} 无变化 · {regressed.length} 下降
-          </span>
-        </div>
+          <div className="mt-3 flex items-end gap-2">
+            <span className="text-3xl font-semibold tabular-nums text-[var(--geo-text)]">{current.totalScore}</span>
+            <span className="mb-1 text-xs text-[var(--geo-text-soft)]">/ 100</span>
+          </div>
+          <dl className="recheck-snapshot-meta mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <dt>中高风险</dt>
+              <dd>{afterRisk} 项</dd>
+            </div>
+            <div>
+              <dt>需关注诊断</dt>
+              <dd>{afterIssues.length} 项</dd>
+            </div>
+          </dl>
+        </section>
       </div>
 
-      <div className="grid border-t border-[#e3e7eb] lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <section className="border-b border-[#e3e7eb] px-5 py-5 lg:border-b-0 lg:border-r lg:px-6">
-          <h3 className="text-sm font-semibold text-[#252a31]">四项指标变化</h3>
-          <div className="mt-4 grid gap-3">
+      <div className="recheck-outcome-grid grid border-t border-[var(--geo-border)] sm:grid-cols-2 xl:grid-cols-4" aria-label="复检结果分类">
+        {outcomeGroups.map((group) => {
+          const OutcomeIcon = group.icon;
+          return (
+            <div key={group.label} className={`recheck-outcome-summary ${group.className}`}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 text-xs font-semibold">
+                  <OutcomeIcon aria-hidden="true" className="size-3.5" />
+                  {group.label}
+                </span>
+                <span className="text-xl font-semibold tabular-nums">{group.count}</span>
+              </div>
+              <p className="mt-2 text-[11px] leading-5 text-[var(--geo-text-muted)]">{group.description}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="recheck-detail-grid grid border-t border-[var(--geo-border)] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <section className="border-b border-[var(--geo-border)] px-4 py-5 sm:px-6 lg:border-b-0 lg:border-r">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="data-label">SCORE LEDGER</p>
+              <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">四项评分变化</h3>
+            </div>
+            <span className={`text-xs font-semibold ${scoreChangeClassName}`}>总分 {scoreChangeLabel(scoreChange)}</span>
+          </div>
+          <div className="recheck-dimension-table mt-4">
+            <div className="recheck-dimension-head">
+              <span>维度</span>
+              <span>Baseline</span>
+              <span>New Result</span>
+              <span>变化</span>
+            </div>
             {REPORT_DIMENSION_KEYS.map((key) => {
               const before = baseline.dimensions[key].score;
               const after = current.dimensions[key].score;
               const change = after - before;
               const ChangeIcon = change > 0 ? ArrowUpRight : change < 0 ? ArrowDownRight : Minus;
               return (
-                <div key={key} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-[#edf0f2] pb-3 last:border-b-0 last:pb-0">
-                  <span className="text-xs font-medium text-[#59636f]">{DIMENSION_LABELS[key]}</span>
-                  <span className="font-mono text-xs tabular-nums text-[#69717d]">{before} → {after}</span>
-                  <span className={`inline-flex min-w-12 items-center justify-end gap-1 text-xs font-semibold ${change > 0 ? "text-[#0f766e]" : change < 0 ? "text-[#a43e2b]" : "text-[#858c97]"}`}>
+                <div key={key} className="recheck-dimension-row">
+                  <span className="text-xs font-medium text-[var(--geo-text-body)]">{DIMENSION_LABELS[key]}</span>
+                  <span className="font-mono text-xs tabular-nums text-[var(--geo-text-muted)]">{before}</span>
+                  <span className="font-mono text-xs tabular-nums text-[var(--geo-text)]">{after}</span>
+                  <span className={`inline-flex items-center justify-end gap-1 text-xs font-semibold ${change > 0 ? "recheck-change-positive" : change < 0 ? "recheck-change-negative" : "recheck-change-neutral"}`}>
                     <ChangeIcon aria-hidden="true" className="size-3.5" />
                     {scoreChangeLabel(change)}
                   </span>
@@ -207,71 +303,48 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
               );
             })}
           </div>
-          <p className="mt-4 text-[11px] leading-5 text-[#858c97]">分数变化只反映本次审查结果，不代表外部平台收录、引用或排名变化。</p>
+          <p className="mt-4 text-[11px] leading-5 text-[var(--geo-text-soft)]">分数变化只反映本次审查结果，不代表外部平台收录、引用或排名变化。</p>
         </section>
 
-        <section className="px-5 py-5 lg:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-[#252a31]">问题变化</h3>
-            {newIssues.length ? <span className="text-xs font-medium text-[#a86313]">新增 {newIssues.length} 项关注</span> : null}
+        <section className="px-4 py-5 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="data-label">DIAGNOSIS CHANGE LOG</p>
+              <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">逐项变化记录</h3>
+            </div>
+            <span className="text-xs text-[var(--geo-text-soft)]">仅列出前 3 项</span>
           </div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <div>
-              <p className="flex items-center gap-2 text-xs font-semibold text-[#0f766e]">
-                <CheckCircle2 aria-hidden="true" className="size-3.5" />
-                已确认改善
-              </p>
-              {improved.length ? (
-                <ul className="mt-3 grid gap-2">
-                  {improved.slice(0, 3).map(({ before }) => (
-                    <li key={before.question} className="text-xs leading-5 text-[#59636f]">{before.question}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-3 text-xs leading-5 text-[#858c97]">暂无可确认的逐项改善。继续核对未解决问题。</p>
-              )}
-            </div>
-            <div>
-              <p className="flex items-center gap-2 text-xs font-semibold text-[#69717d]">
-                <CircleDot aria-hidden="true" className="size-3.5" />
-                无明确变化
-              </p>
-              {unchanged.length ? (
-                <ul className="mt-3 grid gap-2">
-                  {unchanged.slice(0, 3).map(({ after: item }) => (
-                    <li key={item.question} className="text-xs leading-5 text-[#59636f]">{item.question}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-3 text-xs leading-5 text-[#858c97]">相同问题中暂无完全不变的诊断。</p>
-              )}
-            </div>
-            <div>
-              <p className="flex items-center gap-2 text-xs font-semibold text-[#a43e2b]">
-                <ArrowDownRight aria-hidden="true" className="size-3.5" />
-                出现下降
-              </p>
-              {regressed.length ? (
-                <ul className="mt-3 grid gap-2">
-                  {regressed.slice(0, 3).map(({ after: item }) => (
-                    <li key={item.question} className="text-xs leading-5 text-[#59636f]">{item.question}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-3 text-xs leading-5 text-[#858c97]">相同问题中未发现明确下降项。</p>
-              )}
-            </div>
+          <div className="recheck-outcome-details mt-4 grid sm:grid-cols-2">
+            {outcomeGroups.map((group) => {
+              const OutcomeIcon = group.icon;
+              return (
+                <section key={group.label} className={`recheck-outcome-detail ${group.className}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="flex items-center gap-2 text-xs font-semibold">
+                      <OutcomeIcon aria-hidden="true" className="size-3.5" />
+                      {group.label}
+                    </p>
+                    <span className="font-mono text-[10px] font-semibold tabular-nums">{group.count}</span>
+                  </div>
+                  {group.items.length ? (
+                    <ul className="mt-3 grid gap-3">
+                      {group.items.slice(0, 3).map((item) => (
+                        <li key={`${group.label}-${item.question}`}>
+                          <p className="text-xs leading-5 text-[var(--geo-text-body)]">{item.question}</p>
+                          <p className="mt-1 text-[10px] leading-4 text-[var(--geo-text-soft)]">{item.context}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-xs leading-5 text-[var(--geo-text-soft)]">{group.empty}</p>
+                  )}
+                </section>
+              );
+            })}
           </div>
-          {newIssues.length ? (
-            <p className="mt-4 border-t border-[#edf0f2] pt-3 text-[11px] leading-5 text-[#a86313]">
-              本轮新增 {newIssues.length} 项需关注问题；因修改前没有相同问题，不计入“下降”数量。
-            </p>
-          ) : null}
-          {unpaired.length ? (
-            <p className="mt-4 border-t border-[#edf0f2] pt-3 text-[11px] leading-5 text-[#858c97]">
-              {unpaired.length} 项修改前问题未出现在本轮问题集合中，无法据此判断已改善或下降。
-            </p>
-          ) : null}
+          <p className="mt-4 border-t border-[var(--geo-border)] pt-3 text-[11px] leading-5 text-[var(--geo-text-soft)]">
+            改善、无变化与下降仅来自同名问题的真实状态变化；新增或未配对问题统一归入不可比较。
+          </p>
         </section>
       </div>
     </section>

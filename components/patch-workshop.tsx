@@ -11,7 +11,6 @@ import {
   ListChecks,
   RefreshCw,
   RotateCcw,
-  ShieldCheck,
   Sparkles,
   TextSelect,
   UserRoundCheck,
@@ -94,13 +93,14 @@ async function copyWithClipboard(text: string): Promise<void> {
 function actionPresentation(action: PatchAction) {
   if (action.type === "author_evidence") {
     return {
-      eyebrow: "证据缺口",
+      eyebrow: "证据补充",
       title: action.field,
       body: action.reason,
-      sourceLabel: "来自诊断",
-      source: action.relatedQuestion ?? "需要作者补充事实依据",
+      sourceLabel: "来源问题",
+      source: action.relatedQuestion ?? "诊断指出关键事实仍缺少可核验依据",
+      purpose: "补齐支撑核心结论的事实、来源或适用边界。",
       decision: "需要人工确认事实、来源与适用边界",
-      accent: "border-t-[var(--geo-amber)]",
+      accent: "patch-action-evidence",
       sourceClassName: "status-warning",
     };
   }
@@ -109,33 +109,36 @@ function actionPresentation(action: PatchAction) {
       eyebrow: "结构调整",
       title: action.title,
       body: action.instruction,
-      sourceLabel: "作用范围",
+      sourceLabel: "作用段落",
       source: action.targetParagraphIds.join(", "),
+      purpose: "降低读者定位步骤、结论与适用边界的成本。",
       decision: "需要人工判断结构调整是否改变原意",
-      accent: "border-t-[var(--geo-secondary)]",
+      accent: "patch-action-structure",
       sourceClassName: "status-secondary",
     };
   }
   if (action.type === "faq") {
     return {
-      eyebrow: "FAQ 草稿",
+      eyebrow: "FAQ 参考材料",
       title: action.question,
       body: action.answer,
-      sourceLabel: "逐字证据",
-      source: action.evidence.paragraphId,
+      sourceLabel: "使用证据",
+      source: `${action.evidence.paragraphId} · “${action.evidence.quote}”`,
+      purpose: "把已有原文事实整理为可核对的问答表达。",
       decision: "核对问答是否完整表达原文边界",
-      accent: "border-t-[var(--geo-primary)]",
+      accent: "patch-action-faq",
       sourceClassName: "status-success",
     };
   }
   return {
-    eyebrow: "事实卡片草稿",
+    eyebrow: "事实卡片参考",
     title: action.label,
     body: action.value,
-    sourceLabel: "逐字证据",
-    source: action.evidence.paragraphId,
+    sourceLabel: "使用证据",
+    source: `${action.evidence.paragraphId} · “${action.evidence.quote}”`,
+    purpose: "把已有原文事实整理为可复核的结构化材料。",
     decision: "核对事实卡片是否脱离上下文或扩大结论",
-    accent: "border-t-[var(--geo-info)]",
+    accent: "patch-action-fact",
     sourceClassName: "status-info",
   };
 }
@@ -154,6 +157,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
   const evidenceGapCount = diagnosticResults.filter(
     (item) => item.evidenceStatus !== "valid" || item.missingInfo.length > 0,
   ).length;
+  const validEvidenceCount = diagnosticResults.filter((item) => item.evidenceStatus === "valid").length;
 
   useEffect(() => {
     if (activePatch.status !== "success" || !restoreActionFocusRef.current) return;
@@ -212,88 +216,126 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
     }
   }
 
-  const modeTitle = activeMode === "advice" ? "修改建议" : "内容草稿";
+  const modeTitle = activeMode === "advice" ? "修改建议" : "内容参考材料";
   const modeDescription = activeMode === "advice"
-    ? "把诊断中的证据缺口和结构问题整理为可执行清单，最终判断仍由你完成。"
-    : "基于已验证的原文证据生成辅助修改材料，不替代完整改稿与事实审核。";
+    ? "把诊断中的证据缺口和结构问题整理为可执行清单，明确为什么改、改什么。"
+    : "生成基于 Evidence 约束的修改参考材料，不替代完整改稿与事实审核。";
+  const workflowSteps = [
+    {
+      label: "理解诊断",
+      meta: `${diagnosticResults.length} 项诊断已汇总`,
+      icon: ListChecks,
+      state: "complete",
+    },
+    {
+      label: "准备材料",
+      meta: activePatch.status === "success" ? `${activePatch.data.actions.length} 项材料已生成` : "选择建议或内容草稿",
+      icon: FileCheck2,
+      state: activePatch.status === "success" ? "complete" : "current",
+    },
+    {
+      label: "人工应用",
+      meta: "核对事实、语气与边界",
+      icon: UserRoundCheck,
+      state: activePatch.status === "success" ? "current" : "pending",
+    },
+    {
+      label: "重新验证",
+      meta: "对照修改前后真实变化",
+      icon: RotateCcw,
+      state: "pending",
+    },
+  ] as const;
 
   return (
     <section id="patch-workshop" className="patch-workshop section-anchor min-w-0" aria-busy={activePatch.status === "loading"}>
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#dbe2df] pb-4">
-        <div>
-          <p className="section-kicker">APPLY & RECHECK</p>
-          <h2 className="mt-1 text-xl font-bold sm:text-2xl">修改与重新验证</h2>
-          <p className="mt-2 text-sm leading-6 text-[#687386]">先理解问题，再生成修改材料；应用后重新分析，确认风险是否真正消除。</p>
+      <div className="flex flex-col gap-4 border-b border-[var(--geo-border)] pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="section-kicker">PATCH WORKSPACE</p>
+          <h2 className="mt-1 text-xl font-semibold text-[var(--geo-text)] sm:text-2xl">从诊断结论到重新验证</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--geo-text-muted)]">
+            先确认问题依据，再准备修改材料。所有内容都需人工应用，复检只呈现真实变化。
+          </p>
         </div>
-        {activePatch.status === "success" ? (
-          <span className="status-badge status-neutral px-3 py-1.5 text-xs">
-            {activePatch.data.source === "model" ? "AI 模型生成" : "安全降级生成"}
-          </span>
-        ) : null}
+        <span className="status-badge status-neutral inline-flex w-fit shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs">
+          <UserRoundCheck aria-hidden="true" className="size-3.5" />
+          人工审核后应用
+        </span>
       </div>
 
-      <ol className="patch-review-loop mt-4 grid overflow-hidden rounded-lg border border-[#d8e0dd] bg-white sm:grid-cols-3" aria-label="修改与重新验证流程">
-        {[
-          { label: "发现问题", meta: `${diagnosticResults.length} 项诊断可用`, icon: ListChecks },
-          { label: "优化建议", meta: "生成建议或内容草稿", icon: Sparkles },
-          { label: "重新验证", meta: "应用修改后再次分析", icon: RotateCcw },
-        ].map((step, index) => {
+      <ol className="patch-workflow-map mt-4 grid overflow-hidden sm:grid-cols-2 xl:grid-cols-4" aria-label="修改与重新验证流程">
+        {workflowSteps.map((step, index) => {
           const Icon = step.icon;
           return (
-            <li key={step.label} className="flex min-w-0 items-center gap-3 px-4 py-3.5">
-              <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#d7e5e2] bg-[#eef8f6] text-[#0f766e]">
+            <li
+              key={step.label}
+              className={`patch-workflow-step is-${step.state}`}
+              aria-current={step.state === "current" ? "step" : undefined}
+            >
+              <span className="patch-workflow-index">0{index + 1}</span>
+              <span className="patch-workflow-icon">
                 <Icon aria-hidden="true" className="size-4" />
               </span>
               <span className="min-w-0">
-                <span className="block text-sm font-semibold text-[#252a31]">{step.label}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-[#858c97]">{step.meta}</span>
+                <span className="block text-sm font-semibold text-[var(--geo-text)]">{step.label}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-[var(--geo-text-soft)]">{step.meta}</span>
               </span>
-              {index < 2 ? <ArrowRight aria-hidden="true" className="ml-auto hidden size-4 shrink-0 text-[#a0a7b1] sm:block" /> : null}
+              {index < workflowSteps.length - 1 ? <ArrowRight aria-hidden="true" className="patch-workflow-arrow" /> : null}
             </li>
           );
         })}
       </ol>
 
-      <div className="mt-4 inline-flex rounded-lg border border-[#d8e0dd] bg-white p-1" aria-label="补丁模式">
+      <div className="patch-mode-switch mt-4 grid overflow-hidden sm:grid-cols-2" aria-label="修改材料类型">
         <button
           type="button"
           aria-pressed={activeMode === "advice"}
           onClick={() => selectMode("advice")}
-          className={`h-8 rounded-md px-4 text-sm font-semibold ${activeMode === "advice" ? "patch-tab-active-advice" : "geo-muted"}`}
+          className={`patch-mode-option ${activeMode === "advice" ? "is-active" : ""}`}
         >
-          修改建议
+          <span className="patch-mode-icon"><ListChecks aria-hidden="true" className="size-4" /></span>
+          <span className="min-w-0 text-left">
+            <span className="block text-sm font-semibold">修改建议</span>
+            <span className="mt-0.5 block text-xs leading-5">关联诊断，明确为什么改、改什么</span>
+          </span>
+          <span className="patch-mode-state">{activeMode === "advice" ? "当前" : "查看"}</span>
         </button>
         <button
           type="button"
           aria-pressed={activeMode === "content_draft"}
           onClick={() => selectMode("content_draft")}
-          className={`h-8 rounded-md px-4 text-sm font-semibold ${activeMode === "content_draft" ? "patch-tab-active-draft" : "geo-muted"}`}
+          className={`patch-mode-option ${activeMode === "content_draft" ? "is-active" : ""}`}
         >
-          内容草稿
+          <span className="patch-mode-icon"><FileCheck2 aria-hidden="true" className="size-4" /></span>
+          <span className="min-w-0 text-left">
+            <span className="block text-sm font-semibold">内容草稿</span>
+            <span className="mt-0.5 block text-xs leading-5">基于 Evidence 约束的修改参考材料</span>
+          </span>
+          <span className="patch-mode-state">{activeMode === "content_draft" ? "当前" : "查看"}</span>
         </button>
       </div>
 
-      <div className="patch-mode-guidance mt-4 grid overflow-hidden rounded-lg border border-[#dfe5e5] bg-white sm:grid-cols-3">
+      <div className="patch-mode-guidance mt-4 grid overflow-hidden sm:grid-cols-3">
         {(activeMode === "advice"
           ? [
-              { icon: Link2, label: "关联诊断", value: `${diagnosticResults.length} 项问题 · ${evidenceGapCount} 项证据或信息缺口` },
-              { icon: UserRoundCheck, label: "人工决策", value: "事实补充、来源可靠性与表达边界均需人工确认" },
-              { icon: ShieldCheck, label: "能力边界", value: "建议不代表问题已解决，也不保证外部平台结果" },
+              { icon: Link2, label: "输入依据", value: `${diagnosticResults.length} 项诊断，其中 ${evidenceGapCount} 项存在 Evidence 或信息缺口` },
+              { icon: ListChecks, label: "交付用途", value: "形成逐项可执行清单，并保留与来源问题的关联" },
+              { icon: UserRoundCheck, label: "人工决策门", value: "确认事实来源、适用范围与原意；建议不代表问题已解决" },
             ]
           : [
-              { icon: FileCheck2, label: "材料用途", value: "用于补充 FAQ 与事实卡片，不是 AI 自动改稿" },
-              { icon: Link2, label: "证据约束", value: "每项内容均应回到原文证据和上下文核对" },
-              { icon: UserRoundCheck, label: "发布前审核", value: "确认事实、语气、边界与全文衔接后再应用" },
+              { icon: Link2, label: "输入依据", value: `${validEvidenceCount} 项诊断含有效 Evidence，可用于组织参考材料` },
+              { icon: FileCheck2, label: "交付用途", value: "整理 FAQ 与事实卡片参考，不是 AI 自动改稿" },
+              { icon: UserRoundCheck, label: "人工决策门", value: "逐项核对证据、语气与全文衔接；材料不保证结果提升" },
             ]
         ).map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.label} className="min-w-0 px-4 py-3.5">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#4f5864]">
-                <Icon aria-hidden="true" className="size-3.5 text-[#0f766e]" />
+            <div key={item.label} className="min-w-0 px-4 py-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--geo-text-body)]">
+                <Icon aria-hidden="true" className="size-3.5 text-[var(--geo-primary)]" />
                 {item.label}
               </div>
-              <p className="mt-1.5 text-xs leading-5 text-[#7a8490]">{item.value}</p>
+              <p className="mt-1.5 text-xs leading-5 text-[var(--geo-text-muted)]">{item.value}</p>
             </div>
           );
         })}
@@ -312,13 +354,14 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
       {canGenerate && activePatch.status !== "success" ? (
         <div className={`patch-callout mt-4 grid items-center gap-4 rounded-lg border p-4 sm:grid-cols-[1fr_auto] sm:p-5 ${activePatch.status === "error" ? "patch-callout-error" : "patch-callout-ready"}`}>
           <div>
-            <h3 className="text-sm font-bold text-[#24323a]">
+            <p className="data-label">CURRENT DELIVERABLE</p>
+            <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">
               {activePatch.status === "error" ? `${modeTitle}生成失败` : modeTitle}
             </h3>
             {activePatch.status === "error" ? (
-              <p role="alert" aria-live="assertive" className="mt-1 text-sm leading-6 text-[#a43e2b]">{activePatch.error}</p>
+              <p role="alert" aria-live="assertive" className="mt-1 text-sm leading-6 text-[var(--geo-status-danger)]">{activePatch.error}</p>
             ) : (
-              <p className="mt-1 text-sm leading-6 text-[#687681]">
+              <p className="mt-1 text-sm leading-6 text-[var(--geo-text-muted)]">
                 {activePatch.status === "loading" ? `正在生成${modeTitle}。` : modeDescription}
               </p>
             )}
@@ -353,66 +396,88 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
       ) : null}
 
       {activePatch.status === "success" ? (
-        <div className="mt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e3e7eb] pb-4">
-            <div>
-              <p className="text-sm font-semibold text-[#252a31]">
-                {activeMode === "advice" ? "审查建议清单" : "辅助修改材料"}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-[#858c97]">
+        <div className="patch-result-shell mt-4 overflow-hidden">
+          <header className="patch-result-header flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="data-label">REVIEW MATERIAL</p>
+                <span className="status-badge status-neutral px-2 py-0.5 text-[10px]">
+                  {activePatch.data.source === "model" ? "模型生成" : "安全降级生成"}
+                </span>
+              </div>
+              <h3 className="mt-1.5 text-base font-semibold text-[var(--geo-text)]">
+                {activeMode === "advice" ? "与诊断关联的修改建议" : "基于 Evidence 约束的修改参考材料"}
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">
                 {activeMode === "advice"
-                  ? "逐项确认哪些事实能补充、哪些结构适合调整。"
-                  : "复制后在编辑器中人工整合，不要直接替换全文。"}
+                  ? `${activePatch.data.actions.length} 项建议，逐项确认后再决定是否应用。`
+                  : `${activePatch.data.actions.length} 项参考材料，不应直接替换全文。`}
               </p>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-3">
-            <span role="status" aria-live="polite" className="inline-flex min-h-4 items-center gap-1.5 text-xs">
-              {copyStatus === "copying" ? <span className="text-[#687681]">正在复制</span> : null}
-              {copyStatus === "copied" ? (
-                <>
-                  <Check aria-hidden="true" className="size-3.5 text-[#0e766e]" />
-                  <span className="font-semibold text-[#0e766e]">已复制</span>
-                </>
-              ) : null}
-              {copyStatus === "manual" ? <span className="text-[#8a5b12]">请在下方手动复制</span> : null}
-            </span>
-            <button
-              ref={copyButtonRef}
-              type="button"
-              onClick={copyMarkdown}
-              disabled={copyStatus === "copying"}
-              className="secondary-button h-9 px-4 text-sm font-semibold text-[#08766e] disabled:cursor-wait disabled:opacity-65"
-            >
-              <Copy aria-hidden="true" className={`size-4 ${copyStatus === "copying" ? "animate-pulse motion-reduce:animate-none" : ""}`} />
-              {copyStatus === "copying" ? "正在复制" : "复制全部 Markdown"}
-            </button>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <span role="status" aria-live="polite" className="inline-flex min-h-4 items-center justify-end gap-1.5 text-xs">
+                {copyStatus === "copying" ? <span className="text-[var(--geo-text-muted)]">正在复制</span> : null}
+                {copyStatus === "copied" ? (
+                  <>
+                    <Check aria-hidden="true" className="size-3.5 text-[var(--geo-primary)]" />
+                    <span className="font-semibold text-[var(--geo-primary)]">已复制，尚未应用</span>
+                  </>
+                ) : null}
+                {copyStatus === "manual" ? <span className="text-[var(--geo-amber)]">请在下方手动复制</span> : null}
+              </span>
+              <button
+                ref={copyButtonRef}
+                type="button"
+                onClick={copyMarkdown}
+                disabled={copyStatus === "copying"}
+                className="secondary-button h-9 w-full px-4 text-sm font-semibold text-[var(--geo-primary)] disabled:cursor-wait disabled:opacity-65 sm:w-auto"
+              >
+                <Copy aria-hidden="true" className={`size-4 ${copyStatus === "copying" ? "animate-pulse motion-reduce:animate-none" : ""}`} />
+                {copyStatus === "copying" ? "正在复制" : "复制全部 Markdown"}
+              </button>
             </div>
+          </header>
+
+          <div className="patch-review-gate grid sm:grid-cols-3" aria-label="材料使用前检查">
+            {[
+              ["01", "核对来源", "确认建议对应的诊断与 Evidence。"],
+              ["02", "判断适用", "确认事实、语气和业务边界。"],
+              ["03", "人工应用", "只采纳适合原文的修改内容。"],
+            ].map(([number, label, description]) => (
+              <div key={number} className="flex min-w-0 gap-3 px-4 py-3.5 sm:px-5">
+                <span className="patch-review-number">{number}</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-[var(--geo-text-body)]">{label}</p>
+                  <p className="mt-1 text-[11px] leading-5 text-[var(--geo-text-soft)]">{description}</p>
+                </div>
+              </div>
+            ))}
           </div>
 
           {copyStatus === "copied" ? (
-            <div className="mt-4 flex flex-col gap-3 border-l-[3px] border-[#0f766e] bg-[#eef8f6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-b border-[var(--geo-status-success-border)] bg-[var(--geo-status-success-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="flex min-w-0 items-start gap-3">
-                <ClipboardCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[#0f766e]" />
+                <ClipboardCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--geo-primary)]" />
                 <div>
-                  <p className="text-sm font-semibold text-[#185f59]">材料已复制，下一步回到原文人工应用</p>
-                  <p className="mt-1 text-xs leading-5 text-[#587773]">核对事实与表达边界后，再运行完整重新验证；分数不保证提升。</p>
+                  <p className="text-sm font-semibold text-[var(--geo-primary)]">材料已复制，仍需人工核对并整合到原文</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">复制不代表修改已完成。应用后运行完整复检，结果可能改善、无变化或下降。</p>
                 </div>
               </div>
               <button type="button" onClick={onBackToEditor} className="secondary-button h-9 w-full shrink-0 px-4 text-xs font-semibold sm:w-auto">
-                返回编辑器
+                返回原文
                 <ArrowRight aria-hidden="true" className="size-3.5" />
               </button>
             </div>
           ) : null}
 
           {copyStatus === "manual" ? (
-            <div className="mt-4 border border-[#ead9ab] bg-[#fffaf0] p-4">
+            <div className="border-b border-[var(--geo-status-warning-border)] bg-[var(--geo-status-warning-soft)] p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-sm font-bold">Markdown 文本</h3>
                 <button
                   type="button"
                   onClick={() => manualCopyRef.current?.select()}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#d8bf7b] bg-white px-3 text-xs font-semibold text-[#7a5613]"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--geo-status-warning-border)] bg-white px-3 text-xs font-semibold text-[var(--geo-amber)]"
                 >
                   <TextSelect aria-hidden="true" className="size-3.5" />
                   全选文本
@@ -423,32 +488,42 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
                 readOnly
                 value={activePatch.data.markdown}
                 onFocus={(event) => event.currentTarget.select()}
-                className="mt-3 h-44 w-full resize-y rounded-lg border border-[#e2d3aa] bg-white p-3 font-mono text-xs leading-6 text-[#465266] focus-visible:border-[#0f766e] focus-visible:outline-[3px] focus-visible:outline-[#0f766e]/10"
+                className="mt-3 h-44 w-full resize-y rounded-lg border border-[var(--geo-status-warning-border)] bg-white p-3 font-mono text-xs leading-6 text-[var(--geo-text-body)] focus-visible:border-[var(--geo-primary)]"
                 aria-label="可手动复制的 Markdown 文本"
               />
             </div>
           ) : null}
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {activePatch.data.actions.map((action) => {
+          <div className="patch-action-list">
+            {activePatch.data.actions.map((action, index) => {
               const presentation = actionPresentation(action);
               return (
-                <article key={action.id} className={`card border-t-[3px] p-5 ${presentation.accent}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-[#687681]">{presentation.eyebrow}</span>
-                    <span className={`status-badge px-2 py-1 text-[10px] font-semibold ${presentation.sourceClassName}`}>
-                      {presentation.sourceLabel}
-                    </span>
+                <article key={action.id} className={`patch-action-row ${presentation.accent}`}>
+                  <div className="patch-action-main min-w-0 px-4 py-5 sm:px-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="patch-action-index">{String(index + 1).padStart(2, "0")}</span>
+                      <span className={`status-badge px-2 py-1 text-[10px] font-semibold ${presentation.sourceClassName}`}>
+                        {presentation.eyebrow}
+                      </span>
+                    </div>
+                    <p className="data-label mt-4">{activeMode === "advice" ? "建议动作" : "参考内容"}</p>
+                    <h3 className="mt-1.5 text-sm font-semibold leading-6 text-[var(--geo-text)]">{presentation.title}</h3>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-[var(--geo-text-body)]">{presentation.body}</p>
                   </div>
-                  <h3 className="mt-2 text-sm font-bold leading-6">{presentation.title}</h3>
-                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#465266]">{presentation.body}</p>
-                  <div className="mt-4 grid gap-2 border-t border-[#edf0f2] pt-3 text-xs leading-5">
-                    <p className="break-words text-[#687681]"><span className="font-semibold text-[#4f5864]">{presentation.sourceLabel}：</span>{presentation.source}</p>
-                    <p className="flex items-start gap-2 text-[#7a6540]">
-                      <UserRoundCheck aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-                      <span>{presentation.decision}</span>
-                    </p>
-                  </div>
+                  <dl className="patch-action-audit min-w-0 px-4 py-5 text-xs leading-5 sm:px-5">
+                    <div>
+                      <dt>{presentation.sourceLabel}</dt>
+                      <dd>{presentation.source}</dd>
+                    </div>
+                    <div>
+                      <dt>修改目的</dt>
+                      <dd>{presentation.purpose}</dd>
+                    </div>
+                    <div>
+                      <dt className="flex items-center gap-1.5"><UserRoundCheck aria-hidden="true" className="size-3.5" />人工确认</dt>
+                      <dd>{presentation.decision}</dd>
+                    </div>
+                  </dl>
                 </article>
               );
             })}
@@ -456,14 +531,17 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-col items-start justify-between gap-4 border-t border-[#dbe2df] pt-5 sm:flex-row sm:items-center">
-        <div>
-          <h3 className="text-sm font-semibold text-[#252a31]">完成修改后，用同一套审查重新验证</h3>
-          <p className="mt-1 text-xs leading-5 text-[#737d89]">系统会保留本次结果作为修改前基线；只有真实重跑完成后，才会展示改善、未改善与不可直接对照项。</p>
+      <div className="patch-next-step mt-5 flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="patch-review-number mt-0.5">04</span>
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--geo-text)]">人工应用后，用同一套规则重新验证</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">Evidra 会保留修改前 Baseline；复检完成后分别展示改善、无变化、下降与不可比较。</p>
+          </div>
         </div>
         <button type="button" onClick={onBackToEditor} className="secondary-button h-10 w-full shrink-0 px-4 text-sm font-semibold sm:w-auto">
           <RotateCcw aria-hidden="true" className="size-4" />
-          返回编辑并重新验证
+          返回原文并准备复检
         </button>
       </div>
     </section>
