@@ -51,11 +51,11 @@ export function DiagnosticDetailPanel({
 
   if (item.status === "loading" || item.status === "queued") {
     return (
-      <div id="diagnosis-detail-panel" role="status" aria-live="polite" className="min-h-[420px] bg-[#fafbfc] p-6">
-        <div className="h-4 w-2/3 animate-pulse rounded bg-[#e5e8ed] motion-reduce:animate-none" />
+      <div id="diagnosis-detail-panel" role="status" aria-live="polite" className="min-h-[420px] bg-[var(--geo-surface-subtle)] p-6">
+        <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
         <div className="mt-8 grid gap-4">
-          <div className="h-24 animate-pulse rounded-md bg-[#eef0f3] motion-reduce:animate-none" />
-          <div className="h-32 animate-pulse rounded-md bg-[#eef0f3] motion-reduce:animate-none" />
+          <div className="h-24 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
+          <div className="h-32 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
         </div>
       </div>
     );

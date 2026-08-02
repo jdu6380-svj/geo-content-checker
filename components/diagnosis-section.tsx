@@ -63,15 +63,15 @@ function DiagnosisWorkbenchSkeleton({ announce }: { announce: boolean }) {
         <div className="divide-y divide-[#e5e8eb] border-b border-[#e5e8eb] xl:border-b-0 xl:border-r">
           {Array.from({ length: 5 }, (_, index) => (
             <div key={index} className="flex min-h-[74px] items-center gap-3 p-4">
-              <span className="size-8 rounded-md bg-[#edf0f2]" />
-              <span className="h-4 w-2/3 animate-pulse rounded bg-[#edf0f2] motion-reduce:animate-none" />
+              <span className="size-8 rounded-md bg-[var(--geo-surface-inset)]" />
+              <span className="h-4 w-2/3 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
             </div>
           ))}
         </div>
         <div className="hidden min-h-[430px] bg-[#fafbfc] p-6 xl:block">
-          <div className="h-4 w-2/3 animate-pulse rounded bg-[#e5e8ed] motion-reduce:animate-none" />
-          <div className="mt-8 h-28 animate-pulse rounded-md bg-[#eef0f3] motion-reduce:animate-none" />
-          <div className="mt-4 h-36 animate-pulse rounded-md bg-[#eef0f3] motion-reduce:animate-none" />
+          <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
+          <div className="mt-8 h-28 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
+          <div className="mt-4 h-36 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
         </div>
       </div>
     </div>

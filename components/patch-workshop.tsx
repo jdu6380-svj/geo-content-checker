@@ -342,11 +342,11 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
       </div>
 
       {!paragraphs.length ? (
-        <p className="mt-4 border-l-2 border-[#d8e4e1] pl-4 text-sm leading-6 text-[#687386]">
+        <p className="patch-empty-note mt-4 border-l-2 pl-4 text-sm leading-6">
           缓存报告不含正文，请重新运行体检后生成内容补丁。
         </p>
       ) : diagnosticResults.length === 0 ? (
-        <p className="mt-4 border-l-2 border-[#d8e4e1] pl-4 text-sm leading-6 text-[#687386]">
+        <p className="patch-empty-note mt-4 border-l-2 pl-4 text-sm leading-6">
           至少完成一项诊断后，才能生成可信的修改建议。
         </p>
       ) : null}
@@ -387,9 +387,9 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
         <div className="mt-4 grid gap-3 sm:grid-cols-2" role="status" aria-live="polite" aria-label={`正在生成${modeTitle}`}>
           {Array.from({ length: 4 }, (_, index) => (
             <div key={index} className="card min-h-[150px] animate-pulse p-5 motion-reduce:animate-none">
-              <div className="h-4 w-1/2 rounded bg-[#e5e8ed]" />
-              <div className="mt-5 h-3 w-full rounded bg-[#edf0f2]" />
-              <div className="mt-3 h-3 w-4/5 rounded bg-[#edf0f2]" />
+              <div className="h-4 w-1/2 rounded bg-[var(--geo-surface-inset)]" />
+              <div className="mt-5 h-3 w-full rounded bg-[var(--geo-surface-subtle)]" />
+              <div className="mt-3 h-3 w-4/5 rounded bg-[var(--geo-surface-subtle)]" />
             </div>
           ))}
         </div>

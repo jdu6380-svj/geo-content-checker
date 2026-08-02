@@ -13,8 +13,8 @@ export function DiagnosisFeedback({ value, enabled, onSubmit }: DiagnosisFeedbac
   const canSubmit = enabled && value === undefined;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-[#e1e6ea] pt-4">
-      <span className="text-xs text-[#737d89]">这条诊断有帮助吗？</span>
+    <div className="diagnosis-feedback flex flex-wrap items-center gap-2 border-t pt-4" role="group" aria-label="诊断反馈">
+      <span className="geo-muted text-xs">这条诊断有帮助吗？</span>
       <button
         type="button"
         aria-label="这条诊断有帮助"
@@ -22,7 +22,7 @@ export function DiagnosisFeedback({ value, enabled, onSubmit }: DiagnosisFeedbac
         aria-pressed={value === true}
         disabled={!canSubmit}
         onClick={() => onSubmit(true)}
-        className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors motion-reduce:transition-none ${
+        className={`diagnosis-feedback-button inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors motion-reduce:transition-none ${
           value === true
             ? "status-success"
             : "feedback-button hover:text-[var(--geo-status-success)]"
@@ -38,7 +38,7 @@ export function DiagnosisFeedback({ value, enabled, onSubmit }: DiagnosisFeedbac
         aria-pressed={value === false}
         disabled={!canSubmit}
         onClick={() => onSubmit(false)}
-        className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors motion-reduce:transition-none ${
+        className={`diagnosis-feedback-button inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors motion-reduce:transition-none ${
           value === false
             ? "status-danger"
             : "feedback-button hover:text-[var(--geo-status-danger)]"
@@ -47,7 +47,7 @@ export function DiagnosisFeedback({ value, enabled, onSubmit }: DiagnosisFeedbac
         <ThumbsDown aria-hidden="true" className="size-3.5" />
         没帮助
       </button>
-      {value !== undefined ? <span className="text-xs text-[#737d89]">感谢反馈</span> : null}
+      {value !== undefined ? <span role="status" aria-live="polite" className="geo-muted text-xs">感谢反馈</span> : null}
     </div>
   );
 }

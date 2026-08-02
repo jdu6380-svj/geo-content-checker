@@ -307,7 +307,7 @@ export function EditorWorkspace({
                     Evidence 需人工复核
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden="true" className="size-1.5 rounded-full bg-[#5964cf]" />
+                    <span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--geo-secondary)]" />
                     今日额度 10 次
                   </span>
                 </div>

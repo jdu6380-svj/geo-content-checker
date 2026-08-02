@@ -186,9 +186,9 @@ export function ReportEvidencePanel({
         </div>
       ) : pending || Object.keys(diagnostics).length === 0 ? (
         <div role="status" aria-live="polite" className="grid gap-3 px-4 py-5 sm:px-5">
-          <span className="h-3 w-20 animate-pulse rounded bg-[#e8ebef] motion-reduce:animate-none" />
-          <span className="h-3 w-full animate-pulse rounded bg-[#eef0f3] motion-reduce:animate-none" />
-          <span className="h-3 w-4/5 animate-pulse rounded bg-[#eef0f3] motion-reduce:animate-none" />
+          <span className="h-3 w-20 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
+          <span className="h-3 w-full animate-pulse rounded bg-[var(--geo-surface-subtle)] motion-reduce:animate-none" />
+          <span className="h-3 w-4/5 animate-pulse rounded bg-[var(--geo-surface-subtle)] motion-reduce:animate-none" />
         </div>
       ) : (
         <p className="px-4 py-5 text-sm leading-6 text-[#68707d] sm:px-5">

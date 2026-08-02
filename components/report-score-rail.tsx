@@ -33,10 +33,10 @@ function ScoreSkeleton({ announce }: { announce: boolean }) {
       aria-live={announce ? "polite" : undefined}
       aria-label="正在生成评分"
     >
-      <div className="h-3 w-24 rounded bg-[#e5e7eb]" />
-      <div className="mt-6 h-16 w-32 rounded bg-[#eceef1]" />
-      <div className="mt-5 h-1 w-full rounded-full bg-[#eceef1]" />
-      <div className="mt-6 h-20 rounded-md bg-[#eef0f3]" />
+      <div className="h-3 w-24 rounded bg-[var(--geo-surface-inset)]" />
+      <div className="mt-6 h-16 w-32 rounded bg-[var(--geo-surface-inset)]" />
+      <div className="mt-5 h-1 w-full rounded-full bg-[var(--geo-surface-inset)]" />
+      <div className="mt-6 h-20 rounded-md bg-[var(--geo-surface-subtle)]" />
     </aside>
   );
 }
@@ -85,7 +85,7 @@ export function ReportScoreRail({
         <span className="pb-1 text-sm text-[#858c97]">/ 100</span>
       </div>
       <div
-        className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#e8eeec]"
+        className="mt-4 h-1.5 overflow-hidden rounded-full bg-[var(--geo-surface-inset)]"
         role="progressbar"
         aria-label="总体可信度评分"
         aria-valuemin={0}
@@ -93,7 +93,7 @@ export function ReportScoreRail({
         aria-valuenow={report.totalScore}
       >
         <div
-          className="h-full rounded-full bg-[#25312f] transition-[width] duration-500 motion-reduce:transition-none"
+          className="h-full rounded-full bg-[var(--geo-text-heading)] transition-[width] duration-500 motion-reduce:transition-none"
           style={{ width: `${report.totalScore}%` }}
         />
       </div>

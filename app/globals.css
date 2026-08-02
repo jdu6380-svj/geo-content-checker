@@ -191,6 +191,54 @@ h1, h2, h3, p { letter-spacing: 0; }
     background: var(--paper);
     color: var(--ink);
   }
+  .global-error-body {
+    min-height: 100vh;
+    background: var(--geo-canvas);
+    color: var(--geo-text);
+  }
+  .global-error-shell {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 24px;
+  }
+  .global-error-panel {
+    width: min(100%, 680px);
+    overflow: hidden;
+    border: 1px solid var(--geo-border);
+    border-radius: var(--geo-radius-control);
+    background: var(--geo-surface);
+    box-shadow: var(--geo-shadow-raised);
+  }
+  .global-error-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--geo-border);
+    padding: 16px 20px;
+    background: var(--geo-surface-subtle);
+  }
+  .global-error-content { padding: 28px; }
+  .global-error-icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 20px;
+    place-items: center;
+    border: 1px solid var(--geo-status-danger-border);
+    border-radius: var(--geo-radius-control);
+    background: var(--geo-status-danger-soft);
+    color: var(--geo-status-danger);
+  }
+  .global-error-privacy {
+    border-left: 2px solid var(--geo-info);
+    background: var(--geo-info-soft);
+    padding: 12px 14px;
+    color: var(--geo-text-body);
+    font-size: 12px;
+    line-height: 1.75;
+  }
+  .global-error-actions button { min-width: 0; }
   .app-header {
     border-color: var(--geo-border);
     background: var(--geo-surface);
@@ -254,10 +302,14 @@ h1, h2, h3, p { letter-spacing: 0; }
   .app-new-analysis:hover {
     background: #252d2c;
   }
-  .app-local-status {
-    color: var(--geo-text-muted);
+  .app-workspace-dot { background: var(--geo-primary); }
+  .app-beta-status {
+    border-color: var(--geo-status-info-border);
+    border-radius: var(--geo-radius-status);
+    background: var(--geo-status-info-soft);
+    color: var(--geo-status-info);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 650;
   }
   .app-workspace-label {
     color: var(--geo-text-soft);
@@ -1168,6 +1220,8 @@ h1, h2, h3, p { letter-spacing: 0; }
     color: var(--geo-text-muted);
   }
   .feedback-button:hover { border-color: var(--geo-border-strong); }
+  .diagnosis-feedback { border-color: var(--geo-border); }
+  .diagnosis-feedback-button { min-height: 36px; }
   .analysis-flow-status {
     border-color: var(--geo-border);
     box-shadow: var(--geo-shadow-surface);
@@ -1234,6 +1288,10 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .analysis-flow-step-error .analysis-flow-step-state {
     color: var(--geo-status-danger);
+  }
+  .patch-empty-note {
+    border-color: var(--geo-border-strong);
+    color: var(--geo-text-muted);
   }
   .report-workspace-grid,
   .report-overview-stage,
@@ -1361,6 +1419,10 @@ h1, h2, h3, p { letter-spacing: 0; }
   .workspace-stage-arrow { display: none; }
   .workspace-command-status { margin-left: auto; }
   .workspace-command-action { display: none; }
+  .global-error-shell { padding: 16px; }
+  .global-error-content { padding: 22px 18px; }
+  .global-error-actions button { width: 100%; }
+  .diagnosis-feedback-button { min-height: 40px; }
 }
 
 @media (min-width: 1024px) {

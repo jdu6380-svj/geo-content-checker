@@ -44,6 +44,7 @@ export function AnalysisFlowStatus({
   return (
     <section
       className="analysis-flow-status surface-flat mt-4 overflow-hidden"
+      aria-busy={tone === "loading"}
     >
       <div
         className="analysis-flow-summary flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
@@ -63,11 +64,11 @@ export function AnalysisFlowStatus({
         ) : null}
       </div>
 
-      <ol className="analysis-flow-steps grid border-t border-[#e4e9e8] sm:grid-cols-2 xl:grid-cols-4">
+      <ol className="analysis-flow-steps grid border-t border-[var(--geo-border)] sm:grid-cols-2 xl:grid-cols-4">
         {steps.map((step, index) => (
           <li
             key={step.id}
-            className={`analysis-flow-step analysis-flow-step-${step.status} flex min-w-0 gap-3 border-b border-[#e7ebeb] px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0`}
+            className={`analysis-flow-step analysis-flow-step-${step.status} flex min-w-0 gap-3 border-b border-[var(--geo-border)] px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0`}
           >
             <span className="analysis-flow-step-icon mt-0.5 grid size-7 shrink-0 place-items-center rounded-md border">
               <StepIcon status={step.status} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Circle, Lock, Plus } from "lucide-react";
+import { Lock, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function AppHeader({
         </button>
 
         <span className="app-workspace-label hidden items-center gap-2 md:inline-flex">
-          <span aria-hidden="true" className="size-1.5 rounded-full bg-[#0f766e]" />
+          <span aria-hidden="true" className="app-workspace-dot size-1.5 rounded-full" />
           内容可信度审查工作台
         </span>
 
@@ -78,9 +78,9 @@ export function AppHeader({
               新建审查
             </Button>
           ) : (
-            <span className="app-local-status hidden items-center gap-1.5 min-[480px]:inline-flex">
-              <Circle aria-hidden="true" className="size-1.5 fill-[#159587] text-[#159587]" />
-              本地运行
+            <span className="app-beta-status hidden items-center gap-1.5 border px-2.5 py-1.5 min-[480px]:inline-flex">
+              <ShieldCheck aria-hidden="true" className="size-3.5" />
+              受控 Beta
             </span>
           )}
         </div>

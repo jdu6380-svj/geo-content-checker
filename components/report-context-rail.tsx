@@ -205,9 +205,9 @@ export function ReportContextRail({
             </>
           ) : diagnosticsPending || questionOrder.length === 0 ? (
             <div role="status" aria-live="polite" className="mt-5">
-              <div className="h-5 w-28 animate-pulse rounded bg-[#e8ebef] motion-reduce:animate-none" />
-              <div className="mt-4 h-4 w-full animate-pulse rounded bg-[#eef0f3] motion-reduce:animate-none" />
-              <div className="mt-2 h-4 w-4/5 animate-pulse rounded bg-[#eef0f3] motion-reduce:animate-none" />
+              <div className="h-5 w-28 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
+              <div className="mt-4 h-4 w-full animate-pulse rounded bg-[var(--geo-surface-subtle)] motion-reduce:animate-none" />
+              <div className="mt-2 h-4 w-4/5 animate-pulse rounded bg-[var(--geo-surface-subtle)] motion-reduce:animate-none" />
               <p className="mt-5 text-sm leading-6 text-[#687386]">诊断完成后显示需要优先处理的问题、影响和证据位置。</p>
             </div>
           ) : (
