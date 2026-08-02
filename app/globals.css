@@ -655,15 +655,120 @@ h1, h2, h3, p { letter-spacing: 0; }
   .report-overview-panel .report-priority-risk {
     background: var(--geo-surface-wash);
   }
-  .report-overview-panel .report-next-action {
-    background: var(--geo-surface-subtle);
-  }
   .report-overview-grid > * + * {
     border-top: 1px solid var(--geo-border);
   }
-  .report-priority-risk,
-  .report-next-action {
-    min-height: 300px;
+  .report-priority-risk { min-height: 320px; }
+  .report-priority-ledger {
+    display: grid;
+    border-top: 1px solid var(--geo-border);
+  }
+  .report-priority-ledger > div {
+    display: grid;
+    grid-template-columns: 94px minmax(0, 1fr);
+    gap: 14px;
+    border-bottom: 1px solid var(--geo-border);
+    padding-block: 12px;
+  }
+  .report-priority-ledger dt {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    color: var(--geo-text-soft);
+    font-size: 10px;
+    font-weight: 750;
+  }
+  .report-priority-ledger dt span,
+  .diagnosis-step-label span {
+    color: var(--geo-info);
+    font-family: var(--geo-font-mono);
+    font-size: 9px;
+    font-weight: 800;
+  }
+  .report-priority-ledger dd {
+    min-width: 0;
+    color: var(--geo-text-body);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .report-ledger-index {
+    display: inline-flex;
+    width: fit-content;
+    min-width: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--geo-border);
+    border-radius: 5px;
+    background: var(--geo-surface-subtle);
+    padding: 4px 6px;
+    color: var(--geo-info);
+    font-family: var(--geo-font-mono);
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .report-paragraph-chip {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    border: 1px solid var(--geo-status-info-border);
+    border-radius: 5px;
+    background: var(--geo-status-info-soft);
+    padding: 3px 6px;
+    color: var(--geo-info);
+    font-family: var(--geo-font-mono);
+    font-size: 10px;
+    font-weight: 750;
+  }
+  .report-dimension-table-head,
+  .report-dimension-row {
+    min-width: 0;
+  }
+  .report-dimension-row + .report-dimension-row {
+    border-top: 1px solid var(--geo-border);
+  }
+  .evidence-ledger-head {
+    border-bottom: 1px solid var(--geo-border);
+    background: var(--geo-surface-subtle);
+  }
+  .evidence-ledger-row + .evidence-ledger-row {
+    border-top: 1px solid var(--geo-border);
+  }
+  .diagnosis-reading-path {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 1px solid var(--geo-border);
+    border-top: 0;
+    background: var(--geo-surface-subtle);
+  }
+  .diagnosis-reading-path li {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 12px;
+    color: var(--geo-text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .diagnosis-reading-path li span {
+    color: var(--geo-info);
+    font-family: var(--geo-font-mono);
+    font-size: 9px;
+    font-weight: 800;
+  }
+  .diagnosis-reading-path li svg {
+    margin-left: auto;
+    color: var(--geo-text-soft);
+  }
+  .diagnosis-step-label {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    color: var(--geo-text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
   }
   .workspace-command-bar {
     position: sticky;
@@ -1016,6 +1121,10 @@ h1, h2, h3, p { letter-spacing: 0; }
   .report-heading { align-items: start; }
   .editor-frame-bar { padding-inline: 14px; }
   .sample-library-row { min-height: 88px; }
+  .report-priority-ledger > div {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
 }
 
 @media (max-width: 639px) {
@@ -1109,12 +1218,43 @@ h1, h2, h3, p { letter-spacing: 0; }
   .editor-result-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .evidence-status-summary > * + *,
+  .evidence-status-summary > * {
+    border-top: 0;
+  }
+  .evidence-status-summary > *:nth-child(even) {
+    border-left: 1px solid var(--geo-border);
+  }
+  .evidence-status-summary > *:nth-child(n + 3) {
+    border-top: 1px solid var(--geo-border);
+  }
+  .diagnosis-reading-path {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .diagnosis-reading-path li + li {
+    border-left: 1px solid var(--geo-border);
+  }
   .patch-review-loop > * + *,
   .patch-mode-guidance > * + *,
   .recheck-summary-grid > * + * {
     border-top: 0;
     border-left: 1px solid var(--geo-border);
+  }
+}
+
+@media (min-width: 768px) {
+  .report-dimension-table-head,
+  .report-dimension-row {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.05fr) 70px minmax(135px, .7fr) minmax(170px, 1fr);
+    align-items: center;
+    gap: 18px;
+  }
+  .evidence-ledger-head,
+  .evidence-ledger-row {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) 112px 148px;
+    align-items: start;
+    gap: 16px;
   }
 }
 
@@ -1130,6 +1270,12 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .editor-result-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .evidence-status-summary > *:nth-child(n + 3) {
+    border-top: 0;
+  }
+  .evidence-status-summary > * + * {
+    border-left: 1px solid var(--geo-border);
   }
 }
 

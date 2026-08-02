@@ -15,8 +15,8 @@ type ReportSectionRailProps = {
 
 const SECTIONS = [
   { id: "report-core", label: "报告结论", description: "评分与最大风险", icon: BarChart3 },
-  { id: "diagnostic-section", label: "关键诊断", description: "逐项理解问题", icon: ListChecks },
   { id: "evidence-section", label: "Evidence", description: "核对原文依据", icon: FileSearch },
+  { id: "diagnostic-section", label: "关键诊断", description: "逐项理解问题", icon: ListChecks },
   { id: "patch-workshop", label: "修改建议", description: "生成辅助材料", icon: Sparkles },
 ] as const;
 

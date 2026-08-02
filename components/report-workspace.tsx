@@ -285,8 +285,6 @@ export function ReportWorkspace({
               scoreBand={scoreBand}
               diagnostics={diagnostics}
               questionOrder={questionOrder}
-              contentAvailable={contentAvailable}
-              restoredFromCache={restoredFromCache}
               announceLoading={session.status !== "loading"}
               canRetry={!restoredFromCache && contentAvailable}
               onRetryScoring={onRetryScoring}
@@ -295,12 +293,15 @@ export function ReportWorkspace({
                 onScrollToSection("diagnostic-section");
               }}
               onScrollToSection={onScrollToSection}
-              onBackToEditor={onBackToEditor}
             />
           </div>
 
           <div className="report-evidence-stage min-w-0">
-            <ReportEvidencePanel diagnostics={diagnostics} restoredFromCache={restoredFromCache} />
+            <ReportEvidencePanel
+              diagnostics={diagnostics}
+              questionOrder={questionOrder}
+              restoredFromCache={restoredFromCache}
+            />
           </div>
 
           <div className="report-action-stage min-w-0">

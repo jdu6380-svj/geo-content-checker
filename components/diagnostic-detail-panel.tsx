@@ -96,7 +96,7 @@ export function DiagnosticDetailPanel({
       <section className="border-b border-[#e3e7eb] bg-white px-5 py-5" aria-labelledby="diagnosis-problem-heading">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-2xl">
-            <p id="diagnosis-problem-heading" className="section-kicker">问题</p>
+            <p id="diagnosis-problem-heading" className="diagnosis-step-label"><span>01</span>问题</p>
             <h3 className="mt-2 text-base font-semibold leading-7 text-[#111827]">{item.question}</h3>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -113,7 +113,7 @@ export function DiagnosticDetailPanel({
 
       <div className="grid">
         <section className="px-5 py-5">
-          <p className="section-kicker">原文证据</p>
+          <p className="diagnosis-step-label"><span>02</span>原文证据</p>
           {item.data.evidenceStatus === "invalid" ? (
             <p className="mt-3 border-l-2 border-[#c85745] bg-[#fff8f6] px-3 py-2 text-xs leading-5 text-[#963d2e]">
               模型返回了无法逐字定位的引用；无效内容已移除。
@@ -135,7 +135,7 @@ export function DiagnosticDetailPanel({
 
         <div className="grid content-start gap-5 border-t border-[#e1e6ea] px-5 py-5">
           <section>
-            <p className="section-kicker">缺失信息</p>
+            <p className="diagnosis-step-label"><span>03</span>缺失信息</p>
             {item.data.missingInfo.length ? (
               <ul className="mt-3 grid gap-2 text-sm text-[#465266]">
                 {item.data.missingInfo.map((missing) => (
@@ -151,7 +151,7 @@ export function DiagnosticDetailPanel({
           </section>
 
           <section className="border-l-2 border-[#6f8ca4] bg-[#edf3f7] px-4 py-4">
-            <p className="section-kicker text-[#416b8a]">修改建议</p>
+            <p className="diagnosis-step-label text-[#416b8a]"><span>04</span>修改建议</p>
             <p className="mt-2 text-sm leading-7 text-[#46545e]">{item.data.recommendation}</p>
           </section>
           <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />

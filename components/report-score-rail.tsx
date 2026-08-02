@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3 } from "lucide-react";
+import { BarChart3, ShieldCheck } from "lucide-react";
 
 import type { LoadState } from "@/lib/client/report-state";
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
@@ -18,17 +18,17 @@ type ReportScoreRailProps = {
   onRetry: () => void;
 };
 
-const DIMENSION_META = [
-  { key: "questionCoverage", label: "问题覆盖度", barClassName: "score-bar-question" },
-  { key: "factCompleteness", label: "事实完整度", barClassName: "score-bar-fact" },
-  { key: "structureClarity", label: "结构清晰度", barClassName: "score-bar-structure" },
-  { key: "freshness", label: "时效性", barClassName: "score-bar-freshness" },
-] as const;
+const BAND_STYLE: Record<string, string> = {
+  准备充分: "status-success",
+  基础良好: "status-info",
+  需要补强: "status-warning",
+  风险较高: "status-danger",
+};
 
 function ScoreSkeleton({ announce }: { announce: boolean }) {
   return (
     <aside
-      className="score-rail min-h-[318px] animate-pulse p-5 motion-reduce:animate-none sm:p-6"
+      className="score-rail min-h-[320px] animate-pulse p-5 motion-reduce:animate-none sm:p-6"
       role={announce ? "status" : undefined}
       aria-live={announce ? "polite" : undefined}
       aria-label="正在生成评分"
@@ -36,14 +36,7 @@ function ScoreSkeleton({ announce }: { announce: boolean }) {
       <div className="h-3 w-24 rounded bg-[#e5e7eb]" />
       <div className="mt-6 h-16 w-32 rounded bg-[#eceef1]" />
       <div className="mt-5 h-1 w-full rounded-full bg-[#eceef1]" />
-      <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-5 border-t border-[#eceef1] pt-5">
-        {Array.from({ length: 4 }, (_, index) => (
-          <div key={index}>
-            <div className="h-3 w-20 rounded bg-[#e5e7eb]" />
-            <div className="mt-3 h-1 w-full rounded-full bg-[#eceef1]" />
-          </div>
-        ))}
-      </div>
+      <div className="mt-6 h-20 rounded-md bg-[#eef0f3]" />
     </aside>
   );
 }
@@ -80,7 +73,7 @@ export function ReportScoreRail({
   const report = scoring.data;
 
   return (
-    <aside className="score-rail min-w-0 p-5 sm:p-6">
+    <aside className="score-rail report-score-summary min-w-0 p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <span className="section-kicker text-[#60706e]">总体可信度评分</span>
         <BarChart3 aria-hidden="true" className="size-4 text-[#0f766e]" />
@@ -91,44 +84,43 @@ export function ReportScoreRail({
         </strong>
         <span className="pb-1 text-sm text-[#858c97]">/ 100</span>
       </div>
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#e8eeec]">
+      <div
+        className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#e8eeec]"
+        role="progressbar"
+        aria-label="总体可信度评分"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={report.totalScore}
+      >
         <div
-          className="h-full rounded-full bg-[#0f766e] transition-[width] duration-500 motion-reduce:transition-none"
+          className="h-full rounded-full bg-[#25312f] transition-[width] duration-500 motion-reduce:transition-none"
           style={{ width: `${report.totalScore}%` }}
         />
       </div>
+      <div className="mt-2 flex justify-between font-mono text-[9px] text-[#98a0aa]" aria-hidden="true">
+        <span>0</span>
+        <span>50</span>
+        <span>70</span>
+        <span>85</span>
+        <span>100</span>
+      </div>
       {band ? (
-        <div className="mt-4">
-          <span className="status-badge status-success inline-flex px-2.5 py-1 text-[11px] font-semibold">
+        <div className="mt-5 border-t border-[#e7e9ed] pt-5">
+          <span className={`status-badge inline-flex px-2.5 py-1 text-[11px] font-semibold ${BAND_STYLE[band.label] ?? "status-neutral"}`}>
             {band.label}
           </span>
-          <p className="mt-2 text-xs leading-5 text-[#687386]">{band.note}</p>
+          <p className="mt-2 text-sm font-medium leading-6 text-[#46515d]">{band.note}</p>
         </div>
       ) : null}
 
-      <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-[#e7e9ed] pt-5">
-        {DIMENSION_META.map(({ key, label, barClassName }) => {
-          const dimension = report.dimensions[key];
-          const percentage = Math.round((dimension.score / dimension.max) * 100);
-          return (
-            <div key={key} className="min-w-0">
-              <div className="flex items-start justify-between gap-2 text-[11px]">
-                <span className="font-semibold leading-4 text-[#4e5561]">{label}</span>
-                <span className="shrink-0 tabular-nums text-[#7a818d]">
-                  {dimension.score}/{dimension.max}
-                </span>
-              </div>
-              <div className="metric-track mt-2">
-                <div
-                  className={`h-full rounded-full ${barClassName} transition-[width] duration-500 motion-reduce:transition-none`}
-                  style={{ width: `${percentage}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
+      <div className="mt-5 flex items-start gap-3 border-t border-[#e7e9ed] pt-5">
+        <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[#59636f]" />
+        <div>
+          <p className="text-xs font-semibold text-[#46515d]">四项固定维度，权重合计 100</p>
+          <p className="mt-1 text-[11px] leading-5 text-[#858c97]">下方评分账本说明每项得分及其审查依据。</p>
+        </div>
       </div>
-      <p className="mt-5 text-[11px] leading-5 text-[#858c97]">
+      <p className="mt-4 text-[11px] leading-5 text-[#858c97]">
         评分衡量内容准备度，不代表实际收录或排名。
       </p>
     </aside>
