@@ -31,7 +31,7 @@ export function AppHeader({
         <button
           type="button"
           onClick={onShowEditor}
-          className="app-brand group flex shrink-0 items-center gap-3 text-left"
+          className="app-brand group flex min-h-11 shrink-0 items-center gap-3 text-left"
           aria-label="返回 Evidra 内容审查工作台"
         >
           <EvidraBrandMark className="brand-mark size-9 shrink-0" />
@@ -50,7 +50,7 @@ export function AppHeader({
             className="app-nav-item"
           >
             <FileText aria-hidden="true" className="size-3.5" />
-            体检
+            审查
           </button>
           <button
             type="button"
@@ -108,7 +108,7 @@ export function AppHeader({
           {analysisStarted ? (
             <Button type="button" onClick={onNewAnalysis} className="app-new-analysis h-9 px-3.5 text-xs font-semibold">
               <Plus aria-hidden="true" className="size-3.5" />
-              新建体检
+              新建审查
             </Button>
           ) : (
             <span className="app-local-status hidden items-center gap-1.5 min-[480px]:inline-flex">

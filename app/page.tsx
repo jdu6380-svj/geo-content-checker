@@ -95,18 +95,18 @@ const DIMENSION_META = [
 
 const SAMPLE_META: Record<number, SamplePresentationMeta> = {
   0: {
-    status: "已通过",
-    description: "结构完整且信息源真实",
+    status: "完整示例",
+    description: "信息边界清楚，适合了解完整输入",
     badgeClassName: "status-success",
   },
   1: {
-    status: "风险",
-    description: "缺乏必要的事实证据支撑",
+    status: "证据缺口",
+    description: "关键判断缺少可核对依据",
     badgeClassName: "status-warning",
   },
   2: {
-    status: "待优化",
-    description: "时效性模糊且结构混乱",
+    status: "表达风险",
+    description: "强承诺、时效与结构均需复核",
     badgeClassName: "status-danger",
   },
 };
