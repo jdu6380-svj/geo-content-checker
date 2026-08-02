@@ -118,12 +118,14 @@ export function DiagnosisSection({
   } else if (questions.status === "error") {
     diagnosisContent = (
       <div className="surface-flat mt-4 p-5">
-        <p role="alert" aria-live="assertive" className="font-semibold text-[#963d2e]">
+        <p className="font-semibold text-[#963d2e]">读者问题未生成</p>
+        <p role="alert" aria-live="assertive" className="mt-2 text-sm leading-6 text-[#765047]">
           {questions.error}
         </p>
+        <p className="mt-2 text-xs leading-5 text-[#858c97]">评分结果可能已经完成。重新运行会从头生成本次报告。</p>
         {canRetryQuestions ? (
           <button type="button" onClick={onRetryQuestions} className="primary-button mt-3 h-9 px-4 text-sm font-semibold">
-            重新生成问题
+            重新运行分析
           </button>
         ) : null}
       </div>

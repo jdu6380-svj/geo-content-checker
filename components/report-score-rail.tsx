@@ -66,13 +66,14 @@ export function ReportScoreRail({
       <div className="score-rail">
         <aside className="surface-flat flex min-h-[240px] flex-col items-start justify-center p-5">
           <BarChart3 aria-hidden="true" className="size-5 text-[#c85745]" />
-          <h2 className="mt-4 font-semibold">评分暂时失败</h2>
+          <h2 className="mt-4 font-semibold">评分未完成</h2>
           <p role="alert" className="mt-2 text-sm leading-6 text-[#68707d]">
             {scoring.error}
           </p>
+          <p className="mt-2 text-xs leading-5 text-[#858c97]">已完成的诊断会继续保留。重新运行会从头生成本次报告。</p>
           {canRetry ? (
             <button type="button" onClick={onRetry} className="primary-button mt-4 h-9 px-4 text-sm font-semibold">
-              重新评分
+              重新运行分析
             </button>
           ) : null}
         </aside>

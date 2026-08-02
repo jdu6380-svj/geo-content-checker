@@ -3,6 +3,7 @@
 import type { FormEvent, RefObject } from "react";
 import { FileText, ListChecks, Sparkles } from "lucide-react";
 
+import { AnalysisFlowStatus, type AnalysisFlowStep } from "@/components/analysis-flow-status";
 import { DiagnosisSection } from "@/components/diagnosis-section";
 import { PatchWorkshop } from "@/components/patch-workshop";
 import { ReportActionRail } from "@/components/report-action-rail";
@@ -110,6 +111,14 @@ export function ReportWorkspace({
   const diagnosticsPending = Object.values(diagnostics).some(
     (item) => item.status === "queued" || item.status === "loading",
   );
+  const diagnosticsFailed = Object.values(diagnostics).some((item) => item.status === "error");
+  const diagnosticsComplete = questionOrder.length > 0 && questionOrder.every((question) => {
+    const status = diagnostics[question]?.status;
+    return status === "success" || status === "error";
+  });
+  const sessionComplete = session.status === "success" || restoredFromCache;
+  const flowHasError = session.status === "error" || scoring.status === "error" || questions.status === "error" || diagnosticsFailed;
+  const flowComplete = sessionComplete && scoring.status === "success" && questions.status === "success" && diagnosticsComplete;
   const loadingMessage = session.status === "loading"
     ? "正在建立分析会话并整理文章结构。"
     : scoring.status === "loading" && questions.status === "loading"
@@ -121,6 +130,81 @@ export function ReportWorkspace({
           : diagnosticsPending
             ? "正在逐题验证原文证据并生成诊断。"
             : null;
+  const flowSteps: AnalysisFlowStep[] = [
+    {
+      id: "session",
+      label: "准备分析",
+      description: "建立安全会话并整理文章结构。",
+      status: session.status === "error"
+        ? "error"
+        : sessionComplete
+          ? "complete"
+          : session.status === "loading"
+            ? "active"
+            : "waiting",
+    },
+    {
+      id: "scoring",
+      label: "生成评分",
+      description: "检查内容准备度与四项评分维度。",
+      status: scoring.status === "error"
+        ? "error"
+        : scoring.status === "success"
+          ? "complete"
+          : sessionComplete && scoring.status === "loading"
+            ? "active"
+            : "waiting",
+    },
+    {
+      id: "questions",
+      label: "识别问题",
+      description: "推演读者和 AI 搜索可能提出的问题。",
+      status: questions.status === "error"
+        ? "error"
+        : questions.status === "success"
+          ? "complete"
+          : sessionComplete && questions.status === "loading"
+            ? "active"
+            : "waiting",
+      meta: questions.status === "success" ? `${questionOrder.length} 个问题` : undefined,
+    },
+    {
+      id: "diagnostics",
+      label: "验证诊断",
+      description: "逐项核对原文证据并形成诊断。",
+      status: diagnosticsFailed
+        ? "error"
+        : diagnosticsComplete
+          ? "complete"
+          : questions.status === "success" && diagnosticsPending
+            ? "active"
+            : "waiting",
+      meta: questionOrder.length ? `${completedCount} / ${questionOrder.length} 已完成` : undefined,
+    },
+  ];
+  const flowPresentation = flowHasError
+    ? {
+        title: "分析需要处理",
+        description: "已完成的结果会保留。请在对应模块重试，或返回编辑后重新运行完整分析。",
+        tone: "error" as const,
+      }
+    : restoredFromCache
+      ? {
+          title: "已载入最近报告",
+          description: "评分与诊断已恢复。证据和修改建议是否可用，取决于本地是否仍保留本次正文。",
+          tone: "success" as const,
+        }
+    : flowComplete
+      ? {
+          title: "报告已就绪",
+          description: "评分、问题识别和逐项诊断已完成。下一步查看关键诊断，再决定是否生成修改建议。",
+          tone: "success" as const,
+        }
+      : {
+          title: "正在生成内容可信度报告",
+          description: loadingMessage ?? "正在准备分析结果。完成的模块会立即显示，不需要刷新页面。",
+          tone: "loading" as const,
+        };
 
   return (
     <section
@@ -173,13 +257,21 @@ export function ReportWorkspace({
         </Button>
       </div>
 
+      <AnalysisFlowStatus
+        title={flowPresentation.title}
+        description={flowPresentation.description}
+        tone={flowPresentation.tone}
+        steps={flowSteps}
+      />
+
       {session.status === "error" ? (
         <div role="alert" className="surface-flat mt-4 border-l-[3px] border-l-[#c85745] bg-[#fff8f6] p-5 sm:p-6">
-          <h2 className="text-base font-semibold text-[#963d2e]">无法开始本次体检</h2>
+          <h2 className="text-base font-semibold text-[#963d2e]">分析会话未能建立</h2>
           <p className="mt-2 text-sm leading-6 text-[#765047]">{session.error}</p>
+          <p className="mt-2 text-xs leading-5 text-[#8b655d]">文章内容仍保留在本地。重新开始会运行完整分析，返回编辑不会丢失草稿。</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={onRestartAnalysis} className="dark-button h-10 px-5 text-sm font-semibold">
-              重新开始体检
+              重新运行分析
             </button>
             <button
               type="button"
@@ -193,16 +285,6 @@ export function ReportWorkspace({
       ) : null}
 
       <div hidden={session.status === "error"}>
-        {loadingMessage ? (
-          <div role="status" aria-live="polite" className="mt-4 flex items-center gap-3 rounded-lg border border-[#d7e8e5] bg-[#eef8f6] px-4 py-3 text-sm text-[#4e615e]">
-            <span
-              aria-hidden="true"
-              className="size-4 shrink-0 animate-spin rounded-full border-2 border-[#b9d9d4] border-t-[#0f766e] motion-reduce:animate-none"
-            />
-            <span>{loadingMessage}</span>
-          </div>
-        ) : null}
-
         <div className="report-cockpit mt-4 grid items-start gap-4 lg:grid-cols-[232px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)]">
           <ReportContextRail
             title={title}

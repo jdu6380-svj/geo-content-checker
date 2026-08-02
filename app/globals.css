@@ -476,6 +476,73 @@ h1, h2, h3, p { letter-spacing: 0; }
   .report-command-bar {
     box-shadow: 0 1px 2px rgba(17, 24, 39, .03), 0 8px 24px rgba(17, 24, 39, .025);
   }
+  .analysis-flow-status {
+    border-color: var(--geo-border);
+    box-shadow: var(--geo-shadow-surface);
+  }
+  .analysis-flow-summary {
+    background: var(--geo-surface);
+  }
+  .analysis-flow-summary-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+  }
+  .analysis-flow-summary-dot-loading {
+    background: var(--geo-status-info);
+    box-shadow: 0 0 0 4px var(--geo-status-info-soft);
+  }
+  .analysis-flow-summary-dot-success {
+    background: var(--geo-status-success);
+    box-shadow: 0 0 0 4px var(--geo-status-success-soft);
+  }
+  .analysis-flow-summary-dot-error {
+    background: var(--geo-status-danger);
+    box-shadow: 0 0 0 4px var(--geo-status-danger-soft);
+  }
+  .analysis-flow-step {
+    background: var(--geo-surface);
+  }
+  .analysis-flow-step-icon {
+    border-color: var(--geo-border);
+    background: var(--geo-surface-subtle);
+    color: var(--geo-text-soft);
+  }
+  .analysis-flow-step-waiting .analysis-flow-step-state {
+    color: var(--geo-text-soft);
+  }
+  .analysis-flow-step-active {
+    background: var(--geo-status-info-soft);
+  }
+  .analysis-flow-step-active .analysis-flow-step-icon {
+    border-color: #c9d9e4;
+    background: white;
+    color: var(--geo-status-info);
+  }
+  .analysis-flow-step-active .analysis-flow-step-state {
+    color: var(--geo-status-info);
+  }
+  .analysis-flow-step-complete .analysis-flow-step-icon {
+    border-color: #c7dfdb;
+    background: var(--geo-status-success-soft);
+    color: var(--geo-status-success);
+  }
+  .analysis-flow-step-complete .analysis-flow-step-state {
+    color: var(--geo-status-success);
+  }
+  .analysis-flow-step-error {
+    background: var(--geo-status-danger-soft);
+  }
+  .analysis-flow-step-error .analysis-flow-step-icon {
+    border-color: #edcbc4;
+    background: white;
+    color: var(--geo-status-danger);
+  }
+  .analysis-flow-step-error .analysis-flow-step-state {
+    color: var(--geo-status-danger);
+  }
   .report-cockpit,
   .report-diagnosis-stage,
   .report-action-stage {
