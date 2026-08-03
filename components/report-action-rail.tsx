@@ -12,14 +12,6 @@ type ReportActionRailProps = {
   onBackToEditor: () => void;
 };
 
-const STEP_STYLE = {
-  complete: { badge: "status-success", label: "已完成" },
-  active: { badge: "status-warning", label: "进行中" },
-  available: { badge: "status-info", label: "可开始" },
-  locked: { badge: "status-neutral", label: "待前置" },
-  pending: { badge: "status-neutral", label: "待处理" },
-} as const;
-
 export function ReportActionRail({
   completedCount,
   totalCount,
@@ -69,36 +61,31 @@ export function ReportActionRail({
 
   return (
     <aside className="report-action-rail surface-flat min-w-0 p-4 sm:p-5" aria-label="下一步操作">
-      <div className="border-b border-[#e7e9ed] pb-4">
+      <div className="border-b border-[var(--geo-border)] pb-4">
         <p className="section-kicker">下一步</p>
-        <h2 className="mt-1.5 text-base font-semibold text-[#111827]">审查处理路径</h2>
-        <p className="mt-2 text-xs leading-5 text-[#737d89]">先核对依据，再决定修改范围；生成材料不代表审查完成。</p>
+        <h2 className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">处理当前风险</h2>
       </div>
 
-      <ol className="mt-3 grid gap-2">
+      <ol className="report-action-list mt-2">
         {steps.map((step, index) => {
           const Icon = step.icon;
-          const presentation = STEP_STYLE[step.state];
           return (
             <li key={step.id}>
               <button
                 type="button"
                 onClick={step.onClick}
                 disabled={step.disabled}
-                className={`report-action-step group grid w-full grid-cols-[28px_minmax(0,1fr)_16px] items-center gap-3 rounded-md border border-transparent px-2 py-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${step.state === "available" || step.state === "active" ? "is-next" : ""}`}
+                className={`report-action-step group grid w-full grid-cols-[24px_minmax(0,1fr)_16px] items-center gap-3 border-b border-[var(--geo-border)] px-1 py-3 text-left last:border-b-0 disabled:cursor-not-allowed disabled:opacity-50 ${step.state === "available" || step.state === "active" ? "is-next" : ""}`}
               >
-                <span className={`grid size-7 place-items-center rounded-md border text-[10px] font-bold ${presentation.badge}`}>
+                <span className="grid size-6 place-items-center rounded-md border border-[var(--geo-border)] bg-white text-[9px] font-bold text-[var(--geo-text-soft)]">
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <span className="min-w-0">
-                  <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#252a31]">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-[var(--geo-text-heading)]">
                     <Icon aria-hidden="true" className="size-3.5 text-[var(--geo-text-muted)] group-hover:text-[var(--geo-primary)]" />
                     {step.label}
-                    <span className={`status-badge px-1.5 py-0.5 text-[9px] font-semibold ${presentation.badge}`}>
-                      {presentation.label}
-                    </span>
                   </span>
-                  <span className="mt-1 block text-xs leading-5 text-[#858c97]">{step.meta}</span>
+                  <span className="mt-1 block text-[11px] leading-5 text-[var(--geo-text-muted)]">{step.meta}</span>
                 </span>
                 <ArrowRight aria-hidden="true" className="size-3.5 text-[var(--geo-soft)] group-hover:text-[var(--geo-primary)]" />
               </button>
@@ -131,9 +118,7 @@ export function ReportActionRail({
             进入修改建议
           </button>
         ) : null}
-        <p className="text-xs leading-5 text-[#858c97]">
-          修改建议与内容草稿均需人工核对，Evidra 不承诺排名或结果提升。
-        </p>
+        <p className="text-[11px] leading-5 text-[var(--geo-text-soft)]">所有修改材料均需人工核对，不承诺排名或结果提升。</p>
       </div>
     </aside>
   );

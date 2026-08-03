@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, Plus, ShieldCheck } from "lucide-react";
+import { Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ export function AppHeader({
 }: AppHeaderProps) {
   return (
     <header className="app-header sticky top-0 z-40 border-b">
-      <div className="mx-auto flex h-[var(--app-header-height)] max-w-[1440px] items-center gap-5 px-4 sm:px-6 lg:px-10">
+      <div className="mx-auto flex h-[var(--app-header-height)] max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-10">
         <button
           type="button"
           onClick={onShowEditor}
@@ -36,11 +36,6 @@ export function AppHeader({
             <span className="app-brand-subtitle mt-1 block">内容可信度审查</span>
           </span>
         </button>
-
-        <span className="app-workspace-label hidden items-center gap-2 md:inline-flex">
-          <span aria-hidden="true" className="app-workspace-dot size-1.5 rounded-full" />
-          Evidra 工作台
-        </span>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <span className="hidden items-center gap-3 lg:inline-flex">
@@ -68,10 +63,6 @@ export function AppHeader({
               反馈
             </a>
           ) : null}
-          <span className="privacy-badge hidden items-center gap-1.5 border px-2.5 py-1.5 text-[11px] font-medium sm:inline-flex">
-            <Lock aria-hidden="true" className="size-3" />
-            正文不保存
-          </span>
           {analysisStarted ? (
             <Button type="button" onClick={onNewAnalysis} className="app-new-analysis h-9 px-3.5 text-xs font-semibold">
               <Plus aria-hidden="true" className="size-3.5" />

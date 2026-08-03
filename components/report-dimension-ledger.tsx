@@ -18,18 +18,17 @@ export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
     <section className="report-dimension-ledger border-t border-[var(--geo-border)]" aria-labelledby="dimension-ledger-heading">
       <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4 sm:px-6">
         <div>
-          <p className="section-kicker">评分账本</p>
-          <h2 id="dimension-ledger-heading" className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">四维评分账本</h2>
-          <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">固定权重与模型给出的评分依据逐项对应，总分不代表平台收录或排名。</p>
+          <p className="section-kicker">评分维度</p>
+          <h2 id="dimension-ledger-heading" className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">四项评分明细</h2>
         </div>
-        <span className="status-badge status-neutral px-2.5 py-1 text-[11px] font-semibold">权重合计 100</span>
+        <span className="text-xs font-semibold text-[var(--geo-text-soft)]">合计 100 分</span>
       </div>
 
       <div className="report-dimension-table border-t border-[var(--geo-border)]">
         <div className="report-dimension-table-head hidden px-5 py-2.5 text-[10px] font-semibold text-[#858c97] md:grid sm:px-6" aria-hidden="true">
           <span>维度</span>
           <span>得分</span>
-          <span>完成度</span>
+          <span>占比</span>
           <span>评分依据</span>
         </div>
         <ol>
@@ -39,13 +38,12 @@ export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
             return (
               <li key={key} className="report-dimension-row px-5 py-4 sm:px-6">
                 <div className="flex min-w-0 items-start gap-3">
-                  <span className="report-ledger-index">{String(index + 1).padStart(2, "0")}</span>
                   <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--geo-border)] bg-[var(--geo-surface-subtle)] text-[var(--geo-info)]">
                     <Icon aria-hidden="true" className="size-4" />
                   </span>
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-[var(--geo-text-heading)]">{label}</span>
-                    <span className="mt-1 block text-[11px] leading-5 text-[var(--geo-text-soft)]">{description}</span>
+                    <span className="sr-only">{String(index + 1).padStart(2, "0")} · {description}</span>
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline gap-1 md:mt-0">
@@ -55,7 +53,7 @@ export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
                 <div className="mt-3 md:mt-0">
                   <div className="flex items-center justify-between gap-3 text-[10px] font-semibold text-[var(--geo-text-muted)]">
                     <span>{percentage}%</span>
-                    <span>{dimension.max} 分权重</span>
+                    <span>{dimension.max} 分</span>
                   </div>
                   <div className="metric-track mt-2">
                     <div className={`h-full rounded-full ${barClassName}`} style={{ width: `${percentage}%` }} />

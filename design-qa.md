@@ -113,6 +113,40 @@ Measured breakpoint checks:
 - Reference images contain marketing content intentionally excluded by the approved working-product scope.
 - Repeated local reloads can return the expected in-memory warmup rate-limit response; this does not affect the fallback black-box result.
 
+## D.0.8.1 Visual Simplification
+
+- QA date: 2026-08-03.
+- Baseline commit: `11c1ca61328611d84ea7b57aed2d4d9363612f62`.
+- Visual reference: `codex-clipboard-8cbf0bea-c4c5-44a4-a1cf-781aa2303e21.png`.
+- Scope remained UI / Presentation Layer only.
+
+Visual changes:
+
+- Reduced the homepage to title, body, examples and one primary review action.
+- Hid the publication date from the UI while preserving `publishedAt` and the request contract.
+- Removed the duplicate report chapter rail while retaining Score Ring, risk, Evidence, Diagnosis, Patch and Recheck.
+- Replaced repeated status explanations with concise Chinese states: 有效、缺失、无效.
+- Removed duplicate diagnosis numbering and reduced nested Card, Shadow and Badge treatments.
+- Preserved Advice, Content Draft and Recheck semantics, including required human review.
+
+Verification:
+
+| Viewport | Homepage | Report | Horizontal overflow | Clipped buttons |
+| --- | --- | --- | --- | --- |
+| 1440×900 | PASS | PASS | 0 | 0 |
+| 1280×800 | PASS | PASS | 0 | 0 |
+| 390×844 | PASS | PASS | 0 | 0 |
+
+- Mobile primary CTA measured `328×44`.
+- Empty submission displayed both field errors and restored focus to the title input.
+- Form controls retain native DOM order with no positive `tabindex`.
+- Evidence, expanded Diagnosis and Patch remained readable without horizontal overflow.
+- Recheck result remained factual: Baseline `75`, New Result `80`, 改善 `0`, 无变化 `5`, 下降 `0`, 不可比较 `0`.
+- Browser console reported zero application errors and zero application warnings.
+- `npm run check`, `npm run build` and `git diff --check` passed.
+- Local screenshots are stored in the Git-ignored `design-qa-artifacts/` directory.
+- Pipeline, API, Schema, Parser, Evidence validator, Scoring, Prompt, Model, Fallback and B.2 Validation artifacts were not modified.
+
 ## Result
 
 final result: passed

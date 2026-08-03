@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, ShieldCheck } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 
 import type { LoadState } from "@/lib/client/report-state";
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
@@ -74,12 +74,9 @@ export function ReportScoreRail({
 
   return (
     <aside className="score-rail report-score-summary min-w-0 p-5 sm:p-6">
-      <div className="flex items-center justify-between gap-3">
-        <span className="section-kicker">总体可信度评分</span>
-        <BarChart3 aria-hidden="true" className="size-4 text-[var(--geo-primary)]" />
-      </div>
+      <span className="section-kicker">总体可信度</span>
       <div
-        className="score-ring-wrap mt-5"
+        className="score-ring-wrap mt-4"
         role="progressbar"
         aria-label="总体可信度评分"
         aria-valuemin={0}
@@ -103,23 +100,15 @@ export function ReportScoreRail({
         </div>
       </div>
       {band ? (
-        <div className="mt-5 border-t border-[var(--geo-border)] pt-5">
+        <div className="mt-4 text-center">
           <span className={`status-badge inline-flex px-2.5 py-1 text-[11px] font-semibold ${BAND_STYLE[band.label] ?? "status-neutral"}`}>
             {band.label}
           </span>
-          <p className="mt-2 text-sm font-medium leading-6 text-[var(--geo-text-body)]">{band.note}</p>
+          <p className="mx-auto mt-2 max-w-56 text-xs leading-5 text-[var(--geo-text-muted)]">{band.note}</p>
         </div>
       ) : null}
-
-      <div className="mt-5 flex items-start gap-3 border-t border-[var(--geo-border)] pt-5">
-        <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--geo-info)]" />
-        <div>
-          <p className="text-xs font-semibold text-[var(--geo-text-body)]">四项固定维度，权重合计 100</p>
-          <p className="mt-1 text-[11px] leading-5 text-[var(--geo-text-soft)]">下方评分账本说明每项得分及其审查依据。</p>
-        </div>
-      </div>
-      <p className="mt-4 text-[11px] leading-5 text-[var(--geo-text-soft)]">
-        评分衡量内容准备度，不代表实际收录或排名。
+      <p className="mt-4 border-t border-[var(--geo-border)] pt-4 text-center text-[11px] leading-5 text-[var(--geo-text-soft)]">
+        四项维度合计 100 分，仅衡量本次内容准备度。
       </p>
     </aside>
   );

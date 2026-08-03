@@ -28,10 +28,10 @@ type WorkspaceCommandBarProps = {
 };
 
 const STAGES = [
-  { id: "review", label: "体检", description: "提交内容", icon: FileText },
-  { id: "report", label: "报告", description: "理解风险", icon: BarChart3 },
-  { id: "advice", label: "修改建议", description: "执行优化", icon: Sparkles },
-  { id: "recheck", label: "复检", description: "对比变化", icon: RotateCcw },
+  { id: "review", label: "提交内容", icon: FileText },
+  { id: "report", label: "审查报告", icon: BarChart3 },
+  { id: "advice", label: "修改建议", icon: Sparkles },
+  { id: "recheck", label: "重新验证", icon: RotateCcw },
 ] as const;
 
 const STATUS_META: Record<WorkspaceStatus, { label: string; className: string }> = {
@@ -88,13 +88,8 @@ export function WorkspaceCommandBar({
   return (
     <section className="workspace-command-bar" aria-label="Evidra 工作流导航">
       <div className="workspace-command-inner mx-auto flex max-w-[1480px] items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <div className="workspace-command-context hidden min-w-0 shrink-0 lg:block">
-          <p className="workspace-command-kicker">当前工作区</p>
-          <p className="workspace-command-title truncate">{title || "新建内容审查"}</p>
-        </div>
-
         <nav className="workspace-stage-nav min-w-0 flex-1" aria-label="审查工作流">
-          {STAGES.map(({ id, label, description, icon: Icon }, index) => {
+          {STAGES.map(({ id, label, icon: Icon }, index) => {
             const active = isStageActive(stage, id);
             const complete = isStageComplete(stage, id);
             const enabled = availability[id];
@@ -115,15 +110,14 @@ export function WorkspaceCommandBar({
                     <Icon aria-hidden="true" className="size-3.5" />
                     {label}
                   </span>
-                  <span className="workspace-stage-description">{description}</span>
                 </span>
-                {index < STAGES.length - 1 ? <ArrowRight aria-hidden="true" className="workspace-stage-arrow" /> : null}
               </button>
             );
           })}
         </nav>
 
         <div className="workspace-command-status shrink-0">
+          {title ? <span className="workspace-current-title hidden max-w-52 truncate xl:block">{title}</span> : null}
           <span className={`workspace-status-pill ${statusMeta.className}`}>
             <span className="workspace-status-dot" aria-hidden="true" />
             {statusMeta.label}

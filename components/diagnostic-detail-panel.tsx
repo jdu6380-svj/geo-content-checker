@@ -100,7 +100,7 @@ export function DiagnosticDetailPanel({
             <h3 className="mt-2 text-base font-semibold leading-7 text-[#111827]">{item.question}</h3>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
+            <span className={`diagnosis-answerability text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
               {item.data.answerability}
             </span>
             <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${risk.className}`}>
@@ -150,8 +150,8 @@ export function DiagnosticDetailPanel({
             )}
           </section>
 
-          <section className="border-l-2 border-[var(--geo-info)] bg-[var(--geo-info-soft)] px-4 py-4">
-            <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改建议</p>
+          <section className="diagnosis-recommendation border-l-2 border-[var(--geo-info)] px-4 py-4">
+            <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改方向</p>
             <p className="mt-2 text-sm leading-7 text-[var(--geo-text-body)]">{item.data.recommendation}</p>
           </section>
           <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />

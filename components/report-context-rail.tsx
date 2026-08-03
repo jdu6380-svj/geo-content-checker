@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, FileSearch, FileText, ShieldAlert } from "lucide-react";
+import { ArrowRight, FileSearch } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import { ReportDimensionLedger } from "@/components/report-dimension-ledger";
@@ -46,9 +46,9 @@ const RISK_META = {
 } as const;
 
 const ANSWERABILITY_STYLE = {
-  "可以完全回答": "status-success",
-  "信息不足": "status-warning",
-  "有风险": "status-danger",
+  "可以完全回答": "report-answerability-success",
+  "信息不足": "report-answerability-warning",
+  "有风险": "report-answerability-danger",
 } as const;
 
 export function ReportContextRail({
@@ -95,15 +95,12 @@ export function ReportContextRail({
   return (
     <section
       id="report-core"
-      className="report-overview-panel surface-flat min-w-0 overflow-hidden border-t-[3px] border-t-[var(--geo-primary)]"
+      className="report-overview-panel surface-flat min-w-0 overflow-hidden"
     >
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--geo-border)] px-5 py-4 sm:px-6 sm:py-5">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--geo-border)] px-5 py-4 sm:px-6">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] font-semibold text-[var(--geo-text-soft)]">
-            <FileText aria-hidden="true" className="size-3.5" />
-            内容可信度审查报告
-          </div>
-          <h1 className="mt-2 break-words text-xl font-semibold leading-8 text-[var(--geo-text-heading)] sm:text-2xl">
+          <p className="section-kicker">内容可信度审查报告</p>
+          <h1 className="mt-1.5 break-words text-lg font-semibold leading-7 text-[var(--geo-text-heading)] sm:text-xl">
             {title || "未命名内容"}
           </h1>
         </div>
@@ -124,12 +121,14 @@ export function ReportContextRail({
         <section className="report-priority-risk min-w-0 p-5 sm:p-6" aria-labelledby="priority-risk-heading">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="section-kicker">优先结论</p>
+              <p className="section-kicker">最大风险</p>
               <h2 id="priority-risk-heading" className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">
-                优先审查结论
+                优先处理项
               </h2>
             </div>
-            <ShieldAlert aria-hidden="true" className="size-4 text-[var(--geo-status-danger)]" />
+            <span className="text-[11px] font-semibold text-[var(--geo-text-soft)]">
+              高 {riskCounts.high} · 中 {riskCounts.medium} · 低 {riskCounts.low}
+            </span>
           </div>
 
           {priorityItem?.data && priorityRisk ? (
@@ -138,23 +137,22 @@ export function ReportContextRail({
                 <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${priorityRisk.className}`}>
                   {priorityRisk.label}
                 </span>
-                <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${ANSWERABILITY_STYLE[priorityItem.data.answerability]}`}>
+                <EvidenceStatusBadge status={priorityItem.data.evidenceStatus} />
+                <span className={`text-xs font-semibold ${ANSWERABILITY_STYLE[priorityItem.data.answerability]}`}>
                   {priorityItem.data.answerability}
                 </span>
-                <EvidenceStatusBadge status={priorityItem.data.evidenceStatus} />
               </div>
 
-              <dl className="report-priority-ledger mt-5">
+              <dl className="report-priority-ledger mt-4">
                 <div>
                   <dt><span>01</span>问题</dt>
-                <dd className="font-semibold text-[var(--geo-text-heading)]">{priorityItem.question}</dd>
+                  <dd>
+                    <strong className="font-semibold text-[var(--geo-text-heading)]">{priorityItem.question}</strong>
+                    <span className="mt-1 block text-xs leading-5 text-[var(--geo-text-muted)]">{priorityRisk.impact}</span>
+                  </dd>
                 </div>
                 <div>
-                  <dt><span>02</span>审查影响</dt>
-                  <dd>{priorityRisk.impact}</dd>
-                </div>
-                <div>
-                  <dt><span>03</span>证据位置</dt>
+                  <dt><span>02</span>原文依据</dt>
                   <dd>
                     {priorityLocations.length ? (
                       <span className="flex flex-wrap gap-1.5">
@@ -170,12 +168,12 @@ export function ReportContextRail({
                   </dd>
                 </div>
                 <div>
-                  <dt><span>04</span>处理建议</dt>
+                  <dt><span>03</span>处理方向</dt>
                   <dd>{priorityItem.data.recommendation}</dd>
                 </div>
               </dl>
 
-              <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#e1e5e8] pt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
                 <button
                   type="button"
                   onClick={() => onFocusQuestion(priorityItem.question)}
@@ -192,9 +190,6 @@ export function ReportContextRail({
                   <FileSearch aria-hidden="true" className="size-4" />
                   查看证据账本
                 </button>
-                <span className="w-full text-xs leading-5 text-[#858c97]">
-                  已完成诊断：高风险 {riskCounts.high} · 中风险 {riskCounts.medium} · 低风险 {riskCounts.low}
-                </span>
               </div>
             </>
           ) : diagnosticsPending || questionOrder.length === 0 ? (

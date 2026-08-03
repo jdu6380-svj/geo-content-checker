@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, CircleSlash2, FileCheck2, Files } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleSlash2, Files } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import type { DiagnosticsState } from "@/lib/client/report-state";
@@ -10,9 +10,9 @@ type ReportEvidencePanelProps = {
 };
 
 const STATUS_DETAIL = {
-  valid: "段落编号存在，引用可在原文中逐字定位。",
-  missing: "该诊断没有足够的原文证据支持判断。",
-  invalid: "返回的引用未通过逐字校验，不能作为审查依据。",
+  valid: "引用已通过原文逐字校验。",
+  missing: "原文缺少足够依据。",
+  invalid: "引用未通过逐字校验。",
 } as const;
 
 export function ReportEvidencePanel({
@@ -43,66 +43,48 @@ export function ReportEvidencePanel({
   const evidenceStates = [
     {
       status: "valid" as const,
-      label: "valid",
-      description: "证据有效的诊断",
+      label: "有效",
       count: counts.valid,
       icon: CheckCircle2,
       className: "geo-tone-success",
     },
     {
       status: "missing" as const,
-      label: "missing",
-      description: "缺少原文依据的诊断",
+      label: "缺失",
       count: counts.missing,
       icon: CircleSlash2,
       className: "geo-tone-warning",
     },
     {
       status: "invalid" as const,
-      label: "invalid",
-      description: "引用未通过校验的诊断",
+      label: "无效",
       count: counts.invalid,
       icon: AlertTriangle,
       className: "geo-tone-danger",
-    },
-    {
-      status: "literal" as const,
-      label: "逐字引用",
-      description: "已保留的逐字引用总数",
-      count: literalEvidenceCount,
-      icon: FileCheck2,
-      className: "geo-tone-info",
     },
   ];
 
   return (
     <section id="evidence-section" className="report-evidence-panel section-anchor surface-flat min-w-0">
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:px-6 sm:py-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:px-6">
         <div>
-          <p className="section-kicker">证据账本</p>
-          <h2 className="geo-heading mt-1.5 text-xl font-semibold sm:text-2xl">可审计证据账本</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--geo-text-muted)]">
-            每项诊断关联原文位置、逐字引用与校验状态。状态统计按诊断计数，引用总数单独列示。
-          </p>
+          <p className="section-kicker">证据链</p>
+          <h2 className="geo-heading mt-1.5 text-xl font-semibold">原文证据账本</h2>
         </div>
-        <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--geo-border)] bg-[var(--geo-surface-subtle)] text-[var(--geo-info)]">
-          <Files aria-hidden="true" className="size-4" />
+        <span className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--geo-text-muted)]">
+          <Files aria-hidden="true" className="size-4 text-[var(--geo-info)]" />
+          {literalEvidenceCount} 条逐字引用
         </span>
       </div>
 
-      <div className="evidence-status-summary grid border-b border-[var(--geo-border)] sm:grid-cols-2 xl:grid-cols-4">
+      <div className="evidence-status-summary grid grid-cols-3 border-b border-[var(--geo-border)]">
         {evidenceStates.map((state) => {
           const Icon = state.icon;
           return (
-            <div key={state.status} className="flex min-w-0 items-start gap-3 px-4 py-4 sm:px-5">
-              <Icon aria-hidden="true" className={`mt-0.5 size-4 shrink-0 ${state.className}`} />
-              <div className="min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className={`text-[10px] font-semibold uppercase ${state.className}`}>{state.label}</span>
-                  <strong className="text-base tabular-nums text-[var(--geo-text-heading)]">{state.count}</strong>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">{state.description}</p>
-              </div>
+            <div key={state.status} className="flex min-w-0 items-center gap-2 px-4 py-3 sm:px-5">
+              <Icon aria-hidden="true" className={`size-4 shrink-0 ${state.className}`} />
+              <span className="min-w-0 text-xs font-semibold text-[var(--geo-text-muted)]">{state.label}</span>
+              <strong className="ml-auto text-base tabular-nums text-[var(--geo-text-heading)]">{state.count}</strong>
             </div>
           );
         })}
@@ -133,7 +115,6 @@ export function ReportEvidencePanel({
                 <li key={`${ledgerId}-${data.question}`} className="evidence-ledger-row px-4 py-5 sm:px-5">
                   <div className="flex items-center gap-2 md:block">
                     <span className="report-ledger-index">{ledgerId}</span>
-                    <span className="text-[10px] font-medium text-[#8b939e] md:mt-2 md:block">诊断记录</span>
                   </div>
 
                   <div className="mt-4 min-w-0 md:mt-0">
@@ -177,7 +158,7 @@ export function ReportEvidencePanel({
                   <div className="mt-4 md:mt-0">
                     <p className="mb-2 text-[10px] font-semibold text-[#858c97] md:hidden">校验状态</p>
                     <EvidenceStatusBadge status={data.evidenceStatus} />
-                    <p className="mt-2 text-xs leading-5 text-[var(--geo-text-muted)]">{STATUS_DETAIL[data.evidenceStatus]}</p>
+                    <p className="mt-2 text-[11px] leading-5 text-[var(--geo-text-muted)]">{STATUS_DETAIL[data.evidenceStatus]}</p>
                   </div>
                 </li>
               );

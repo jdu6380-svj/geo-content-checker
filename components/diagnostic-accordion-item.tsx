@@ -96,7 +96,6 @@ export function DiagnosticAccordionItem({
             {id}
           </span>
           <span className="min-w-0">
-            <span className="section-kicker block text-[10px]">01 问题 · 诊断 {id}</span>
             <span className="block break-words text-sm font-semibold leading-6 sm:text-[15px]">{item.question}</span>
             <span className="mt-1.5 flex min-h-5 flex-wrap items-center gap-2">
               {item.status === "queued" ? (
@@ -113,7 +112,7 @@ export function DiagnosticAccordionItem({
               ) : null}
               {item.data ? (
                 <>
-                  <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
+                  <span className={`diagnosis-answerability text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
                     {item.data.answerability}
                   </span>
                   <EvidenceStatusBadge status={item.data.evidenceStatus} />
@@ -207,7 +206,7 @@ export function DiagnosticAccordionItem({
                   )}
                 </section>
                 <section className="border-l-2 border-[var(--geo-info)] bg-[var(--geo-info-soft)] px-3 py-3">
-                  <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改建议</p>
+                  <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改方向</p>
                   <p className="mt-2 leading-6 text-[var(--geo-text-body)]">{item.data.recommendation}</p>
                 </section>
                 <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />

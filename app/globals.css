@@ -30,18 +30,18 @@
 }
 
 :root {
-  --evidra-canvas: #f6f7fb;
+  --evidra-canvas: #f8f8fb;
   --evidra-surface: #ffffff;
-  --evidra-surface-subtle: #f2f3f7;
-  --evidra-surface-inset: #eceefa;
-  --evidra-surface-wash: #fafaff;
-  --evidra-ink: #17213a;
-  --evidra-heading: #17213a;
-  --evidra-body: #3f4759;
-  --evidra-muted: #737b8c;
-  --evidra-soft: #9299a8;
-  --evidra-border: #e1e4ec;
-  --evidra-border-strong: #cfd4df;
+  --evidra-surface-subtle: #f5f5f8;
+  --evidra-surface-inset: #eeeeF4;
+  --evidra-surface-wash: #fbfbfd;
+  --evidra-ink: #191921;
+  --evidra-heading: #191921;
+  --evidra-body: #454553;
+  --evidra-muted: #747482;
+  --evidra-soft: #9898a5;
+  --evidra-border: #e5e5ec;
+  --evidra-border-strong: #d5d5df;
   --evidra-accent: #6948e8;
   --evidra-accent-hover: #5836d6;
   --evidra-evidence: #4775a9;
@@ -114,9 +114,9 @@
   --geo-radius-control: 8px;
   --geo-radius-status: 6px;
   --geo-radius-pill: 999px;
-  --geo-shadow-header: 0 1px 0 rgba(23, 33, 58, .04), 0 8px 24px rgba(23, 33, 58, .025);
-  --geo-shadow-surface: 0 1px 2px rgba(23, 33, 58, .035), 0 8px 24px rgba(23, 33, 58, .03);
-  --geo-shadow-raised: 0 1px 2px rgba(23, 33, 58, .05), 0 14px 38px rgba(23, 33, 58, .055);
+  --geo-shadow-header: 0 1px 0 rgba(25, 25, 33, .04);
+  --geo-shadow-surface: 0 1px 2px rgba(25, 25, 33, .025);
+  --geo-shadow-raised: 0 1px 2px rgba(25, 25, 33, .035), 0 10px 28px rgba(25, 25, 33, .035);
   --workspace-background: var(--geo-canvas);
   --workspace-surface: var(--geo-surface);
   --workspace-text: var(--geo-text);
@@ -134,8 +134,8 @@
   --workspace-amber-soft: var(--geo-amber-soft);
   --workspace-coral: var(--geo-coral);
   --workspace-coral-soft: var(--geo-coral-soft);
-  --app-header-height: 64px;
-  --workspace-command-height: 58px;
+  --app-header-height: 60px;
+  --workspace-command-height: 52px;
   --sticky-score-offset: calc(var(--app-header-height) + 16px);
   --report-anchor-offset: calc(var(--app-header-height) + var(--workspace-command-height) + 16px);
   --radius-control: var(--geo-radius-control);
@@ -1665,5 +1665,570 @@ h1, h2, h3, p { letter-spacing: 0; }
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* D.0.8.1 visual simplification */
+.app-header {
+  box-shadow: var(--geo-shadow-header);
+}
+
+.app-brand-name {
+  font-size: 16px;
+  font-weight: 780;
+}
+
+.app-brand-subtitle {
+  margin-top: 3px;
+  font-size: 9px;
+}
+
+.app-new-analysis,
+.editor-primary,
+.primary-button,
+.dark-button {
+  box-shadow: none;
+}
+
+.workspace-command-bar {
+  box-shadow: none;
+}
+
+.workspace-command-inner {
+  min-height: var(--workspace-command-height);
+}
+
+.workspace-stage-nav {
+  gap: 4px;
+}
+
+.workspace-stage-button {
+  min-width: 118px;
+  min-height: 38px;
+  justify-content: center;
+  gap: 7px;
+  padding: 5px 10px;
+}
+
+.workspace-stage-button.is-active {
+  box-shadow: inset 0 -2px 0 var(--geo-primary);
+}
+
+.workspace-stage-copy {
+  display: flex;
+  align-items: center;
+}
+
+.workspace-stage-label {
+  font-size: 11px;
+}
+
+.workspace-current-title {
+  color: var(--geo-text-soft);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.workspace-status-pill {
+  min-height: 26px;
+  border-color: transparent;
+  background: transparent;
+  padding-inline: 4px;
+}
+
+.workspace-command-action {
+  min-height: 34px;
+  padding-inline: 12px;
+}
+
+.editor-page-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.editor-page-title {
+  max-width: 760px;
+  font-size: clamp(28px, 3vw, 38px);
+  font-weight: 720;
+  letter-spacing: -.025em;
+  line-height: 1.14;
+}
+
+.editor-page-summary {
+  max-width: 720px;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.editor-outcome-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  color: var(--geo-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.editor-outcome-line > span {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.editor-outcome-line > span::before {
+  margin-right: 8px;
+  color: var(--geo-primary);
+  content: "·";
+  font-size: 14px;
+  line-height: 1;
+}
+
+.editor-recheck-context {
+  border-left-color: var(--geo-primary);
+  background: var(--geo-secondary-soft);
+}
+
+.editor-frame {
+  box-shadow: var(--geo-shadow-raised);
+}
+
+.editor-frame-bar {
+  background: var(--geo-surface);
+}
+
+.editor-frame-icon {
+  border-color: var(--geo-status-info-border);
+  background: var(--geo-status-info-soft);
+  color: var(--geo-primary);
+}
+
+.editor-field-label {
+  color: var(--geo-text-heading);
+  font-size: 12px;
+}
+
+.editor-sample-toolbar {
+  border-bottom: 1px solid var(--geo-border);
+  padding-bottom: 16px;
+}
+
+.editor-sample-button {
+  min-height: 30px;
+  border: 1px solid var(--geo-border);
+  border-radius: 6px;
+  background: var(--geo-surface);
+  padding: 0 10px;
+  color: var(--geo-text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.editor-sample-button:hover {
+  border-color: var(--geo-status-info-border);
+  background: var(--geo-status-info-soft);
+  color: var(--geo-primary);
+}
+
+.editor-canvas {
+  background: #fafafd;
+}
+
+.surface-flat,
+.report-overview-panel,
+.report-evidence-panel,
+.report-action-rail,
+.diagnosis-master-detail,
+.diagnostic-stack,
+.patch-result-shell,
+.patch-mode-switch,
+.patch-workflow-map,
+.recheck-comparison {
+  box-shadow: none;
+}
+
+.analysis-flow-status {
+  border: 0;
+  box-shadow: none;
+}
+
+.analysis-flow-summary {
+  background: transparent;
+}
+
+.analysis-flow-steps {
+  box-shadow: none;
+}
+
+.analysis-flow-step-active {
+  background: var(--geo-status-info-soft);
+}
+
+.report-workspace {
+  padding-top: 18px;
+  padding-bottom: 48px;
+}
+
+.report-workspace-grid {
+  gap: 20px;
+}
+
+.report-overview-panel {
+  border-top: 2px solid var(--geo-primary);
+}
+
+.report-overview-panel .report-priority-risk {
+  background: var(--geo-surface);
+}
+
+.score-rail {
+  background: var(--geo-surface-wash);
+}
+
+.score-ring-wrap {
+  width: 148px;
+  height: 148px;
+}
+
+.score-ring-track,
+.score-ring-value {
+  stroke-width: 8;
+}
+
+.score-ring-center strong {
+  font-size: 38px;
+}
+
+.report-priority-risk {
+  min-height: 0;
+}
+
+.report-priority-ledger {
+  border-top: 0;
+}
+
+.report-priority-ledger > div {
+  grid-template-columns: 84px minmax(0, 1fr);
+  padding-block: 11px;
+}
+
+.report-answerability-success { color: var(--geo-status-success); }
+.report-answerability-warning { color: var(--geo-status-warning); }
+.report-answerability-danger { color: var(--geo-status-danger); }
+
+.report-dimension-table-head,
+.report-dimension-row {
+  grid-template-columns: minmax(150px, .9fr) 64px minmax(120px, .65fr) minmax(190px, 1.2fr);
+  gap: 16px;
+}
+
+.report-dimension-row {
+  padding-block: 14px;
+}
+
+.report-dimension-row .metric-track {
+  margin-top: 6px;
+}
+
+.evidence-status-summary > * {
+  border-top: 0 !important;
+}
+
+.evidence-status-summary > * + * {
+  border-left: 1px solid var(--geo-border);
+}
+
+.evidence-ledger-row {
+  padding-block: 18px;
+}
+
+.report-action-rail {
+  background: var(--geo-surface);
+}
+
+.report-action-step.is-next {
+  border-color: var(--geo-border);
+  background: transparent;
+}
+
+.report-action-step.is-next:hover:not(:disabled) {
+  color: var(--geo-primary);
+}
+
+.diagnosis-stage-header {
+  padding-top: 4px;
+}
+
+.diagnosis-master-detail,
+.diagnostic-stack {
+  border-radius: 8px;
+}
+
+.diagnosis-answerability {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.diagnosis-recommendation {
+  background: var(--geo-info-soft);
+}
+
+.follow-up-panel {
+  box-shadow: none;
+}
+
+.patch-workshop {
+  border-top: 1px solid var(--geo-border);
+  padding-top: 28px;
+}
+
+.patch-workflow-map,
+.patch-mode-switch,
+.patch-result-shell,
+.patch-next-step {
+  border-radius: 8px;
+}
+
+.patch-workflow-step {
+  min-height: 60px;
+  grid-template-columns: 18px 28px minmax(0, 1fr);
+  padding: 10px 12px;
+}
+
+.patch-workflow-step .text-xs {
+  display: none;
+}
+
+.patch-workflow-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.patch-mode-guidance,
+.patch-review-gate {
+  display: none;
+}
+
+.patch-callout {
+  box-shadow: none;
+}
+
+.patch-action-row {
+  box-shadow: inset 2px 0 0 var(--patch-action-accent);
+}
+
+.patch-action-audit {
+  background: var(--geo-surface-wash);
+}
+
+.patch-next-step {
+  background: var(--geo-surface-subtle);
+}
+
+.recheck-comparison {
+  border-top-width: 2px;
+}
+
+.recheck-outcome-summary {
+  padding: 12px 16px;
+}
+
+.recheck-snapshot.is-current {
+  background: var(--geo-surface-wash);
+}
+
+.recheck-detail-grid > section {
+  padding-block: 18px;
+}
+
+@media (min-width: 1024px) {
+  .report-workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 236px;
+    grid-template-areas:
+      "overview action"
+      "evidence action"
+      "diagnosis action"
+      "patch action";
+  }
+
+  .report-section-rail {
+    display: none;
+  }
+
+  .report-action-rail {
+    position: sticky;
+    top: var(--report-anchor-offset);
+  }
+}
+
+@media (min-width: 1400px) {
+  .report-workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 248px;
+    grid-template-areas:
+      "overview action"
+      "evidence action"
+      "diagnosis action"
+      "patch action";
+  }
+
+  .report-section-rail {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .editor-page-heading {
+    display: block;
+  }
+
+  .editor-page-title {
+    font-size: 28px;
+  }
+
+  .editor-outcome-line {
+    gap: 7px 14px;
+  }
+
+  .editor-canvas {
+    min-height: 260px;
+  }
+
+  .report-dimension-row {
+    padding-block: 16px;
+  }
+
+  .evidence-ledger-row {
+    padding-block: 16px;
+  }
+}
+
+@media (max-width: 639px) {
+  :root {
+    --workspace-command-height: 84px;
+  }
+
+  .app-header .app-brand-subtitle,
+  .app-header .app-utility-link,
+  .app-header .app-feedback-link {
+    display: none;
+  }
+
+  .workspace-command-inner {
+    min-height: var(--workspace-command-height);
+    padding-block: 7px;
+  }
+
+  .workspace-stage-nav {
+    order: 2;
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .workspace-stage-button {
+    min-width: 0;
+    min-height: 40px;
+    padding-inline: 4px;
+  }
+
+  .workspace-stage-index {
+    display: none;
+  }
+
+  .workspace-stage-label {
+    gap: 4px;
+    font-size: 9.5px;
+  }
+
+  .workspace-command-status {
+    margin-left: auto;
+  }
+
+  .workspace-status-pill {
+    min-height: 24px;
+    font-size: 9px;
+  }
+
+  .editor-workspace {
+    padding-top: 24px;
+  }
+
+  .editor-frame {
+    margin-top: 20px;
+  }
+
+  .editor-frame-bar {
+    padding-inline: 14px;
+  }
+
+  .editor-frame form {
+    padding: 18px 14px;
+  }
+
+  .editor-sample-toolbar {
+    align-items: flex-start;
+  }
+
+  .editor-sample-button {
+    flex: 1 1 calc(50% - 4px);
+    min-height: 40px;
+  }
+
+  .app-new-analysis {
+    min-height: 40px;
+  }
+
+  .editor-submit-row {
+    align-items: stretch;
+  }
+
+  .analysis-flow-summary {
+    padding-inline: 0;
+  }
+
+  .analysis-flow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-flow-step {
+    border-right: 1px solid var(--geo-border);
+  }
+
+  .analysis-flow-step:nth-child(even) {
+    border-right: 0;
+  }
+
+  .report-workspace {
+    padding-inline: 14px;
+  }
+
+  .report-priority-ledger > div {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .evidence-status-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .evidence-status-summary > div {
+    padding-inline: 10px;
+  }
+
+  .evidence-status-summary strong {
+    font-size: 14px;
+  }
+
+  .patch-workflow-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .patch-workflow-step:nth-child(even) {
+    border-left: 1px solid var(--geo-border);
+  }
+
+  .patch-workflow-step:nth-child(n + 3) {
+    border-top: 1px solid var(--geo-border);
   }
 }
