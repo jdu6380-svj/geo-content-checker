@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../app";
+@source "../components";
 
 @theme inline {
   --color-background: var(--workspace-background);
@@ -28,31 +30,36 @@
 }
 
 :root {
-  --evidra-canvas: #f7f9fb;
+  --evidra-canvas: #f6f7fb;
   --evidra-surface: #ffffff;
-  --evidra-surface-subtle: #f3f6f7;
-  --evidra-surface-inset: #edf3f3;
-  --evidra-surface-wash: #f8fbfa;
-  --evidra-ink: #17201f;
-  --evidra-heading: #182523;
-  --evidra-body: #394947;
-  --evidra-muted: #68747a;
-  --evidra-soft: #8a959a;
-  --evidra-border: #dfe7e6;
-  --evidra-border-strong: #c8d4d3;
-  --evidra-evidence: #0f766e;
-  --evidra-evidence-hover: #0d635c;
-  --evidra-evidence-node: #31a99b;
-  --evidra-workflow: #5964cf;
-  --evidra-workflow-soft: #eef1ff;
-  --evidra-proof: #416b8a;
-  --evidra-proof-soft: #edf3f7;
+  --evidra-surface-subtle: #f2f3f7;
+  --evidra-surface-inset: #eceefa;
+  --evidra-surface-wash: #fafaff;
+  --evidra-ink: #17213a;
+  --evidra-heading: #17213a;
+  --evidra-body: #3f4759;
+  --evidra-muted: #737b8c;
+  --evidra-soft: #9299a8;
+  --evidra-border: #e1e4ec;
+  --evidra-border-strong: #cfd4df;
+  --evidra-accent: #6948e8;
+  --evidra-accent-hover: #5836d6;
+  --evidra-evidence: #4775a9;
+  --evidra-evidence-hover: #355f8e;
+  --evidra-evidence-node: #6948e8;
+  --evidra-workflow: #5c45c7;
+  --evidra-workflow-soft: #f0edff;
+  --evidra-proof: #4775a9;
+  --evidra-proof-soft: #edf5ff;
+  --evidra-status-info: #6948e8;
+  --evidra-status-info-soft: #f0edff;
+  --evidra-status-info-border: #dcd4ff;
   --evidra-caution: #a86313;
   --evidra-caution-soft: #fff7e8;
-  --evidra-critical: #c85745;
-  --evidra-critical-soft: #fff1ee;
+  --evidra-critical: #c34e60;
+  --evidra-critical-soft: #fff0f2;
   --evidra-on-ink: #ffffff;
-  --evidra-focus-ring: rgba(15, 118, 110, .2);
+  --evidra-focus-ring: rgba(105, 72, 232, .2);
   --evidra-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
   --evidra-font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --geo-canvas: var(--evidra-canvas);
@@ -67,8 +74,8 @@
   --geo-text-soft: var(--evidra-soft);
   --geo-border: var(--evidra-border);
   --geo-border-strong: var(--evidra-border-strong);
-  --geo-primary: var(--evidra-evidence);
-  --geo-primary-hover: var(--evidra-evidence-hover);
+  --geo-primary: var(--evidra-accent);
+  --geo-primary-hover: var(--evidra-accent-hover);
   --geo-on-primary: var(--evidra-on-ink);
   --geo-secondary: var(--evidra-workflow);
   --geo-secondary-soft: var(--evidra-workflow-soft);
@@ -78,20 +85,20 @@
   --geo-amber-soft: var(--evidra-caution-soft);
   --geo-coral: var(--evidra-critical);
   --geo-coral-soft: var(--evidra-critical-soft);
-  --geo-status-success: #0f766e;
+  --geo-status-success: #4775a9;
   --geo-status-warning: #a86313;
-  --geo-status-danger: #c85745;
-  --geo-status-info: #416b8a;
-  --geo-status-success-soft: #e7f4f1;
+  --geo-status-danger: #c34e60;
+  --geo-status-info: var(--evidra-status-info);
+  --geo-status-success-soft: #edf5ff;
   --geo-status-warning-soft: #fff7e8;
-  --geo-status-danger-soft: #fff1ee;
-  --geo-status-info-soft: #edf3f7;
-  --geo-status-success-border: #cfe1de;
+  --geo-status-danger-soft: #fff0f2;
+  --geo-status-info-soft: var(--evidra-status-info-soft);
+  --geo-status-success-border: #d3e3f6;
   --geo-status-warning-border: #ead8ac;
-  --geo-status-danger-border: #f0d6d1;
-  --geo-status-info-border: #d5e0e8;
-  --geo-status-neutral-border: #dfe7e6;
-  --geo-status-neutral-soft: #f3f6f7;
+  --geo-status-danger-border: #f0ccd2;
+  --geo-status-info-border: var(--evidra-status-info-border);
+  --geo-status-neutral-border: #e1e4ec;
+  --geo-status-neutral-soft: #f2f3f7;
   --geo-focus-ring: var(--evidra-focus-ring);
   --geo-font-ui: var(--evidra-font-sans);
   --geo-font-mono: var(--evidra-font-data);
@@ -107,9 +114,9 @@
   --geo-radius-control: 8px;
   --geo-radius-status: 6px;
   --geo-radius-pill: 999px;
-  --geo-shadow-header: 0 1px 0 rgba(23, 32, 31, .04), 0 8px 24px rgba(23, 32, 31, .025);
-  --geo-shadow-surface: 0 1px 2px rgba(23, 32, 31, .035), 0 8px 24px rgba(23, 32, 31, .03);
-  --geo-shadow-raised: 0 1px 2px rgba(23, 32, 31, .05), 0 14px 38px rgba(23, 32, 31, .055);
+  --geo-shadow-header: 0 1px 0 rgba(23, 33, 58, .04), 0 8px 24px rgba(23, 33, 58, .025);
+  --geo-shadow-surface: 0 1px 2px rgba(23, 33, 58, .035), 0 8px 24px rgba(23, 33, 58, .03);
+  --geo-shadow-raised: 0 1px 2px rgba(23, 33, 58, .05), 0 14px 38px rgba(23, 33, 58, .055);
   --workspace-background: var(--geo-canvas);
   --workspace-surface: var(--geo-surface);
   --workspace-text: var(--geo-text);
@@ -142,7 +149,7 @@
   --mist: var(--geo-surface-subtle);
   --teal: var(--geo-primary);
   --teal-dark: var(--geo-primary-hover);
-  --teal-soft: #f0fdfa;
+  --teal-soft: var(--geo-secondary-soft);
   --navy: var(--geo-secondary);
   --navy-soft: var(--geo-secondary-soft);
   --coral: var(--geo-coral);
@@ -266,18 +273,18 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .brand-mark {
     border-radius: 9px;
-    box-shadow: 0 1px 2px rgba(23, 32, 31, .18), 0 5px 14px rgba(23, 32, 31, .1);
+    box-shadow: none;
   }
   .evidra-brand-mark { display: block; }
   .evidra-brand-mark-surface { fill: var(--evidra-ink); }
   .evidra-brand-mark-line {
     fill: none;
-    stroke: var(--evidra-surface-wash);
+    stroke: var(--evidra-ink);
     stroke-linecap: round;
     stroke-linejoin: round;
-    stroke-width: 2.35;
+    stroke-width: 2.2;
   }
-  .evidra-brand-mark-node { fill: var(--evidra-evidence-node); }
+  .evidra-brand-mark-node { fill: var(--evidra-accent); }
   .app-utility-link,
   .app-feedback-link {
     color: var(--geo-text-muted);
@@ -295,12 +302,12 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .app-new-analysis {
     border-radius: var(--geo-radius-control);
-    background: var(--geo-text);
+    background: var(--geo-primary);
     color: var(--geo-on-primary);
-    box-shadow: none;
+    box-shadow: 0 6px 14px rgba(105, 72, 232, .18);
   }
   .app-new-analysis:hover {
-    background: #252d2c;
+    background: var(--geo-primary-hover);
   }
   .app-workspace-dot { background: var(--geo-primary); }
   .app-beta-status {
@@ -497,7 +504,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .editor-primary {
     background: var(--geo-primary);
-    box-shadow: 0 5px 14px rgba(15, 118, 110, .16);
+    box-shadow: 0 6px 14px rgba(105, 72, 232, .18);
   }
   .editor-primary:hover {
     background: var(--geo-primary-hover);
@@ -667,7 +674,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   .primary-button {
     background: var(--teal);
     color: white;
-    box-shadow: 0 5px 14px rgba(15, 118, 110, .14);
+    box-shadow: 0 6px 14px rgba(105, 72, 232, .16);
   }
   .primary-button:hover {
     background: var(--teal-dark);
@@ -698,9 +705,52 @@ h1, h2, h3, p { letter-spacing: 0; }
     background: var(--geo-surface-inset);
   }
   .follow-up-panel { border-radius: var(--radius-control); }
-  .patch-callout { box-shadow: inset 3px 0 0 #58a99f; }
+  .patch-callout { box-shadow: inset 3px 0 0 var(--geo-info); }
   .section-anchor { scroll-margin-top: var(--report-anchor-offset); }
   .score-rail { min-width: 0; }
+  .score-ring-wrap {
+    position: relative;
+    width: 168px;
+    height: 168px;
+    margin-inline: auto;
+  }
+  .score-ring-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+  .score-ring-track,
+  .score-ring-value {
+    fill: none;
+    stroke-width: 9;
+  }
+  .score-ring-track { stroke: var(--geo-surface-inset); }
+  .score-ring-value {
+    stroke: var(--geo-primary);
+    stroke-linecap: round;
+    transition: stroke-dasharray 500ms ease;
+  }
+  .score-ring-center {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+  }
+  .score-ring-center strong {
+    color: var(--geo-text-heading);
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -.04em;
+    line-height: 1;
+  }
+  .score-ring-center span {
+    margin-top: 7px;
+    color: var(--geo-text-soft);
+    font-size: 10px;
+    font-weight: 700;
+  }
   .report-overview-panel {
     box-shadow: var(--geo-shadow-surface);
   }
@@ -886,8 +936,8 @@ h1, h2, h3, p { letter-spacing: 0; }
     opacity: .5;
   }
   .workspace-stage-button.is-active {
-    border-color: var(--geo-border-strong);
-    background: var(--geo-status-success-soft);
+    border-color: var(--geo-status-info-border);
+    background: var(--geo-status-info-soft);
     color: var(--geo-primary);
     box-shadow: inset 0 -2px 0 var(--geo-primary);
   }
@@ -907,8 +957,8 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .workspace-stage-button.is-active .workspace-stage-index,
   .workspace-stage-button.is-complete .workspace-stage-index {
-    border-color: var(--geo-status-success-border);
-    background: var(--geo-status-success-soft);
+    border-color: var(--geo-status-info-border);
+    background: var(--geo-status-info-soft);
     color: var(--geo-primary);
   }
   .workspace-stage-copy { min-width: 0; }
@@ -968,16 +1018,16 @@ h1, h2, h3, p { letter-spacing: 0; }
     min-height: 32px;
     align-items: center;
     gap: 5px;
-    border: 1px solid var(--geo-border-strong);
+    border: 1px solid var(--geo-primary);
     border-radius: 6px;
-    background: var(--geo-text);
+    background: var(--geo-primary);
     padding: 0 10px;
     color: var(--geo-on-primary);
     font-size: 10px;
     font-weight: 750;
     white-space: nowrap;
   }
-  .workspace-command-action:hover { background: #25312f; transform: translateY(-1px); }
+  .workspace-command-action:hover { background: var(--geo-primary-hover); transform: translateY(-1px); }
   .workspace-command-action:focus-visible { outline: 3px solid var(--geo-focus-ring); outline-offset: 2px; }
   .report-error-state {
     border-left-color: var(--geo-status-danger);
@@ -1056,7 +1106,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   .patch-mode-option + .patch-mode-option { border-top: 1px solid var(--geo-border); }
   .patch-mode-option:hover { background: var(--geo-surface-subtle); }
   .patch-mode-option.is-active {
-    background: var(--geo-status-success-soft);
+    background: var(--geo-secondary-soft);
     color: var(--geo-primary);
   }
   .patch-mode-icon {
@@ -1361,10 +1411,10 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .report-section-link:hover { border-color: var(--geo-border); background: var(--geo-surface-subtle); }
   .report-section-link:focus-visible { outline: 3px solid var(--geo-focus-ring); outline-offset: 1px; }
-  .report-section-link.is-active { border-color: var(--geo-border-strong); background: var(--geo-status-success-soft); color: var(--geo-primary); }
+  .report-section-link.is-active { border-color: var(--geo-status-info-border); background: var(--geo-secondary-soft); color: var(--geo-primary); }
   .report-section-number { color: var(--geo-text-soft); font-family: var(--geo-font-mono); font-size: 9px; font-weight: 750; }
   .report-section-icon { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid var(--geo-border); border-radius: 5px; color: var(--geo-text-soft); }
-  .report-section-link.is-active .report-section-icon { border-color: var(--geo-status-success-border); background: var(--geo-surface); color: var(--geo-primary); }
+  .report-section-link.is-active .report-section-icon { border-color: var(--geo-status-info-border); background: var(--geo-surface); color: var(--geo-primary); }
   .report-section-copy { min-width: 0; }
   .report-section-label { display: block; overflow: hidden; color: inherit; font-size: 11px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
   .report-section-description { display: block; margin-top: 2px; overflow: hidden; color: var(--geo-text-soft); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
@@ -1407,13 +1457,29 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
   .workspace-stage-nav {
     order: 2;
-    flex-basis: 100%;
-    margin-inline: -4px;
+    width: 100%;
+    flex: 0 0 100%;
+    margin-inline: 0;
+    gap: 0;
   }
   .workspace-stage-button {
-    min-width: 108px;
-    flex: 0 0 auto;
-    padding-inline: 8px;
+    min-width: 0;
+    flex: 1 1 0;
+    gap: 4px;
+    padding-inline: 4px;
+  }
+  .workspace-stage-index {
+    width: 20px;
+    height: 20px;
+    font-size: 8px;
+  }
+  .workspace-stage-label {
+    gap: 3px;
+    font-size: 10px;
+  }
+  .workspace-stage-label svg {
+    width: 12px;
+    height: 12px;
   }
   .workspace-stage-description,
   .workspace-stage-arrow { display: none; }

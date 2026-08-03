@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarDays, FileSearch, FileText, ShieldAlert } from "lucide-react";
+import { ArrowRight, FileSearch, FileText, ShieldAlert } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import { ReportDimensionLedger } from "@/components/report-dimension-ledger";
@@ -10,7 +10,6 @@ import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
 
 type ReportContextRailProps = {
   title: string;
-  publishedAt: string;
   reportStatus: {
     label: string;
     className: string;
@@ -54,7 +53,6 @@ const ANSWERABILITY_STYLE = {
 
 export function ReportContextRail({
   title,
-  publishedAt,
   reportStatus,
   scoring,
   scoreBand,
@@ -99,19 +97,15 @@ export function ReportContextRail({
       id="report-core"
       className="report-overview-panel surface-flat min-w-0 overflow-hidden border-t-[3px] border-t-[var(--geo-primary)]"
     >
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e7e9ed] px-5 py-4 sm:px-6 sm:py-5">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--geo-border)] px-5 py-4 sm:px-6 sm:py-5">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] font-semibold text-[#858c97]">
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-[var(--geo-text-soft)]">
             <FileText aria-hidden="true" className="size-3.5" />
             内容可信度审查报告
           </div>
-          <h1 className="mt-2 break-words text-xl font-semibold leading-8 text-[#111827] sm:text-2xl">
+          <h1 className="mt-2 break-words text-xl font-semibold leading-8 text-[var(--geo-text-heading)] sm:text-2xl">
             {title || "未命名内容"}
           </h1>
-          <span className="mt-2 inline-flex items-center gap-2 text-xs text-[#69717d]">
-            <CalendarDays aria-hidden="true" className="size-3.5" />
-            {publishedAt || "未设置发布日期"}
-          </span>
         </div>
         <span className={`status-badge w-fit shrink-0 border px-2.5 py-1 text-[11px] font-semibold ${reportStatus.className}`}>
           {reportStatus.label}
@@ -130,12 +124,12 @@ export function ReportContextRail({
         <section className="report-priority-risk min-w-0 p-5 sm:p-6" aria-labelledby="priority-risk-heading">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="section-kicker text-[#60706e]">PRIORITY FINDING</p>
-              <h2 id="priority-risk-heading" className="mt-1.5 text-base font-semibold text-[#111827]">
+              <p className="section-kicker">优先结论</p>
+              <h2 id="priority-risk-heading" className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">
                 优先审查结论
               </h2>
             </div>
-            <ShieldAlert aria-hidden="true" className="size-4 text-[#c65d4b]" />
+            <ShieldAlert aria-hidden="true" className="size-4 text-[var(--geo-status-danger)]" />
           </div>
 
           {priorityItem?.data && priorityRisk ? (
@@ -153,7 +147,7 @@ export function ReportContextRail({
               <dl className="report-priority-ledger mt-5">
                 <div>
                   <dt><span>01</span>问题</dt>
-                  <dd className="font-semibold text-[#252f38]">{priorityItem.question}</dd>
+                <dd className="font-semibold text-[var(--geo-text-heading)]">{priorityItem.question}</dd>
                 </div>
                 <div>
                   <dt><span>02</span>审查影响</dt>
@@ -185,7 +179,7 @@ export function ReportContextRail({
                 <button
                   type="button"
                   onClick={() => onFocusQuestion(priorityItem.question)}
-                  className="inline-flex min-h-9 items-center gap-2 text-sm font-semibold text-[#0f766e] hover:text-[#0a5f59]"
+                  className="inline-flex min-h-9 items-center gap-2 text-sm font-semibold text-[var(--geo-primary)] hover:text-[var(--geo-primary-hover)]"
                 >
                   打开完整诊断
                   <ArrowRight aria-hidden="true" className="size-4" />

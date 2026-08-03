@@ -43,7 +43,7 @@ export function ReportEvidencePanel({
   const evidenceStates = [
     {
       status: "valid" as const,
-      label: "Valid",
+      label: "valid",
       description: "证据有效的诊断",
       count: counts.valid,
       icon: CheckCircle2,
@@ -51,7 +51,7 @@ export function ReportEvidencePanel({
     },
     {
       status: "missing" as const,
-      label: "Missing",
+      label: "missing",
       description: "缺少原文依据的诊断",
       count: counts.missing,
       icon: CircleSlash2,
@@ -59,7 +59,7 @@ export function ReportEvidencePanel({
     },
     {
       status: "invalid" as const,
-      label: "Invalid",
+      label: "invalid",
       description: "引用未通过校验的诊断",
       count: counts.invalid,
       icon: AlertTriangle,
@@ -67,7 +67,7 @@ export function ReportEvidencePanel({
     },
     {
       status: "literal" as const,
-      label: "Literal quotes",
+      label: "逐字引用",
       description: "已保留的逐字引用总数",
       count: literalEvidenceCount,
       icon: FileCheck2,
@@ -77,20 +77,20 @@ export function ReportEvidencePanel({
 
   return (
     <section id="evidence-section" className="report-evidence-panel section-anchor surface-flat min-w-0">
-      <div className="flex items-start justify-between gap-3 border-b border-[#e5e8ed] px-4 py-4 sm:px-6 sm:py-5">
+      <div className="flex items-start justify-between gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:px-6 sm:py-5">
         <div>
-          <p className="section-kicker">EVIDENCE LEDGER</p>
+          <p className="section-kicker">证据账本</p>
           <h2 className="geo-heading mt-1.5 text-xl font-semibold sm:text-2xl">可审计证据账本</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#687386]">
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--geo-text-muted)]">
             每项诊断关联原文位置、逐字引用与校验状态。状态统计按诊断计数，引用总数单独列示。
           </p>
         </div>
-        <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#d9e1e4] bg-[#f4f7f8] text-[#416b8a]">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--geo-border)] bg-[var(--geo-surface-subtle)] text-[var(--geo-info)]">
           <Files aria-hidden="true" className="size-4" />
         </span>
       </div>
 
-      <div className="evidence-status-summary grid border-b border-[#e5e8ed] sm:grid-cols-2 xl:grid-cols-4">
+      <div className="evidence-status-summary grid border-b border-[var(--geo-border)] sm:grid-cols-2 xl:grid-cols-4">
         {evidenceStates.map((state) => {
           const Icon = state.icon;
           return (
@@ -99,9 +99,9 @@ export function ReportEvidencePanel({
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
                   <span className={`text-[10px] font-semibold uppercase ${state.className}`}>{state.label}</span>
-                  <strong className="text-base tabular-nums text-[#111827]">{state.count}</strong>
+                  <strong className="text-base tabular-nums text-[var(--geo-text-heading)]">{state.count}</strong>
                 </div>
-                <p className="mt-1 text-xs leading-5 text-[#737d89]">{state.description}</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">{state.description}</p>
               </div>
             </div>
           );
@@ -137,13 +137,13 @@ export function ReportEvidencePanel({
                   </div>
 
                   <div className="mt-4 min-w-0 md:mt-0">
-                    <h3 className="break-words text-sm font-semibold leading-6 text-[#252f38]">{data.question}</h3>
+                    <h3 className="break-words text-sm font-semibold leading-6 text-[var(--geo-text-heading)]">{data.question}</h3>
                     {evidence.length ? (
                       <div className="mt-3 grid gap-3">
                         {evidence.map((entry) => (
                           <blockquote
                             key={`${entry.paragraphId}:${entry.quote}`}
-                            className="border-l-2 border-[#6f8ca4] pl-3 text-sm leading-6 text-[#59636f]"
+                            className="border-l-2 border-[var(--geo-info)] pl-3 text-sm leading-6 text-[var(--geo-text-body)]"
                           >
                             <span className="sr-only">原文 {entry.paragraphId}：</span>
                             {entry.quote}
@@ -151,7 +151,7 @@ export function ReportEvidencePanel({
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-2 text-xs leading-5 text-[#737d89]">
+                      <p className="mt-2 text-xs leading-5 text-[var(--geo-text-muted)]">
                         {restoredFromCache
                           ? "缓存报告保留校验状态，但不保留原文逐字引用。"
                           : data.evidenceStatus === "missing"
@@ -177,7 +177,7 @@ export function ReportEvidencePanel({
                   <div className="mt-4 md:mt-0">
                     <p className="mb-2 text-[10px] font-semibold text-[#858c97] md:hidden">校验状态</p>
                     <EvidenceStatusBadge status={data.evidenceStatus} />
-                    <p className="mt-2 text-xs leading-5 text-[#737d89]">{STATUS_DETAIL[data.evidenceStatus]}</p>
+                    <p className="mt-2 text-xs leading-5 text-[var(--geo-text-muted)]">{STATUS_DETAIL[data.evidenceStatus]}</p>
                   </div>
                 </li>
               );
@@ -191,7 +191,7 @@ export function ReportEvidencePanel({
           <span className="h-3 w-4/5 animate-pulse rounded bg-[var(--geo-surface-subtle)] motion-reduce:animate-none" />
         </div>
       ) : (
-        <p className="px-4 py-5 text-sm leading-6 text-[#68707d] sm:px-5">
+        <p className="px-4 py-5 text-sm leading-6 text-[var(--geo-text-muted)] sm:px-5">
           当前报告没有可展示的诊断证据。
         </p>
       )}

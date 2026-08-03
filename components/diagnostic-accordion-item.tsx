@@ -32,9 +32,9 @@ const STATUS_STYLE = {
 } as const;
 
 const STATUS_ACCENT = {
-  "可以完全回答": "border-l-[#08766e]",
-  "信息不足": "border-l-[#b7791f]",
-  "有风险": "border-l-[#c65d4b]",
+  "可以完全回答": "border-l-[var(--geo-status-success)]",
+  "信息不足": "border-l-[var(--geo-status-warning)]",
+  "有风险": "border-l-[var(--geo-status-danger)]",
 } as const;
 
 const RISK_STYLE = {
@@ -81,7 +81,7 @@ export function DiagnosticAccordionItem({
     <article
       ref={articleRef}
       tabIndex={-1}
-      className={`overflow-hidden border-l-[3px] bg-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e] ${accent} ${expanded ? "bg-[#fbfcfb]" : ""}`}
+      className={`overflow-hidden border-l-[3px] bg-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--geo-primary)] ${accent} ${expanded ? "bg-[var(--geo-surface-wash)]" : ""}`}
     >
       <div className="flex min-h-[78px] items-stretch gap-2">
         <button
@@ -92,7 +92,7 @@ export function DiagnosticAccordionItem({
           onClick={onToggle}
           className="grid min-w-0 flex-1 grid-cols-[30px_minmax(0,1fr)_24px] items-center gap-3 px-3.5 py-3 text-left disabled:cursor-default sm:px-5"
         >
-          <span className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-md font-mono text-xs font-bold ${expanded ? "bg-[#dff0ed] text-[#08766e]" : "bg-[#eef2f1] text-[#687681]"}`}>
+          <span className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-md font-mono text-xs font-bold ${expanded ? "bg-[var(--geo-status-info-soft)] text-[var(--geo-primary)]" : "bg-[var(--geo-surface-subtle)] text-[var(--geo-text-muted)]"}`}>
             {id}
           </span>
           <span className="min-w-0">
@@ -106,8 +106,8 @@ export function DiagnosticAccordionItem({
                 </span>
               ) : null}
               {item.status === "loading" ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#3d607d]">
-                  <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#3d607d] motion-reduce:animate-none" />
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--geo-primary)]">
+                  <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--geo-primary)] motion-reduce:animate-none" />
                   正在分析
                 </span>
               ) : null}
@@ -124,7 +124,7 @@ export function DiagnosticAccordionItem({
           {isReady ? (
             <ChevronRight
               aria-hidden="true"
-              className={`size-4 justify-self-center text-[#667085] transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`}
+              className={`size-4 justify-self-center text-[var(--geo-text-muted)] transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`}
             />
           ) : <span aria-hidden="true" className="h-6 w-6" />}
         </button>
@@ -142,14 +142,14 @@ export function DiagnosticAccordionItem({
       </div>
 
       {item.status === "loading" ? (
-        <div className="border-t border-[#e4e9e7] bg-[#f7f9f8] px-5 py-4">
+        <div className="border-t border-[var(--geo-border)] bg-[var(--geo-surface-subtle)] px-5 py-4">
           <div className="h-3 w-3/4 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
           <div className="mt-3 h-3 w-1/2 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
         </div>
       ) : null}
 
       {item.status === "error" ? (
-        <p role="alert" aria-live="assertive" className="border-t border-[#f4ddd8] bg-[#fff8f6] px-5 py-3 text-sm text-[#a43e2b]">
+        <p role="alert" aria-live="assertive" className="border-t border-[var(--geo-status-danger-border)] bg-[var(--geo-status-danger-soft)] px-5 py-3 text-sm text-[var(--geo-status-danger)]">
           {item.error || "该问题分析失败。"}
         </p>
       ) : null}
@@ -163,19 +163,19 @@ export function DiagnosticAccordionItem({
       >
         <div className="overflow-hidden">
           {item.data ? (
-            <div className="grid bg-[#f7f9f8] text-sm min-[760px]:grid-cols-[1.1fr_.9fr]">
+            <div className="grid bg-[var(--geo-surface-subtle)] text-sm min-[760px]:grid-cols-[1.1fr_.9fr]">
               <section className="px-4 py-5 sm:px-5">
                 <p className="diagnosis-step-label"><span>02</span>原文证据</p>
                 {item.data.evidenceStatus === "invalid" ? (
-                  <p className="mt-3 border-l-2 border-[#c85745] bg-[#fff8f6] px-3 py-2 text-xs leading-5 text-[#963d2e]">
+                  <p className="mt-3 border-l-2 border-[var(--geo-status-danger)] bg-[var(--geo-status-danger-soft)] px-3 py-2 text-xs leading-5 text-[var(--geo-status-danger)]">
                     无法定位的引用已被移除。
                   </p>
                 ) : null}
                 {item.data.evidence.length ? (
                   <div className="mt-3 grid gap-3">
                     {item.data.evidence.map((evidence) => (
-                      <blockquote key={`${evidence.paragraphId}-${evidence.quote}`} className="border-l-2 border-[#72aaa2] py-1 pl-3 pr-2 leading-6 text-[#46545e]">
-                        <span className="mb-1 block font-mono text-xs font-bold text-[#08766e]">{evidence.paragraphId}</span>
+                      <blockquote key={`${evidence.paragraphId}-${evidence.quote}`} className="border-l-2 border-[var(--geo-info)] py-1 pl-3 pr-2 leading-6 text-[var(--geo-text-body)]">
+                        <span className="mb-1 block font-mono text-xs font-bold text-[var(--geo-info)]">{evidence.paragraphId}</span>
                         {evidence.quote}
                       </blockquote>
                     ))}
@@ -206,9 +206,9 @@ export function DiagnosticAccordionItem({
                     <p className="mt-2 text-[#687386]">{presentation.missingInfoEmptyMessage}</p>
                   )}
                 </section>
-                <section className="border-l-2 border-[#6f8ca4] bg-[#edf3f7] px-3 py-3">
-                  <p className="diagnosis-step-label text-[#416b8a]"><span>04</span>修改建议</p>
-                  <p className="mt-2 leading-6 text-[#46545e]">{item.data.recommendation}</p>
+                <section className="border-l-2 border-[var(--geo-info)] bg-[var(--geo-info-soft)] px-3 py-3">
+                  <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改建议</p>
+                  <p className="mt-2 leading-6 text-[var(--geo-text-body)]">{item.data.recommendation}</p>
                 </section>
                 <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
               </div>

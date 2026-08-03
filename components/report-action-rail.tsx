@@ -70,7 +70,7 @@ export function ReportActionRail({
   return (
     <aside className="report-action-rail surface-flat min-w-0 p-4 sm:p-5" aria-label="下一步操作">
       <div className="border-b border-[#e7e9ed] pb-4">
-        <p className="section-kicker">ACTION PANEL</p>
+        <p className="section-kicker">下一步</p>
         <h2 className="mt-1.5 text-base font-semibold text-[#111827]">审查处理路径</h2>
         <p className="mt-2 text-xs leading-5 text-[#737d89]">先核对依据，再决定修改范围；生成材料不代表审查完成。</p>
       </div>
@@ -92,7 +92,7 @@ export function ReportActionRail({
                 </span>
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#252a31]">
-                    <Icon aria-hidden="true" className="size-3.5 text-[#737d89] group-hover:text-[#0f766e]" />
+                    <Icon aria-hidden="true" className="size-3.5 text-[var(--geo-text-muted)] group-hover:text-[var(--geo-primary)]" />
                     {step.label}
                     <span className={`status-badge px-1.5 py-0.5 text-[9px] font-semibold ${presentation.badge}`}>
                       {presentation.label}
@@ -100,7 +100,7 @@ export function ReportActionRail({
                   </span>
                   <span className="mt-1 block text-xs leading-5 text-[#858c97]">{step.meta}</span>
                 </span>
-                <ArrowRight aria-hidden="true" className="size-3.5 text-[#a0a7b1] group-hover:text-[#0f766e]" />
+                <ArrowRight aria-hidden="true" className="size-3.5 text-[var(--geo-soft)] group-hover:text-[var(--geo-primary)]" />
               </button>
             </li>
           );

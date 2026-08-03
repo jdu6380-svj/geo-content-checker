@@ -925,7 +925,6 @@ export default function Home() {
         {analysisStarted ? (
           <ReportWorkspace
             title={draft.title}
-            publishedAt={draft.publishedAt}
             contentAvailable={Boolean(draft.content)}
             reportStatus={reportStatus()}
             session={session}

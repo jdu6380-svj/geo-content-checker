@@ -15,7 +15,7 @@ type ReportSectionRailProps = {
 
 const SECTIONS = [
   { id: "report-core", label: "报告结论", description: "评分与最大风险", icon: BarChart3 },
-  { id: "evidence-section", label: "Evidence", description: "核对原文依据", icon: FileSearch },
+  { id: "evidence-section", label: "证据账本", description: "核对原文依据", icon: FileSearch },
   { id: "diagnostic-section", label: "关键诊断", description: "逐项理解问题", icon: ListChecks },
   { id: "patch-workshop", label: "修改建议", description: "生成辅助材料", icon: Sparkles },
 ] as const;
@@ -59,7 +59,7 @@ export function ReportSectionRail({
   return (
     <aside className="report-section-rail surface-flat" aria-label="报告工作区导航">
       <div className="report-section-rail-heading">
-        <p className="section-kicker">WORKSPACE</p>
+        <p className="section-kicker">报告工作台</p>
         <h2>报告导航</h2>
       </div>
       <nav className="report-section-nav" aria-label="报告章节">

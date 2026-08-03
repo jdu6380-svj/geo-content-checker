@@ -16,7 +16,6 @@ import {
   Workflow,
 } from "lucide-react";
 
-import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,11 +88,11 @@ const REVIEW_AREAS = [
 ] as const;
 
 const REVIEW_OUTCOMES = [
-  { label: "Credibility Score", icon: BarChart3 },
+  { label: "可信度评分", icon: BarChart3 },
   { label: "风险诊断", icon: AlertTriangle },
-  { label: "Evidence Chain", icon: Link2 },
+  { label: "证据链", icon: Link2 },
   { label: "修改建议", icon: ListChecks },
-  { label: "Recheck 对比", icon: RotateCcw },
+  { label: "复检对比", icon: RotateCcw },
 ] as const;
 
 export function EditorWorkspace({
@@ -134,9 +133,9 @@ export function EditorWorkspace({
       <div className="mx-auto max-w-[1360px]">
         <header className="editor-page-heading mb-3 grid gap-5 lg:grid-cols-[minmax(0,1fr)_430px] lg:items-end">
           <div className="min-w-0 max-w-[820px]">
-            <p className="editor-kicker">EVIDRA · PUBLISHING REVIEW WORKSPACE</p>
+            <p className="editor-kicker">EVIDRA · 内容可信度审查工作台</p>
             <h2 className="editor-page-title mt-1">发布前，先确认关键判断是否有据可查</h2>
-            <p className="editor-page-summary mt-3">
+              <p className="editor-page-summary mt-3">
               Evidra 是面向 AI 搜索时代的内容可信度审查平台，帮助专业内容生产者发现证据、可信度、理解与结构风险。
             </p>
           </div>
@@ -159,15 +158,15 @@ export function EditorWorkspace({
         </header>
 
         {recheckContext ? (
-          <div className="mb-3 flex flex-col gap-3 border-l-[3px] border-[#5964cf] bg-[#f3f4fb] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-3 flex flex-col gap-3 border-l-[3px] border-[var(--geo-primary)] bg-[var(--geo-secondary-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[#5964cf]" />
+              <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--geo-primary)]" />
               <div>
-                <p className="text-sm font-semibold text-[#343a65]">正在准备重新验证</p>
-                <p className="mt-1 text-xs leading-5 text-[#69708a]">将人工核对后的修改应用到正文，再运行同一套完整审查。</p>
+                <p className="text-sm font-semibold text-[var(--geo-text-heading)]">正在准备重新验证</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">将人工核对后的修改应用到正文，再运行同一套完整审查。</p>
               </div>
             </div>
-            <span className="shrink-0 font-mono text-xs font-semibold text-[#5964cf]">
+            <span className="shrink-0 font-mono text-xs font-semibold text-[var(--geo-primary)]">
               修改前 {recheckContext.score} 分 · {recheckContext.issueCount} 项需关注
             </span>
           </div>
@@ -190,12 +189,12 @@ export function EditorWorkspace({
         <div className="editor-frame overflow-hidden rounded-lg border border-[#dce2e7] bg-white">
           <div className="editor-frame-bar flex min-h-14 items-center justify-between gap-4 border-b border-[#e4e8ec] px-4 sm:px-5">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#cfe1de] bg-[#edf8f6] text-[#0f766e]">
+              <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--geo-status-info-border)] bg-[var(--geo-status-info-soft)] text-[var(--geo-primary)]">
                 <FileText aria-hidden="true" className="size-4" />
               </span>
               <div className="min-w-0">
                 <h3 className="truncate text-sm font-semibold text-[#20252b]">提交待审查文章</h3>
-                <p className="mt-0.5 text-[11px] text-[#8b939e]">完整上下文有助于生成可核对的 Evidence Chain</p>
+                <p className="mt-0.5 text-[11px] text-[#8b939e]">完整上下文有助于生成可核对的证据链</p>
               </div>
             </div>
             <span
@@ -209,7 +208,7 @@ export function EditorWorkspace({
 
           <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
             <form onSubmit={onSubmit} className="flex min-w-0 flex-col p-4 sm:p-5 lg:min-h-[520px] lg:p-6 lg:pb-1 lg:pt-4">
-              <div className="grid gap-5 border-b border-[#e9ecef] pb-5 min-[680px]:grid-cols-[minmax(0,1fr)_220px] min-[680px]:items-end">
+              <div className="border-b border-[#e9ecef] pb-5">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="article-title" className="editor-field-label">文章标题</Label>
@@ -225,22 +224,15 @@ export function EditorWorkspace({
                     aria-invalid={Boolean(fieldErrors.title)}
                     aria-describedby={fieldErrors.title ? "title-error" : undefined}
                     placeholder="请输入文章标题..."
-                    className="editor-title-input h-11 rounded-md border-[#dce2e7] bg-white px-3.5 text-[15px] font-medium shadow-none focus-visible:border-[#0f766e] focus-visible:ring-[3px] focus-visible:ring-[#0f766e]/10"
+                    className="editor-title-input h-11 rounded-md border-[var(--geo-border)] bg-white px-3.5 text-[15px] font-medium shadow-none"
                   />
                   {fieldErrors.title ? (
-                    <span id="title-error" className="block text-xs font-medium text-[#c85745]">
+                    <span id="title-error" className="block text-xs font-medium text-[var(--geo-status-danger)]">
                       {fieldErrors.title}
                     </span>
                   ) : null}
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label className="editor-field-label">发布日期</Label>
-                    <span className="editor-field-hint">选填 · 用于时效性判断</span>
-                  </div>
-                  <DatePicker value={draft.publishedAt} onChange={(value) => onDraftChange("publishedAt", value)} />
-                </div>
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col py-5">
@@ -248,14 +240,14 @@ export function EditorWorkspace({
                   <Label htmlFor="article-content" className="editor-field-label">正文内容</Label>
                   <span
                     aria-live="polite"
-                    className={remaining < 0 ? "editor-character-count text-[#c85745]" : "editor-character-count"}
+                    className={remaining < 0 ? "editor-character-count text-[var(--geo-status-danger)]" : "editor-character-count"}
                   >
                     {remaining < 0
                       ? `超出 ${Math.abs(remaining).toLocaleString()} 字`
                       : `${contentLength.toLocaleString()} / ${maxArticleCharacters.toLocaleString()}`}
                   </span>
                 </div>
-                <p className="editor-field-hint mb-2">建议粘贴完整正文；上下文越完整，Evidence 与风险定位越可靠。</p>
+                <p className="editor-field-hint mb-2">建议粘贴完整正文；上下文越完整，证据与风险定位越可靠。</p>
                 <Textarea
                   id="article-content"
                   ref={contentRef}
@@ -265,10 +257,10 @@ export function EditorWorkspace({
                   aria-invalid={Boolean(fieldErrors.content)}
                   aria-describedby={fieldErrors.content ? "content-error" : undefined}
                   placeholder="粘贴文章正文或直接输入内容..."
-                  className="editor-canvas field-sizing-fixed min-h-[280px] flex-1 resize-none rounded-md border border-[#e1e6ea] bg-[#fbfcfd] p-4 text-sm leading-7 shadow-none placeholder:text-[#adb4bd] focus-visible:border-[#0f766e] focus-visible:bg-white focus-visible:ring-[3px] focus-visible:ring-[#0f766e]/8 md:min-h-[220px] lg:min-h-[180px] md:text-[15px]"
+                  className="editor-canvas field-sizing-fixed min-h-[280px] flex-1 resize-none rounded-md border border-[var(--geo-border)] bg-[var(--geo-surface-subtle)] p-4 text-sm leading-7 shadow-none placeholder:text-[var(--geo-soft)] focus-visible:bg-white md:min-h-[220px] lg:min-h-[180px] md:text-[15px]"
                 />
                 {fieldErrors.content ? (
-                  <span id="content-error" className="mt-2 block text-xs font-medium text-[#c85745]">
+                  <span id="content-error" className="mt-2 block text-xs font-medium text-[var(--geo-status-danger)]">
                     {fieldErrors.content}
                   </span>
                 ) : null}
@@ -303,11 +295,11 @@ export function EditorWorkspace({
                     服务端不保存正文
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <ShieldCheck aria-hidden="true" className="size-3.5 text-[#0f766e]" />
-                    Evidence 需人工复核
+                    <ShieldCheck aria-hidden="true" className="size-3.5 text-[var(--geo-info)]" />
+                    证据需人工复核
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--geo-secondary)]" />
+                    <span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--geo-primary)]" />
                     今日额度 10 次
                   </span>
                 </div>
@@ -321,10 +313,10 @@ export function EditorWorkspace({
             <aside className="editor-guidance-rail flex min-w-0 flex-col border-t border-[#e4e8ec] bg-[#fafbfc] lg:border-l lg:border-t-0">
               <div className="flex min-h-14 items-center justify-between gap-4 border-b border-[#e4e8ec] px-4">
                 <div className="flex items-center gap-2">
-                  <Workflow aria-hidden="true" className="size-4 text-[#5964cf]" />
+                  <Workflow aria-hidden="true" className="size-4 text-[var(--geo-primary)]" />
                   <div>
                     <span className="block text-xs font-semibold text-[#4f5864]">审查准备</span>
-                    <span className="mt-0.5 block text-[10px] text-[#929aa5]">输入标准与 Evidence 机制</span>
+                    <span className="mt-0.5 block text-[10px] text-[#929aa5]">输入标准与证据机制</span>
                   </div>
                 </div>
                 <span className="editor-guidance-context">发布前</span>
@@ -332,19 +324,19 @@ export function EditorWorkspace({
 
               <section className="editor-guidance-section border-b border-[#e4e8ec] px-4 py-4">
                 <div className="flex items-center gap-2">
-                  <Link2 aria-hidden="true" className="size-3.5 text-[#0f766e]" />
-                  <h4>Evidence 如何工作</h4>
+                  <Link2 aria-hidden="true" className="size-3.5 text-[var(--geo-evidence)]" />
+                  <h4>证据链如何工作</h4>
                 </div>
                 <p className="mt-2">
                   诊断会定位原文段落并核对引用。无法逐字匹配或原文缺失的依据，会明确标记并要求人工判断。
                 </p>
-                <div className="editor-evidence-legend mt-3" aria-label="Evidence 状态说明">
+                <div className="editor-evidence-legend mt-3" aria-label="证据状态说明">
                   <span><i className="status-success" />valid</span>
                   <span><i className="status-warning" />missing</span>
                   <span><i className="status-danger" />invalid</span>
                 </div>
                 <p className="editor-input-guidance mt-3">建议提供清楚标题、完整正文，以及适用时的发布日期。</p>
-                <div className="editor-dimension-grid mt-3" aria-label="Credibility Score 维度">
+                <div className="editor-dimension-grid mt-3" aria-label="可信度评分维度">
                   {dimensions.map((dimension) => (
                     <span key={dimension.label}>
                       <i aria-hidden="true" className={dimension.indicatorClassName} />
@@ -356,7 +348,7 @@ export function EditorWorkspace({
 
               <div className="flex items-center justify-between border-b border-[#e4e8ec] px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <ListChecks aria-hidden="true" className="size-3.5 text-[#5964cf]" />
+                  <ListChecks aria-hidden="true" className="size-3.5 text-[var(--geo-primary)]" />
                   <div>
                     <span className="block text-xs font-semibold text-[#4f5864]">从示例开始</span>
                     <span className="mt-0.5 block text-[10px] text-[#929aa5]">比较完整输入与高风险表达</span>
@@ -372,7 +364,7 @@ export function EditorWorkspace({
                     type="button"
                     onClick={() => onLoadSample(index)}
                     aria-label={`载入样本：${sample.title}`}
-                    className="sample-library-row group flex min-h-[72px] w-full min-w-0 items-center gap-3 px-4 py-3 text-left focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0f766e]/20"
+                    className="sample-library-row group flex min-h-[72px] w-full min-w-0 items-center gap-3 px-4 py-3 text-left focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--geo-primary)]/20"
                   >
                     <span className="shrink-0 font-mono text-[11px] text-[#9aa2ac]">{String(index + 1).padStart(2, "0")}</span>
                     <Badge variant="outline" className={`shrink-0 rounded-[4px] shadow-none ${sample.badgeClassName}`}>
@@ -382,7 +374,7 @@ export function EditorWorkspace({
                       <span className="text-clamp-2 block text-xs font-semibold leading-5 text-[#252a31]">{sample.title}</span>
                       <span className="mt-0.5 block truncate text-[11px] text-[#8b939e]">{sample.description}</span>
                     </span>
-                    <ArrowRight aria-hidden="true" className="size-3.5 shrink-0 text-[#c2c8cf] transition-transform group-hover:translate-x-0.5 group-hover:text-[#0f766e] motion-reduce:transition-none" />
+                    <ArrowRight aria-hidden="true" className="size-3.5 shrink-0 text-[var(--geo-soft)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--geo-primary)] motion-reduce:transition-none" />
                   </button>
                 ))}
               </div>

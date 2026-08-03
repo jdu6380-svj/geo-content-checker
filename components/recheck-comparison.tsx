@@ -157,7 +157,7 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
       count: unchanged.length,
       icon: Minus,
       className: "recheck-outcome-unchanged",
-      description: "同一问题的风险、回答度与 Evidence 状态均未变化。",
+      description: "同一问题的风险、回答度与证据状态均未变化。",
       empty: "暂无完全不变的同名问题。",
       items: unchanged.map(({ after }) => ({ question: after.question, context: "判断结果保持一致" })),
     },
@@ -190,8 +190,8 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
     <section id="recheck-comparison" className="recheck-comparison surface-flat mt-4 overflow-hidden border-t-[3px] border-t-[var(--geo-secondary)]">
       <header className="flex flex-col gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
         <div className="min-w-0">
-          <p className="section-kicker text-[var(--geo-secondary)]">RECHECK / BEFORE & AFTER</p>
-          <h2 className="mt-1.5 text-lg font-semibold text-[var(--geo-text)]">Baseline 与 New Result</h2>
+          <p className="section-kicker text-[var(--geo-secondary)]">复检 / 前后对比</p>
+          <h2 className="mt-1.5 text-lg font-semibold text-[var(--geo-text)]">修改前与复检结果</h2>
           <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--geo-text-muted)]">
             只对问题文本完全一致的诊断进行逐项比较；问题集合变化不会自动视为风险消除。
           </p>
@@ -205,7 +205,7 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
       <div className="recheck-snapshot-grid grid md:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]">
         <section className="recheck-snapshot px-4 py-5 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="data-label">BASELINE / 修改前</p>
+            <p className="data-label">修改前基线</p>
             <span className="status-badge status-neutral px-2 py-0.5 text-[10px]">已固化</span>
           </div>
           <div className="mt-3 flex items-end gap-2">
@@ -231,7 +231,7 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
 
         <section className="recheck-snapshot is-current px-4 py-5 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="data-label">NEW RESULT / 修改后</p>
+            <p className="data-label">复检结果</p>
             <span className="status-badge status-secondary px-2 py-0.5 text-[10px]">本轮复检</span>
           </div>
           <div className="mt-3 flex items-end gap-2">
@@ -273,7 +273,7 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
         <section className="border-b border-[var(--geo-border)] px-4 py-5 sm:px-6 lg:border-b-0 lg:border-r">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <p className="data-label">SCORE LEDGER</p>
+              <p className="data-label">评分账本</p>
               <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">四项评分变化</h3>
             </div>
             <span className={`text-xs font-semibold ${scoreChangeClassName}`}>总分 {scoreChangeLabel(scoreChange)}</span>
@@ -309,7 +309,7 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
         <section className="px-4 py-5 sm:px-6">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <p className="data-label">DIAGNOSIS CHANGE LOG</p>
+              <p className="data-label">诊断变化记录</p>
               <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">逐项变化记录</h3>
             </div>
             <span className="text-xs text-[var(--geo-text-soft)]">仅列出前 3 项</span>

@@ -54,7 +54,7 @@ function createDiagnosticItem(question: string, diagnostics: DiagnosticsState): 
 function DiagnosisWorkbenchSkeleton({ announce }: { announce: boolean }) {
   return (
     <div
-      className="diagnosis-master-detail mt-4 overflow-hidden rounded-lg border border-[#d8e0dd] bg-white"
+      className="diagnosis-master-detail mt-4 overflow-hidden rounded-lg border border-[var(--geo-border)] bg-white"
       role={announce ? "status" : undefined}
       aria-live={announce ? "polite" : undefined}
       aria-label="正在预测读者问题"
@@ -68,7 +68,7 @@ function DiagnosisWorkbenchSkeleton({ announce }: { announce: boolean }) {
             </div>
           ))}
         </div>
-        <div className="hidden min-h-[430px] bg-[#fafbfc] p-6 xl:block">
+        <div className="hidden min-h-[430px] bg-[var(--geo-surface-subtle)] p-6 xl:block">
           <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
           <div className="mt-8 h-28 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
           <div className="mt-4 h-36 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
@@ -118,8 +118,8 @@ export function DiagnosisSection({
   } else if (questions.status === "error") {
     diagnosisContent = (
       <div className="surface-flat mt-4 p-5">
-        <p className="font-semibold text-[#963d2e]">读者问题未生成</p>
-        <p role="alert" aria-live="assertive" className="mt-2 text-sm leading-6 text-[#765047]">
+        <p className="font-semibold text-[var(--geo-status-danger)]">读者问题未生成</p>
+        <p role="alert" aria-live="assertive" className="mt-2 text-sm leading-6 text-[var(--geo-text-body)]">
           {questions.error}
         </p>
         <p className="mt-2 text-xs leading-5 text-[#858c97]">评分结果可能已经完成。重新运行会从头生成本次报告。</p>
@@ -133,7 +133,7 @@ export function DiagnosisSection({
   } else {
     diagnosisContent = (
       <div ref={latestQuestion ? latestQuestionRef : undefined} className="mt-4">
-        <div className="diagnosis-master-detail hidden overflow-hidden rounded-lg border border-[#d8e0dd] bg-white xl:grid xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="diagnosis-master-detail hidden overflow-hidden rounded-lg border border-[var(--geo-border)] bg-white xl:grid xl:grid-cols-[280px_minmax(0,1fr)]">
           <div className="min-w-0 border-r border-[#e1e6ea] bg-white">
             <div className="border-b border-[#e5e8eb] px-4 py-3">
               <span className="text-[11px] font-semibold text-[#858c97]">诊断索引</span>
@@ -154,11 +154,11 @@ export function DiagnosisSection({
                     }}
                     className={`grid min-h-[78px] w-full grid-cols-[30px_minmax(0,1fr)_18px] items-center gap-3 border-l-[3px] px-4 py-3 text-left disabled:cursor-default ${
                       selected
-                        ? "border-l-[#0f766e] bg-[#f1f8f6]"
-                        : "border-l-transparent bg-white hover:bg-[#fafbfc]"
+                        ? "border-l-[var(--geo-primary)] bg-[var(--geo-secondary-soft)]"
+                        : "border-l-transparent bg-white hover:bg-[var(--geo-surface-subtle)]"
                     }`}
                   >
-                    <span className={`grid size-[30px] place-items-center rounded-md font-mono text-xs font-bold ${selected ? "bg-[#dff0ed] text-[#08766e]" : "bg-[#eef2f1] text-[#687681]"}`}>
+                    <span className={`grid size-[30px] place-items-center rounded-md font-mono text-xs font-bold ${selected ? "bg-[var(--geo-status-info-soft)] text-[var(--geo-primary)]" : "bg-[var(--geo-surface-subtle)] text-[var(--geo-text-muted)]"}`}>
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <span className="min-w-0">
@@ -177,7 +177,7 @@ export function DiagnosisSection({
                         )}
                       </span>
                     </span>
-                    <ChevronRight aria-hidden="true" className={`size-4 ${selected ? "text-[#0f766e]" : "text-[#9ba3ad]"}`} />
+                    <ChevronRight aria-hidden="true" className={`size-4 ${selected ? "text-[var(--geo-primary)]" : "text-[var(--geo-soft)]"}`} />
                   </button>
                 );
               })}
@@ -199,7 +199,7 @@ export function DiagnosisSection({
           />
         </div>
 
-        <div className="diagnostic-stack overflow-hidden rounded-lg border border-[#d8e0dd] bg-white xl:hidden">
+        <div className="diagnostic-stack overflow-hidden rounded-lg border border-[var(--geo-border)] bg-white xl:hidden">
           {diagnosticItems.map((item, index) => (
             <div key={item.question} className="border-b border-[#e1e7e4] last:border-b-0">
               <DiagnosticAccordionItem
@@ -225,7 +225,7 @@ export function DiagnosisSection({
     <section id="diagnostic-section" className="section-anchor min-w-0">
       <div className="diagnosis-stage-header flex flex-wrap items-end justify-between gap-3 border-b border-[#dfe3e7] pb-4">
         <div>
-          <p className="section-kicker">KEY DIAGNOSTICS</p>
+          <p className="section-kicker">关键诊断</p>
           <h2 className="mt-1.5 text-xl font-semibold sm:text-2xl">关键诊断</h2>
           <p className="mt-2 text-sm leading-6 text-[#687386]">每项诊断沿同一审查路径展开，便于核对问题、依据与处理建议。</p>
         </div>
@@ -252,7 +252,7 @@ export function DiagnosisSection({
         <form onSubmit={onSubmitFollowUp} className="follow-up-panel surface-flat mt-4 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label htmlFor="follow-up-question" className="flex items-center gap-2 text-sm font-semibold">
-              <MessageSquare aria-hidden="true" className="size-4 text-[#5b61d6]" />
+              <MessageSquare aria-hidden="true" className="size-4 text-[var(--geo-primary)]" />
               测试读者真实提问
             </label>
             <span className="text-xs tabular-nums text-[#858c97]">{totalCount} / 10</span>
@@ -275,7 +275,7 @@ export function DiagnosisSection({
               分析问题
             </button>
           </div>
-          {followUpError ? <p role="alert" className="mt-2 text-sm text-[#c85745]">{followUpError}</p> : null}
+          {followUpError ? <p role="alert" className="mt-2 text-sm text-[var(--geo-status-danger)]">{followUpError}</p> : null}
           {customQuestionCount ? (
             <p className="mt-3 text-xs text-[#68707d]">
               追问覆盖率：{answeredCustomQuestionCount} / {customQuestionCount} 可完全回答

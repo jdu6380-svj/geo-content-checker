@@ -32,7 +32,6 @@ type ReportStatusPresentation = {
 
 type ReportWorkspaceProps = {
   title: string;
-  publishedAt: string;
   runId: string | null;
   contentAvailable: boolean;
   reportStatus: ReportStatusPresentation;
@@ -72,7 +71,6 @@ type ReportWorkspaceProps = {
 
 export function ReportWorkspace({
   title,
-  publishedAt,
   runId,
   contentAvailable,
   reportStatus,
@@ -248,9 +246,9 @@ export function ReportWorkspace({
 
       {session.status === "error" ? (
         <div role="alert" className="report-error-state surface-flat mt-4 border-l-[3px] p-5 sm:p-6">
-          <h2 className="text-base font-semibold text-[#963d2e]">分析会话未能建立</h2>
-          <p className="mt-2 text-sm leading-6 text-[#765047]">{session.error}</p>
-          <p className="mt-2 text-xs leading-5 text-[#8b655d]">文章内容仍保留在本地。重新开始会运行完整分析，返回编辑不会丢失草稿。</p>
+          <h2 className="text-base font-semibold text-[var(--geo-status-danger)]">分析会话未能建立</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--geo-text-body)]">{session.error}</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--geo-text-muted)]">文章内容仍保留在本地。重新开始会运行完整分析，返回编辑不会丢失草稿。</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={onRestartAnalysis} className="dark-button h-10 px-5 text-sm font-semibold">
               重新运行分析
@@ -258,7 +256,7 @@ export function ReportWorkspace({
             <button
               type="button"
               onClick={onBackToEditor}
-              className="secondary-button h-10 px-5 text-sm font-semibold text-[#963d2e]"
+              className="secondary-button h-10 px-5 text-sm font-semibold text-[var(--geo-status-danger)]"
             >
               返回编辑
             </button>
@@ -279,7 +277,6 @@ export function ReportWorkspace({
           <div className="report-overview-stage min-w-0">
             <ReportContextRail
               title={title}
-              publishedAt={publishedAt}
               reportStatus={reportStatus}
               scoring={scoring}
               scoreBand={scoreBand}

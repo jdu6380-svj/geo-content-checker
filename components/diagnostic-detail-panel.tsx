@@ -39,11 +39,11 @@ export function DiagnosticDetailPanel({
 }: DiagnosticDetailPanelProps) {
   if (!item) {
     return (
-      <div id="diagnosis-detail-panel" className="grid min-h-[420px] place-items-center bg-[#fafbfc] p-8 text-center">
+      <div id="diagnosis-detail-panel" className="grid min-h-[420px] place-items-center bg-[var(--geo-surface-subtle)] p-8 text-center">
         <div className="max-w-xs">
-          <FileSearch aria-hidden="true" className="mx-auto size-6 text-[#8b939e]" />
-          <h3 className="mt-4 text-sm font-semibold text-[#343a42]">暂无可展示诊断</h3>
-          <p className="mt-2 text-xs leading-6 text-[#858c97]">问题生成完成后，证据与建议将在这里显示。</p>
+          <FileSearch aria-hidden="true" className="mx-auto size-6 text-[var(--geo-text-soft)]" />
+          <h3 className="mt-4 text-sm font-semibold text-[var(--geo-text-heading)]">暂无可展示诊断</h3>
+          <p className="mt-2 text-xs leading-6 text-[var(--geo-text-soft)]">问题生成完成后，证据与建议将在这里显示。</p>
         </div>
       </div>
     );
@@ -63,11 +63,11 @@ export function DiagnosticDetailPanel({
 
   if (item.status === "error") {
     return (
-      <div id="diagnosis-detail-panel" className="grid min-h-[420px] place-items-center bg-[#fff9f7] p-8 text-center">
+      <div id="diagnosis-detail-panel" className="grid min-h-[420px] place-items-center bg-[var(--geo-status-danger-soft)] p-8 text-center">
         <div className="max-w-sm">
-          <AlertTriangle aria-hidden="true" className="mx-auto size-6 text-[#c85745]" />
-          <h3 className="mt-4 text-sm font-semibold text-[#963d2e]">该问题分析失败</h3>
-          <p role="alert" aria-live="assertive" className="mt-2 text-sm leading-6 text-[#765047]">
+          <AlertTriangle aria-hidden="true" className="mx-auto size-6 text-[var(--geo-status-danger)]" />
+          <h3 className="mt-4 text-sm font-semibold text-[var(--geo-status-danger)]">该问题分析失败</h3>
+          <p role="alert" aria-live="assertive" className="mt-2 text-sm leading-6 text-[var(--geo-text-body)]">
             {item.error || "暂时无法生成诊断结果。"}
           </p>
           {canRetry ? (
@@ -92,7 +92,7 @@ export function DiagnosticDetailPanel({
     : "当前问题没有明显信息缺口。";
 
   return (
-    <div id="diagnosis-detail-panel" className="min-h-[420px] bg-[#fafbfc]">
+    <div id="diagnosis-detail-panel" className="min-h-[420px] bg-[var(--geo-surface-subtle)]">
       <section className="border-b border-[#e3e7eb] bg-white px-5 py-5" aria-labelledby="diagnosis-problem-heading">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-2xl">
@@ -115,15 +115,15 @@ export function DiagnosticDetailPanel({
         <section className="px-5 py-5">
           <p className="diagnosis-step-label"><span>02</span>原文证据</p>
           {item.data.evidenceStatus === "invalid" ? (
-            <p className="mt-3 border-l-2 border-[#c85745] bg-[#fff8f6] px-3 py-2 text-xs leading-5 text-[#963d2e]">
+            <p className="mt-3 border-l-2 border-[var(--geo-status-danger)] bg-[var(--geo-status-danger-soft)] px-3 py-2 text-xs leading-5 text-[var(--geo-status-danger)]">
               模型返回了无法逐字定位的引用；无效内容已移除。
             </p>
           ) : null}
           {item.data.evidence.length ? (
             <div className="mt-4 grid gap-4">
               {item.data.evidence.map((evidence) => (
-                <blockquote key={`${evidence.paragraphId}-${evidence.quote}`} className="border-l-2 border-[#72aaa2] pl-4 text-sm leading-7 text-[#46545e]">
-                  <span className="mb-1 block font-mono text-xs font-bold text-[#08766e]">{evidence.paragraphId}</span>
+                <blockquote key={`${evidence.paragraphId}-${evidence.quote}`} className="border-l-2 border-[var(--geo-info)] pl-4 text-sm leading-7 text-[var(--geo-text-body)]">
+                  <span className="mb-1 block font-mono text-xs font-bold text-[var(--geo-info)]">{evidence.paragraphId}</span>
                   {evidence.quote}
                 </blockquote>
               ))}
@@ -150,9 +150,9 @@ export function DiagnosticDetailPanel({
             )}
           </section>
 
-          <section className="border-l-2 border-[#6f8ca4] bg-[#edf3f7] px-4 py-4">
-            <p className="diagnosis-step-label text-[#416b8a]"><span>04</span>修改建议</p>
-            <p className="mt-2 text-sm leading-7 text-[#46545e]">{item.data.recommendation}</p>
+          <section className="border-l-2 border-[var(--geo-info)] bg-[var(--geo-info-soft)] px-4 py-4">
+            <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改建议</p>
+            <p className="mt-2 text-sm leading-7 text-[var(--geo-text-body)]">{item.data.recommendation}</p>
           </section>
           <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
         </div>

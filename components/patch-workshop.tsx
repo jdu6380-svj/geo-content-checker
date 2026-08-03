@@ -219,7 +219,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
   const modeTitle = activeMode === "advice" ? "修改建议" : "内容参考材料";
   const modeDescription = activeMode === "advice"
     ? "把诊断中的证据缺口和结构问题整理为可执行清单，明确为什么改、改什么。"
-    : "生成基于 Evidence 约束的修改参考材料，不替代完整改稿与事实审核。";
+      : "生成基于证据约束的修改参考材料，不替代完整改稿与事实审核。";
   const workflowSteps = [
     {
       label: "理解诊断",
@@ -251,7 +251,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
     <section id="patch-workshop" className="patch-workshop section-anchor min-w-0" aria-busy={activePatch.status === "loading"}>
       <div className="flex flex-col gap-4 border-b border-[var(--geo-border)] pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="section-kicker">PATCH WORKSPACE</p>
+          <p className="section-kicker">修改工作台</p>
           <h2 className="mt-1 text-xl font-semibold text-[var(--geo-text)] sm:text-2xl">从诊断结论到重新验证</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--geo-text-muted)]">
             先确认问题依据，再准备修改材料。所有内容都需人工应用，复检只呈现真实变化。
@@ -309,7 +309,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
           <span className="patch-mode-icon"><FileCheck2 aria-hidden="true" className="size-4" /></span>
           <span className="min-w-0 text-left">
             <span className="block text-sm font-semibold">内容草稿</span>
-            <span className="mt-0.5 block text-xs leading-5">基于 Evidence 约束的修改参考材料</span>
+            <span className="mt-0.5 block text-xs leading-5">基于证据约束的修改参考材料</span>
           </span>
           <span className="patch-mode-state">{activeMode === "content_draft" ? "当前" : "查看"}</span>
         </button>
@@ -318,12 +318,12 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
       <div className="patch-mode-guidance mt-4 grid overflow-hidden sm:grid-cols-3">
         {(activeMode === "advice"
           ? [
-              { icon: Link2, label: "输入依据", value: `${diagnosticResults.length} 项诊断，其中 ${evidenceGapCount} 项存在 Evidence 或信息缺口` },
+              { icon: Link2, label: "输入依据", value: `${diagnosticResults.length} 项诊断，其中 ${evidenceGapCount} 项存在证据或信息缺口` },
               { icon: ListChecks, label: "交付用途", value: "形成逐项可执行清单，并保留与来源问题的关联" },
               { icon: UserRoundCheck, label: "人工决策门", value: "确认事实来源、适用范围与原意；建议不代表问题已解决" },
             ]
           : [
-              { icon: Link2, label: "输入依据", value: `${validEvidenceCount} 项诊断含有效 Evidence，可用于组织参考材料` },
+              { icon: Link2, label: "输入依据", value: `${validEvidenceCount} 项诊断含有效证据，可用于组织参考材料` },
               { icon: FileCheck2, label: "交付用途", value: "整理 FAQ 与事实卡片参考，不是 AI 自动改稿" },
               { icon: UserRoundCheck, label: "人工决策门", value: "逐项核对证据、语气与全文衔接；材料不保证结果提升" },
             ]
@@ -354,7 +354,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
       {canGenerate && activePatch.status !== "success" ? (
         <div className={`patch-callout mt-4 grid items-center gap-4 rounded-lg border p-4 sm:grid-cols-[1fr_auto] sm:p-5 ${activePatch.status === "error" ? "patch-callout-error" : "patch-callout-ready"}`}>
           <div>
-            <p className="data-label">CURRENT DELIVERABLE</p>
+            <p className="data-label">当前材料</p>
             <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">
               {activePatch.status === "error" ? `${modeTitle}生成失败` : modeTitle}
             </h3>
@@ -400,13 +400,13 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
           <header className="patch-result-header flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="data-label">REVIEW MATERIAL</p>
+                <p className="data-label">审核材料</p>
                 <span className="status-badge status-neutral px-2 py-0.5 text-[10px]">
                   {activePatch.data.source === "model" ? "模型生成" : "安全降级生成"}
                 </span>
               </div>
               <h3 className="mt-1.5 text-base font-semibold text-[var(--geo-text)]">
-                {activeMode === "advice" ? "与诊断关联的修改建议" : "基于 Evidence 约束的修改参考材料"}
+                {activeMode === "advice" ? "与诊断关联的修改建议" : "基于证据约束的修改参考材料"}
               </h3>
               <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">
                 {activeMode === "advice"
@@ -440,7 +440,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
 
           <div className="patch-review-gate grid sm:grid-cols-3" aria-label="材料使用前检查">
             {[
-              ["01", "核对来源", "确认建议对应的诊断与 Evidence。"],
+              ["01", "核对来源", "确认建议对应的诊断与证据。"],
               ["02", "判断适用", "确认事实、语气和业务边界。"],
               ["03", "人工应用", "只采纳适合原文的修改内容。"],
             ].map(([number, label, description]) => (

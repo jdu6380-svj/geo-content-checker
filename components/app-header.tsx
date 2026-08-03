@@ -33,13 +33,13 @@ export function AppHeader({
           <EvidraBrandMark className="brand-mark size-9 shrink-0" />
           <span className="leading-none">
             <span className="app-brand-name block">Evidra</span>
-            <span className="app-brand-subtitle mt-1 block">AI 内容可信度审查</span>
+            <span className="app-brand-subtitle mt-1 block">内容可信度审查</span>
           </span>
         </button>
 
         <span className="app-workspace-label hidden items-center gap-2 md:inline-flex">
           <span aria-hidden="true" className="app-workspace-dot size-1.5 rounded-full" />
-          内容可信度审查工作台
+          Evidra 工作台
         </span>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
