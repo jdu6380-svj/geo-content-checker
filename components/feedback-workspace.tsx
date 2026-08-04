@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,6 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 import { EvidraBrandMark } from "@/components/evidra-brand-mark";
 
@@ -18,6 +21,20 @@ type FeedbackWorkspaceProps = {
 
 export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
   const canOpenForm = Boolean(feedbackUrl?.startsWith("https://"));
+  const [problem, setProblem] = useState("");
+  const [improvement, setImprovement] = useState("");
+  const mailtoUrl = useMemo(() => {
+    const subject = encodeURIComponent("Evidra Beta 使用反馈");
+    const body = encodeURIComponent([
+      "你遇到了什么问题？",
+      problem.trim() || "未填写",
+      "",
+      "你希望我们如何改进？",
+      improvement.trim() || "未填写",
+    ].join("\n"));
+    return `mailto:3949536640@qq.com?subject=${subject}&body=${body}`;
+  }, [improvement, problem]);
+  const canSubmit = Boolean(problem.trim() || improvement.trim());
 
   return (
     <main className="feedback-page">
@@ -55,24 +72,55 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
           <header className="feedback-heading">
             <p className="section-kicker">Evidra Beta</p>
             <h1>帮助我们做得更好</h1>
-            <p>告诉我们哪里影响了理解、信任或完成审查。请勿在反馈中粘贴文章正文或其他敏感信息。</p>
+            <p>你的反馈会帮助我们改进审查体验。请勿粘贴文章正文、API 密钥或其他敏感信息。</p>
           </header>
 
-          <section className="feedback-form-launch" aria-labelledby="feedback-form-heading">
-            <span className="feedback-form-icon"><MessageSquareText aria-hidden="true" className="size-5" /></span>
-            <div>
-              <h2 id="feedback-form-heading">提交 Beta 使用反馈</h2>
-              <p>反馈将在 Google Form 中填写，Evidra 不在本页保存输入内容。</p>
+          <form className="feedback-form" onSubmit={(event) => event.preventDefault()}>
+            <div className="feedback-field">
+              <div className="feedback-field-heading">
+                <label htmlFor="feedback-problem">你遇到了什么问题？</label>
+                <span>{problem.length} / 1000</span>
+              </div>
+              <textarea
+                id="feedback-problem"
+                value={problem}
+                onChange={(event) => setProblem(event.target.value)}
+                maxLength={1000}
+                placeholder="请描述影响理解、信任或完成审查的问题…"
+              />
             </div>
-            {canOpenForm ? (
-              <a href={feedbackUrl} target="_blank" rel="noreferrer" className="feedback-primary-action">
-                打开反馈表
-                <ExternalLink aria-hidden="true" className="size-4" />
+
+            <div className="feedback-field">
+              <div className="feedback-field-heading">
+                <label htmlFor="feedback-improvement">你希望我们如何改进？</label>
+                <span>{improvement.length} / 1000</span>
+              </div>
+              <textarea
+                id="feedback-improvement"
+                value={improvement}
+                onChange={(event) => setImprovement(event.target.value)}
+                maxLength={1000}
+                placeholder="告诉我们更理想的体验、信息或操作方式…"
+              />
+            </div>
+
+            <div className="feedback-form-actions">
+              {canOpenForm ? (
+                <a href={feedbackUrl} target="_blank" rel="noreferrer" className="feedback-secondary-action">
+                  打开完整反馈表
+                  <ExternalLink aria-hidden="true" className="size-4" />
+                </a>
+              ) : null}
+              <a
+                href={canSubmit ? mailtoUrl : undefined}
+                aria-disabled={!canSubmit}
+                className={`feedback-primary-action ${canSubmit ? "" : "is-disabled"}`}
+              >
+                提交反馈
+                <ArrowRight aria-hidden="true" className="size-4" />
               </a>
-            ) : (
-              <span className="feedback-primary-action is-disabled" aria-disabled="true">反馈表暂不可用</span>
-            )}
-          </section>
+            </div>
+          </form>
 
           <section className="feedback-contact-section" aria-labelledby="feedback-contact-heading">
             <div>
@@ -87,7 +135,7 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
               </a>
               <div className="feedback-contact-row">
                 <span className="feedback-contact-icon is-wechat"><MessagesSquare aria-hidden="true" className="size-5" /></span>
-                <span><small>微信</small><strong>Du-jQ7</strong></span>
+                <span><small>绿泡泡</small><strong>Du-jQ7</strong></span>
                 <span className="feedback-contact-meta">添加时请备注 Evidra Beta</span>
               </div>
             </div>

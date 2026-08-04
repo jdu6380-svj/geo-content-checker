@@ -3,15 +3,18 @@
 import type { FormEvent, RefObject } from "react";
 import {
   ArrowRight,
+  BarChart3,
   Check,
   FileCheck2,
   FileSearch,
   FileText,
+  Lightbulb,
   Lock,
   RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 
+import { ReviewWorkflowStepper } from "@/components/review-workflow-stepper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,6 +72,14 @@ const EDITOR_PROCESS_STEPS = [
   { id: "recheck", label: "重新验证", description: "比较真实变化" },
 ] as const;
 
+const REVIEW_OUTPUTS = [
+  { label: "可信度评分", description: "综合评估内容质量", icon: BarChart3, tone: "is-purple" },
+  { label: "风险诊断", description: "定位问题与影响", icon: FileSearch, tone: "is-coral" },
+  { label: "证据清单", description: "核对来源与依据", icon: FileCheck2, tone: "is-blue" },
+  { label: "修改建议", description: "形成可执行方向", icon: Lightbulb, tone: "is-violet" },
+  { label: "复检对比", description: "验证修改后变化", icon: RotateCcw, tone: "is-sky" },
+] as const;
+
 export function EditorWorkspace({
   draft,
   contentLength,
@@ -113,15 +124,19 @@ export function EditorWorkspace({
         <div className="editor-main-column min-w-0">
           <header className="editor-task-header">
             <div>
-              <p className="section-kicker">内容审查</p>
-              <h2>{recheckContext ? "重新验证修改后的文章" : "开始一次可信度审查"}</h2>
-              <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "提交完整文章，获得可信度评分、风险诊断与原文证据。"}</p>
+              <p className="section-kicker">内容可信度审查</p>
+              <h2>{recheckContext ? "重新验证修改后的文章" : "让内容更容易被 AI 正确理解与引用"}</h2>
+              <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "面向内容创作者与运营团队的专业内容可信度审查工作台。"}</p>
             </div>
-            <span className={`editor-task-status ${inputStatus.className}`}>
-              <span aria-hidden="true" />
-              {inputStatus.label}
-            </span>
+            {hasInputIssue || recheckContext ? (
+              <span className={`editor-task-status ${inputStatus.className}`}>
+                <span aria-hidden="true" />
+                {inputStatus.label}
+              </span>
+            ) : null}
           </header>
+
+          <ReviewWorkflowStepper stage={workflowStage} />
 
           {recheckContext ? (
             <div className="editor-recheck-context flex flex-col gap-3 border-l-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -206,6 +221,7 @@ export function EditorWorkspace({
                   placeholder="粘贴或输入你的文章内容…"
                   className="editor-canvas field-sizing-fixed resize-y"
                 />
+                <p className="editor-content-guidance">建议粘贴完整正文，便于准确识别证据缺口与结构风险。</p>
                 {fieldErrors.content ? <span id="content-error" className="editor-field-error">{fieldErrors.content}</span> : null}
               </div>
 
@@ -220,7 +236,8 @@ export function EditorWorkspace({
             <footer className="editor-submit-row">
               <div className="editor-trust-row">
                 <span><Lock aria-hidden="true" className="size-3.5" />内容仅用于审查</span>
-                <span><FileCheck2 aria-hidden="true" className="size-3.5" />最多 12,000 字</span>
+                <span><ShieldCheck aria-hidden="true" className="size-3.5" />结果需要人工复核</span>
+                <span><FileCheck2 aria-hidden="true" className="size-3.5" />每日体验 10 次</span>
               </div>
               <Button type="submit" className="editor-primary">
                 {recheckContext ? "运行重新验证" : "开始可信度审查"}
@@ -228,6 +245,21 @@ export function EditorWorkspace({
               </Button>
             </footer>
           </form>
+
+          <section className="editor-outcome-panel" aria-labelledby="editor-outcome-heading">
+            <h3 id="editor-outcome-heading">你将获得</h3>
+            <div className="editor-outcome-grid">
+              {REVIEW_OUTPUTS.map(({ label, description, icon: Icon, tone }) => (
+                <div key={label} className="editor-outcome-item">
+                  <span className={`editor-outcome-icon ${tone}`}><Icon aria-hidden="true" className="size-4" /></span>
+                  <span>
+                    <strong>{label}</strong>
+                    <small>{description}</small>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
 
         <aside className="editor-context-column" aria-label="当前审查上下文">

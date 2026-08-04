@@ -38,6 +38,11 @@ export function ReportActionRail({
         </div>
       </div>
 
+      <div className="report-next-action-copy">
+        <strong>下一步建议</strong>
+        <p>先查看高风险诊断与原文证据，再决定是否进入修改建议。</p>
+      </div>
+
       <div className="report-completion-actions">
         {restoredFromCache && !contentAvailable ? (
           <button type="button" onClick={onBackToEditor} className="report-completion-button is-primary">
