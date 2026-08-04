@@ -220,32 +220,6 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
   const modeDescription = activeMode === "advice"
     ? "把诊断中的证据缺口和结构问题整理为可执行清单，明确为什么改、改什么。"
       : "生成基于证据约束的修改参考材料，不替代完整改稿与事实审核。";
-  const workflowSteps = [
-    {
-      label: "理解诊断",
-      meta: `${diagnosticResults.length} 项诊断已汇总`,
-      icon: ListChecks,
-      state: "complete",
-    },
-    {
-      label: "准备材料",
-      meta: activePatch.status === "success" ? `${activePatch.data.actions.length} 项材料已生成` : "选择建议或内容草稿",
-      icon: FileCheck2,
-      state: activePatch.status === "success" ? "complete" : "current",
-    },
-    {
-      label: "人工应用",
-      meta: "核对事实、语气与边界",
-      icon: UserRoundCheck,
-      state: activePatch.status === "success" ? "current" : "pending",
-    },
-    {
-      label: "重新验证",
-      meta: "对照修改前后真实变化",
-      icon: RotateCcw,
-      state: "pending",
-    },
-  ] as const;
 
   return (
     <section id="patch-workshop" className="patch-workshop section-anchor min-w-0" aria-busy={activePatch.status === "loading"}>
@@ -263,28 +237,21 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
         </span>
       </div>
 
-      <ol className="patch-workflow-map mt-4 grid overflow-hidden sm:grid-cols-2 xl:grid-cols-4" aria-label="修改与重新验证流程">
-        {workflowSteps.map((step, index) => {
-          const Icon = step.icon;
-          return (
-            <li
-              key={step.label}
-              className={`patch-workflow-step is-${step.state}`}
-              aria-current={step.state === "current" ? "step" : undefined}
-            >
-              <span className="patch-workflow-index">0{index + 1}</span>
-              <span className="patch-workflow-icon">
-                <Icon aria-hidden="true" className="size-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-[var(--geo-text)]">{step.label}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-[var(--geo-text-soft)]">{step.meta}</span>
-              </span>
-              {index < workflowSteps.length - 1 ? <ArrowRight aria-hidden="true" className="patch-workflow-arrow" /> : null}
-            </li>
-          );
-        })}
-      </ol>
+      <div
+        className="mt-4 flex flex-col gap-2 border-y border-[var(--geo-border)] py-3 sm:flex-row sm:items-center sm:gap-4"
+        role="group"
+        aria-label="修改与重新验证流程"
+      >
+        <div className="flex min-w-0 items-center gap-2" aria-current="step">
+          <span className="geo-muted text-xs font-medium">当前</span>
+          <span className="geo-heading text-sm font-semibold">准备修改材料</span>
+        </div>
+        <ArrowRight aria-hidden="true" className="hidden size-4 shrink-0 text-[var(--geo-text-soft)] sm:block" />
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="geo-muted text-xs font-medium">下一步</span>
+          <span className="geo-body text-sm font-semibold">重新验证</span>
+        </div>
+      </div>
 
       <div className="patch-mode-switch mt-4 grid overflow-hidden sm:grid-cols-2" aria-label="修改材料类型">
         <button
@@ -536,7 +503,7 @@ export function PatchWorkshop({ title, paragraphs, diagnostics, runId, onBackToE
           <span className="patch-review-number mt-0.5">04</span>
           <div>
             <h3 className="text-sm font-semibold text-[var(--geo-text)]">人工应用后，用同一套规则重新验证</h3>
-            <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">Evidra 会保留修改前 Baseline；复检完成后分别展示改善、无变化、下降与不可比较。</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">Evidra 会保留修改前基线；复检完成后分别展示改善、无变化、下降与不可比较。</p>
           </div>
         </div>
         <button type="button" onClick={onBackToEditor} className="secondary-button h-10 w-full shrink-0 px-4 text-sm font-semibold sm:w-auto">

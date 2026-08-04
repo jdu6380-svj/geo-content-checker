@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { EditorWorkspace } from "@/components/editor-workspace";
 import { ReportWorkspace } from "@/components/report-workspace";
+import { WorkspaceSidebar } from "@/components/workspace-sidebar";
 import {
   WorkspaceCommandBar,
   type WorkspaceStage,
@@ -888,13 +889,7 @@ export default function Home() {
     });
   }
 
-  const workspaceAction = workspaceStage === "review" || workspaceStage === "recheck"
-    ? { label: workspaceStage === "recheck" ? "编辑原文" : "开始输入", onAction: focusEditor }
-    : workspaceStage === "advice"
-      ? { label: "查看修改建议", onAction: openAdviceStage }
-      : workspaceFlowComplete
-        ? { label: "查看关键诊断", onAction: () => scrollToSection("diagnostic-section") }
-        : undefined;
+  const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL;
 
   return (
     <main className="app-shell">
@@ -902,28 +897,41 @@ export default function Home() {
         analysisStarted={analysisStarted}
         onShowEditor={() => (analysisStarted ? openEditorForRecheck() : focusEditor())}
         onNewAnalysis={startNewAnalysis}
-        feedbackUrl={process.env.NEXT_PUBLIC_FEEDBACK_URL}
+        feedbackUrl={feedbackUrl}
         onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
+        navigation={(
+          <WorkspaceCommandBar
+            stage={workspaceStage}
+            status={workspaceStatus}
+            title={draft.title}
+            canOpenReport={analysisStarted}
+            canOpenAdvice={canOpenAdvice}
+            canOpenRecheck={canOpenRecheck}
+            onOpenReview={openReviewStage}
+            onOpenReport={openReportStage}
+            onOpenAdvice={openAdviceStage}
+            onOpenRecheck={openRecheckStage}
+          />
+        )}
       />
 
-      <WorkspaceCommandBar
-        stage={workspaceStage}
-        status={workspaceStatus}
-        title={draft.title}
-        canOpenReport={analysisStarted}
-        canOpenAdvice={canOpenAdvice}
-        canOpenRecheck={canOpenRecheck}
-        onOpenReview={openReviewStage}
-        onOpenReport={openReportStage}
-        onOpenAdvice={openAdviceStage}
-        onOpenRecheck={openRecheckStage}
-        actionLabel={workspaceAction?.label}
-        onAction={workspaceAction?.onAction}
-      />
+      <div className="workspace-shell-layout">
+        <WorkspaceSidebar
+          stage={workspaceStage}
+          canOpenReport={analysisStarted}
+          canOpenAdvice={canOpenAdvice}
+          canOpenRecheck={canOpenRecheck}
+          onOpenReview={openReviewStage}
+          onOpenReport={openReportStage}
+          onOpenAdvice={openAdviceStage}
+          onOpenRecheck={openRecheckStage}
+          feedbackUrl={feedbackUrl}
+          onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
+        />
 
-      <div>
-        {analysisStarted ? (
-          <ReportWorkspace
+        <div className="workspace-shell-content">
+          {analysisStarted ? (
+            <ReportWorkspace
             title={draft.title}
             contentAvailable={Boolean(draft.content)}
             reportStatus={reportStatus()}
@@ -968,9 +976,9 @@ export default function Home() {
             onSubmitFollowUp={submitFollowUp}
             onDiagnosisFeedback={submitDiagnosisFeedback}
             onScrollToSection={scrollToSection}
-          />
-        ) : (
-          <EditorWorkspace
+            />
+          ) : (
+            <EditorWorkspace
             draft={draft}
             contentLength={contentLength}
             maxArticleCharacters={MAX_ARTICLE_CHARACTERS}
@@ -988,8 +996,9 @@ export default function Home() {
             onSubmit={submit}
             onDraftChange={updateDraft}
             onLoadSample={(index) => handleLoadSample(SAMPLES[index])}
-          />
-        )}
+            />
+          )}
+        </div>
       </div>
     </main>
   );

@@ -100,11 +100,9 @@ export function ReportScoreRail({
         </div>
       </div>
       {band ? (
-        <div className="mt-4 text-center">
-          <span className={`status-badge inline-flex px-2.5 py-1 text-[11px] font-semibold ${BAND_STYLE[band.label] ?? "status-neutral"}`}>
-            {band.label}
-          </span>
-          <p className="mx-auto mt-2 max-w-56 text-xs leading-5 text-[var(--geo-text-muted)]">{band.note}</p>
+        <div className="score-band-summary mt-4 text-center">
+          <strong className={BAND_STYLE[band.label] ?? "status-neutral"}>{band.label}</strong>
+          <p>{band.note}</p>
         </div>
       ) : null}
       <p className="mt-4 border-t border-[var(--geo-border)] pt-4 text-center text-[11px] leading-5 text-[var(--geo-text-soft)]">

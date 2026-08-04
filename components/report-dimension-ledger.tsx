@@ -1,5 +1,3 @@
-import { Clock3, FileCheck2, LayoutList, MessagesSquare } from "lucide-react";
-
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
 
 type ReportDimensionLedgerProps = {
@@ -7,10 +5,10 @@ type ReportDimensionLedgerProps = {
 };
 
 const DIMENSIONS = [
-  { key: "questionCoverage", label: "问题覆盖度", description: "是否覆盖用户与 AI 搜索可能提出的核心问题", icon: MessagesSquare, barClassName: "score-bar-question" },
-  { key: "factCompleteness", label: "事实完整度", description: "关键判断是否具备事实、来源与适用边界", icon: FileCheck2, barClassName: "score-bar-fact" },
-  { key: "structureClarity", label: "结构清晰度", description: "信息层级是否便于理解、扫描与引用", icon: LayoutList, barClassName: "score-bar-structure" },
-  { key: "freshness", label: "时效性", description: "发布日期、更新时间与适用版本是否清楚", icon: Clock3, barClassName: "score-bar-freshness" },
+  { key: "questionCoverage", label: "问题覆盖度", description: "是否覆盖用户与 AI 搜索可能提出的核心问题", barClassName: "score-bar-question" },
+  { key: "factCompleteness", label: "事实完整度", description: "关键判断是否具备事实、来源与适用边界", barClassName: "score-bar-fact" },
+  { key: "structureClarity", label: "结构清晰度", description: "信息层级是否便于理解、扫描与引用", barClassName: "score-bar-structure" },
+  { key: "freshness", label: "时效性", description: "时间与适用版本是否清楚", barClassName: "score-bar-freshness" },
 ] as const;
 
 export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
@@ -18,8 +16,8 @@ export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
     <section className="report-dimension-ledger border-t border-[var(--geo-border)]" aria-labelledby="dimension-ledger-heading">
       <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4 sm:px-6">
         <div>
-          <p className="section-kicker">评分维度</p>
-          <h2 id="dimension-ledger-heading" className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">四项评分明细</h2>
+          <p className="section-kicker">评分账本</p>
+          <h2 id="dimension-ledger-heading" className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">评分维度</h2>
         </div>
         <span className="text-xs font-semibold text-[var(--geo-text-soft)]">合计 100 分</span>
       </div>
@@ -32,18 +30,16 @@ export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
           <span>评分依据</span>
         </div>
         <ol>
-          {DIMENSIONS.map(({ key, label, description, icon: Icon, barClassName }, index) => {
+          {DIMENSIONS.map(({ key, label, description, barClassName }, index) => {
             const dimension = report.dimensions[key];
             const percentage = Math.round((dimension.score / dimension.max) * 100);
             return (
               <li key={key} className="report-dimension-row px-5 py-4 sm:px-6">
                 <div className="flex min-w-0 items-start gap-3">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--geo-border)] bg-[var(--geo-surface-subtle)] text-[var(--geo-info)]">
-                    <Icon aria-hidden="true" className="size-4" />
-                  </span>
+                  <span className="report-dimension-index">{String(index + 1).padStart(2, "0")}</span>
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-[var(--geo-text-heading)]">{label}</span>
-                    <span className="sr-only">{String(index + 1).padStart(2, "0")} · {description}</span>
+                    <span className="sr-only">{description}</span>
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline gap-1 md:mt-0">

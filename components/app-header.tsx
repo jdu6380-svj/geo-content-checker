@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, ShieldCheck } from "lucide-react";
-import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { EvidraBrandMark } from "@/components/evidra-brand-mark";
@@ -12,6 +12,7 @@ type AppHeaderProps = {
   onNewAnalysis: () => void;
   feedbackUrl?: string;
   onFeedbackClick: () => void;
+  navigation: ReactNode;
 };
 
 export function AppHeader({
@@ -20,10 +21,11 @@ export function AppHeader({
   onNewAnalysis,
   feedbackUrl,
   onFeedbackClick,
+  navigation,
 }: AppHeaderProps) {
   return (
     <header className="app-header sticky top-0 z-40 border-b">
-      <div className="mx-auto flex h-[var(--app-header-height)] max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-10">
+      <div className="app-header-grid h-[var(--app-header-height)]">
         <button
           type="button"
           onClick={onShowEditor}
@@ -37,21 +39,9 @@ export function AppHeader({
           </span>
         </button>
 
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <span className="hidden items-center gap-3 lg:inline-flex">
-            <Link
-              href="/privacy"
-              className="app-utility-link"
-            >
-              隐私
-            </Link>
-            <Link
-              href="/terms"
-              className="app-utility-link"
-            >
-              条款
-            </Link>
-          </span>
+        <div className="app-header-navigation min-w-0">{navigation}</div>
+
+        <div className="app-header-actions flex items-center justify-end gap-2 sm:gap-3">
           {feedbackUrl ? (
             <a
               href={feedbackUrl}
@@ -63,17 +53,16 @@ export function AppHeader({
               反馈
             </a>
           ) : null}
+          <span className="app-beta-status inline-flex items-center gap-1.5 border px-2.5 py-1.5">
+            <ShieldCheck aria-hidden="true" className="size-3.5" />
+            受控 Beta
+          </span>
           {analysisStarted ? (
-            <Button type="button" onClick={onNewAnalysis} className="app-new-analysis h-9 px-3.5 text-xs font-semibold">
+            <Button type="button" onClick={onNewAnalysis} className="app-new-analysis h-9 px-3 text-xs font-semibold">
               <Plus aria-hidden="true" className="size-3.5" />
               新建审查
             </Button>
-          ) : (
-            <span className="app-beta-status hidden items-center gap-1.5 border px-2.5 py-1.5 min-[480px]:inline-flex">
-              <ShieldCheck aria-hidden="true" className="size-3.5" />
-              受控 Beta
-            </span>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

@@ -51,6 +51,12 @@ const ANSWERABILITY_STYLE = {
   "有风险": "report-answerability-danger",
 } as const;
 
+const EVIDENCE_LABEL = {
+  valid: "证据有效",
+  missing: "证据缺失",
+  invalid: "证据无效",
+} as const;
+
 export function ReportContextRail({
   title,
   reportStatus,
@@ -68,6 +74,10 @@ export function ReportContextRail({
     const item = diagnostics[question];
     return item?.status === "success" && item.data ? [item] : [];
   });
+  const keyFindings = diagnosticItems
+    .flatMap((item) => item.data ? [{ question: item.question, data: item.data }] : [])
+    .sort((left, right) => RISK_PRIORITY[right.data.riskLevel] - RISK_PRIORITY[left.data.riskLevel])
+    .slice(0, 3);
   const priorityItem = diagnosticItems.reduce<(typeof diagnosticItems)[number] | null>(
     (current, item) => {
       if (!current || !current.data || !item.data) return item;
@@ -206,6 +216,40 @@ export function ReportContextRail({
       </div>
 
       {scoring.status === "success" ? <ReportDimensionLedger report={scoring.data} /> : null}
+
+      <section className="report-key-findings" aria-labelledby="report-key-findings-heading">
+        <header className="report-key-findings-header">
+          <div>
+            <p className="section-kicker">关键发现</p>
+            <h2 id="report-key-findings-heading">关键发现</h2>
+          </div>
+          <span>{keyFindings.length ? `${keyFindings.length} 项优先结果` : "等待诊断"}</span>
+        </header>
+
+        {keyFindings.length ? (
+          <ol className="report-key-findings-list">
+            {keyFindings.map(({ question, data }, index) => {
+              const risk = RISK_META[data.riskLevel];
+              return (
+                <li key={question}>
+                  <button type="button" onClick={() => onFocusQuestion(question)}>
+                    <span className="report-finding-index">{String(index + 1).padStart(2, "0")}</span>
+                    <span className="report-finding-copy">
+                      <strong>{question}</strong>
+                      <small>{risk.impact}</small>
+                    </span>
+                    <span className={`report-finding-state ${risk.className}`}>{risk.label}</span>
+                    <span className="report-finding-evidence">{EVIDENCE_LABEL[data.evidenceStatus]}</span>
+                    <ArrowRight aria-hidden="true" className="report-finding-arrow size-4" />
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p className="report-key-findings-empty">诊断完成后，这里会列出需要优先处理的风险与证据状态。</p>
+        )}
+      </section>
     </section>
   );
 }

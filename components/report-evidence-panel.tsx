@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, CircleSlash2, Files } from "lucide-react";
+import { Files } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import type { DiagnosticsState } from "@/lib/client/report-state";
@@ -40,30 +40,6 @@ export function ReportEvidencePanel({
     ).size,
     0,
   );
-  const evidenceStates = [
-    {
-      status: "valid" as const,
-      label: "有效",
-      count: counts.valid,
-      icon: CheckCircle2,
-      className: "geo-tone-success",
-    },
-    {
-      status: "missing" as const,
-      label: "缺失",
-      count: counts.missing,
-      icon: CircleSlash2,
-      className: "geo-tone-warning",
-    },
-    {
-      status: "invalid" as const,
-      label: "无效",
-      count: counts.invalid,
-      icon: AlertTriangle,
-      className: "geo-tone-danger",
-    },
-  ];
-
   return (
     <section id="evidence-section" className="report-evidence-panel section-anchor surface-flat min-w-0">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:px-6">
@@ -71,23 +47,12 @@ export function ReportEvidencePanel({
           <p className="section-kicker">证据链</p>
           <h2 className="geo-heading mt-1.5 text-xl font-semibold">原文证据账本</h2>
         </div>
-        <span className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--geo-text-muted)]">
-          <Files aria-hidden="true" className="size-4 text-[var(--geo-info)]" />
-          {literalEvidenceCount} 条逐字引用
-        </span>
-      </div>
-
-      <div className="evidence-status-summary grid grid-cols-3 border-b border-[var(--geo-border)]">
-        {evidenceStates.map((state) => {
-          const Icon = state.icon;
-          return (
-            <div key={state.status} className="flex min-w-0 items-center gap-2 px-4 py-3 sm:px-5">
-              <Icon aria-hidden="true" className={`size-4 shrink-0 ${state.className}`} />
-              <span className="min-w-0 text-xs font-semibold text-[var(--geo-text-muted)]">{state.label}</span>
-              <strong className="ml-auto text-base tabular-nums text-[var(--geo-text-heading)]">{state.count}</strong>
-            </div>
-          );
-        })}
+        <div className="evidence-header-summary">
+          <span><Files aria-hidden="true" className="size-4" />{literalEvidenceCount} 条逐字引用</span>
+          <span className="evidence-count-valid">有效 {counts.valid}</span>
+          <span className="evidence-count-missing">缺失 {counts.missing}</span>
+          <span className="evidence-count-invalid">无效 {counts.invalid}</span>
+        </div>
       </div>
 
       {records.length ? (

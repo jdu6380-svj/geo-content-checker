@@ -3,13 +3,18 @@
 import type { FormEvent, RefObject } from "react";
 import {
   ArrowRight,
+  BarChart3,
+  CircleGauge,
   FileCheck2,
+  FileSearch,
   FileText,
   Lock,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 
+import { ReviewWorkflowStepper } from "@/components/review-workflow-stepper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,7 +58,21 @@ type EditorWorkspaceProps = {
   onLoadSample: (index: number) => void;
 };
 
-const REVIEW_OUTCOMES = ["可信度评分", "证据链", "风险诊断", "修改建议", "复检对比"] as const;
+const REVIEW_OUTCOMES = [
+  { label: "可信度评分", description: "综合评估内容准备度", icon: CircleGauge },
+  { label: "风险诊断", description: "定位问题与影响", icon: BarChart3 },
+  { label: "证据清单", description: "核对来源与引用", icon: FileSearch },
+  { label: "修改建议", description: "形成辅助修改材料", icon: Sparkles },
+  { label: "复检对比", description: "验证修改前后变化", icon: RotateCcw },
+] as const;
+
+const EDITOR_PROCESS_STEPS = [
+  { id: "review", label: "提交内容", description: "等待完整文章" },
+  { id: "report", label: "生成报告", description: "评分与风险" },
+  { id: "advice", label: "获取建议", description: "基于证据" },
+  { id: "edit", label: "修改内容", description: "人工确认后应用" },
+  { id: "recheck", label: "重新验证", description: "对比真实变化" },
+] as const;
 
 export function EditorWorkspace({
   draft,
@@ -65,6 +84,7 @@ export function EditorWorkspace({
   titleRef,
   contentRef,
   samples,
+  dimensions,
   recheckContext,
   onSubmit,
   onDraftChange,
@@ -85,86 +105,61 @@ export function EditorWorkspace({
         ? { label: recheckContext ? "修改中" : "草稿编辑中", className: "status-info" }
         : { label: recheckContext ? "等待修改" : "等待输入", className: "status-neutral" };
 
+  const workflowStage = recheckContext ? "recheck" : "review";
+  const processActiveIndex = workflowStage === "recheck" ? 4 : 0;
+  const nextAction = readyForReview
+    ? recheckContext ? "运行重新验证" : "开始可信度审查"
+    : "完成文章输入";
+
   return (
-    <section className="editor-workspace min-h-[calc(100vh-var(--app-header-height))] px-4 py-6 text-[var(--geo-text)] sm:px-6 sm:py-8 lg:px-10 lg:py-10">
-      <h1 className="sr-only">Evidra：AI 搜索时代的内容可信度审查平台</h1>
+    <section className="editor-workspace text-[var(--geo-text)]">
+      <h1 className="sr-only">Evidra 内容可信度审查工作台</h1>
 
-      <div className="mx-auto max-w-[1120px]">
-        <header className="editor-page-heading">
-          <div className="min-w-0 max-w-[780px]">
-            <p className="editor-kicker">EVIDRA · 内容可信度审查</p>
-            <h2 className="editor-page-title mt-2">提交文章，获取可信度审查报告</h2>
-            <p className="editor-page-summary mt-3">
-              在发布前核对关键判断、原文证据与内容风险，并获得可执行的修改与复检路径。
-            </p>
-            <div className="editor-outcome-line mt-4" aria-label="审查结果范围">
-              {REVIEW_OUTCOMES.map((label) => <span key={label}>{label}</span>)}
-            </div>
-          </div>
-          <span className="editor-page-meta mt-4 inline-flex items-center gap-1.5 lg:mt-0">
-            <Lock aria-hidden="true" className="size-3.5" />
-            草稿仅保存在本地
-          </span>
-        </header>
+      <div className="editor-workspace-grid">
+        <div className="editor-main-column min-w-0">
+          <ReviewWorkflowStepper stage={workflowStage} />
 
-        {recheckContext ? (
-          <div className="editor-recheck-context mt-5 flex flex-col gap-3 border-l-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--geo-primary)]" />
-              <div>
-                <p className="text-sm font-semibold text-[var(--geo-text-heading)]">准备重新验证</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">应用人工确认后的修改，再运行同一套完整审查。</p>
+          {recheckContext ? (
+            <div className="editor-recheck-context flex flex-col gap-3 border-l-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--geo-primary)]" />
+                <div>
+                  <p className="text-sm font-semibold text-[var(--geo-text-heading)]">准备重新验证</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">应用人工确认后的修改，再运行同一套完整审查。</p>
+                </div>
               </div>
-            </div>
-            <span className="shrink-0 font-mono text-xs font-semibold text-[var(--geo-primary)]">
-              修改前 {recheckContext.score} 分 · {recheckContext.issueCount} 项需关注
-            </span>
-          </div>
-        ) : null}
-
-        <div className="editor-frame mt-6 overflow-hidden rounded-lg border border-[var(--geo-border)] bg-white">
-          <div className="editor-frame-bar flex min-h-14 items-center justify-between gap-4 border-b border-[var(--geo-border)] px-4 sm:px-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="editor-frame-icon grid size-8 shrink-0 place-items-center rounded-md border">
-                <FileText aria-hidden="true" className="size-4" />
+              <span className="shrink-0 font-mono text-xs font-semibold text-[var(--geo-primary)]">
+                修改前 {recheckContext.score} 分 · {recheckContext.issueCount} 项需关注
               </span>
-              <div className="min-w-0">
-                <h3 className="truncate text-sm font-semibold text-[var(--geo-text-heading)]">
-                  {recheckContext ? "编辑并重新验证" : "新建内容审查"}
-                </h3>
-                <p className="mt-0.5 text-[11px] text-[var(--geo-text-soft)]">标题与完整正文可提高证据定位质量</p>
-              </div>
             </div>
-            <span
-              aria-live="polite"
-              className={`editor-status ${inputStatus.className} inline-flex shrink-0 items-center gap-1.5 border px-2.5 py-1 text-[10px] font-semibold`}
-            >
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-current opacity-70" />
-              {inputStatus.label}
-            </span>
-          </div>
+          ) : null}
 
-          <form onSubmit={onSubmit} className="p-4 sm:p-6 lg:p-8">
-            {!recheckContext && samples.length ? (
-              <div className="editor-sample-toolbar mb-6 flex flex-wrap items-center gap-2" aria-label="示例文章">
-                <span className="mr-1 text-xs font-semibold text-[var(--geo-text-muted)]">从示例开始</span>
-                {samples.map((sample, index) => (
-                  <button
-                    key={sample.id}
-                    type="button"
-                    onClick={() => onLoadSample(index)}
-                    aria-label={`载入样本：${sample.title}`}
-                    className="editor-sample-button"
-                    title={sample.description}
-                  >
-                    示例 {index + 1} · {sample.status}
-                  </button>
-                ))}
+          <form onSubmit={onSubmit} className="editor-review-panel">
+            <header className="editor-review-panel-header">
+              <div>
+                <h3>输入要审查的内容</h3>
+                <p>完整标题与正文有助于准确定位原文证据。</p>
               </div>
-            ) : null}
+              {!recheckContext && samples.length ? (
+                <div className="editor-sample-toolbar" aria-label="示例文章">
+                  <span>从示例开始</span>
+                  {samples.map((sample, index) => (
+                    <button
+                      key={sample.id}
+                      type="button"
+                      onClick={() => onLoadSample(index)}
+                      aria-label={`载入样本：${sample.title}`}
+                      title={sample.description}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </header>
 
-            <div className="grid gap-6">
-              <div className="space-y-2">
+            <div className="editor-review-fields">
+              <div className="editor-review-field">
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="article-title" className="editor-field-label">文章标题</Label>
                   <span className="editor-field-hint">{titleLength} / 120</span>
@@ -178,18 +173,14 @@ export function EditorWorkspace({
                   autoComplete="off"
                   aria-invalid={Boolean(fieldErrors.title)}
                   aria-describedby={fieldErrors.title ? "title-error" : undefined}
-                  placeholder="输入文章标题"
-                  className="editor-title-input h-12 rounded-md border-[var(--geo-border)] bg-white px-4 text-[15px] font-medium shadow-none"
+                  placeholder="输入文章标题（必填）"
+                  className="editor-title-input"
                 />
-                {fieldErrors.title ? (
-                  <span id="title-error" className="block text-xs font-medium text-[var(--geo-status-danger)]">
-                    {fieldErrors.title}
-                  </span>
-                ) : null}
+                {fieldErrors.title ? <span id="title-error" className="editor-field-error">{fieldErrors.title}</span> : null}
               </div>
 
-              <div className="min-w-0">
-                <div className="mb-2 flex items-center justify-between gap-4">
+              <div className="editor-review-field editor-content-field">
+                <div className="flex items-center justify-between gap-4">
                   <Label htmlFor="article-content" className="editor-field-label">正文内容</Label>
                   <span
                     aria-live="polite"
@@ -208,46 +199,104 @@ export function EditorWorkspace({
                   autoComplete="off"
                   aria-invalid={Boolean(fieldErrors.content)}
                   aria-describedby={fieldErrors.content ? "content-error" : undefined}
-                  placeholder="粘贴完整正文或直接输入内容"
-                  className="editor-canvas field-sizing-fixed min-h-[240px] resize-y rounded-md border border-[var(--geo-border)] bg-[var(--geo-surface-subtle)] p-4 text-sm leading-7 shadow-none placeholder:text-[var(--geo-soft)] focus-visible:bg-white md:text-[15px]"
+                  placeholder="粘贴或输入你的文章内容…"
+                  className="editor-canvas field-sizing-fixed resize-y"
                 />
-                {fieldErrors.content ? (
-                  <span id="content-error" className="mt-2 block text-xs font-medium text-[var(--geo-status-danger)]">
-                    {fieldErrors.content}
-                  </span>
-                ) : null}
+                {fieldErrors.content ? <span id="content-error" className="editor-field-error">{fieldErrors.content}</span> : null}
+                <p className="editor-content-guidance">建议粘贴完整正文，便于准确审查。</p>
               </div>
+
+              {error ? (
+                <p role="alert" className="editor-form-error">
+                  <span className="editor-form-error-mark" aria-hidden="true">!</span>
+                  <span>{error}</span>
+                </p>
+              ) : null}
             </div>
 
-            {error ? (
-              <p role="alert" className="editor-form-error mt-5 rounded-md border px-4 py-3 text-sm">
-                <span className="editor-form-error-mark" aria-hidden="true">!</span>
-                <span>{error}</span>
-              </p>
-            ) : null}
-
-            <footer className="editor-submit-row mt-6 flex flex-col gap-4 border-t border-[var(--geo-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[var(--geo-text-muted)]">
-                <span className="inline-flex items-center gap-1.5">
-                  <Lock aria-hidden="true" className="size-3.5" />
-                  服务端不保存正文
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <ShieldCheck aria-hidden="true" className="size-3.5 text-[var(--geo-info)]" />
-                  结果需人工复核
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <FileCheck2 aria-hidden="true" className="size-3.5 text-[var(--geo-primary)]" />
-                  最多 12,000 字
-                </span>
+            <footer className="editor-submit-row">
+              <div className="editor-trust-row">
+                <span><Lock aria-hidden="true" className="size-3.5" />内容仅用于审查</span>
+                <span><ShieldCheck aria-hidden="true" className="size-3.5" />人工复核保障</span>
+                <span><FileCheck2 aria-hidden="true" className="size-3.5" />最多 12,000 字</span>
               </div>
-              <Button type="submit" className="editor-primary h-11 w-full shrink-0 rounded-md px-6 font-semibold text-white sm:w-auto">
+              <Button type="submit" className="editor-primary">
                 {recheckContext ? "运行重新验证" : "开始可信度审查"}
                 <ArrowRight aria-hidden="true" className="size-4" />
               </Button>
             </footer>
           </form>
+
+          <section className="editor-outcome-panel" aria-labelledby="editor-outcome-heading">
+            <h3 id="editor-outcome-heading">你将获得</h3>
+            <div className="editor-outcome-grid">
+              {REVIEW_OUTCOMES.map(({ label, description, icon: Icon }) => (
+                <div key={label} className="editor-outcome-item">
+                  <span className="editor-outcome-icon"><Icon aria-hidden="true" className="size-4" /></span>
+                  <span><strong>{label}</strong><small>{description}</small></span>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
+
+        <aside className="editor-context-column" aria-label="当前审查上下文">
+          <section className="workspace-context-card">
+            <div className="workspace-context-heading">
+              <p>当前审查</p>
+              <span className={`editor-context-status ${inputStatus.className}`}>{inputStatus.label}</span>
+            </div>
+            <dl className="editor-context-ledger">
+              <div><dt>输入状态</dt><dd>{hasTitle && hasContent ? "标题与正文已填写" : "等待完整文章内容"}</dd></div>
+              <div><dt>字数范围</dt><dd>{contentLength.toLocaleString()} / {maxArticleCharacters.toLocaleString()}</dd></div>
+              <div><dt>Evidence</dt><dd>{readyForReview ? "审查后生成逐字引用" : "等待审查"}</dd></div>
+            </dl>
+            <div className="editor-context-scope">
+              <p className="editor-context-subheading">审查范围</p>
+              <div className="editor-scope-list">
+                {dimensions.map((dimension, index) => (
+                  <div key={dimension.label}>
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <strong>{dimension.label}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="workspace-context-card">
+            <h3>审查流程</h3>
+            <div className="editor-process-list">
+              {EDITOR_PROCESS_STEPS.map((step, index) => {
+                const isActive = index === processActiveIndex;
+                const isComplete = index < processActiveIndex;
+                return (
+                  <div
+                    key={step.id}
+                    className={`editor-process-item ${isActive ? "is-active" : ""} ${isComplete ? "is-complete" : ""}`}
+                    aria-current={isActive ? "step" : undefined}
+                  >
+                    <span className="editor-process-marker" aria-hidden="true">
+                      {isComplete ? "✓" : ""}
+                    </span>
+                    <span className="editor-process-copy">
+                      <strong>{step.label}</strong>
+                      <small>{step.description}</small>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="editor-next-step">
+              <span className="editor-next-step-icon"><FileText aria-hidden="true" className="size-4" /></span>
+              <div>
+                <span className="editor-context-subheading">下一步</span>
+                <strong>{nextAction}</strong>
+                <p>{readyForReview ? "生成评分、风险、Evidence 与诊断结果。" : "填写标题和正文后即可开始。"}</p>
+              </div>
+            </div>
+          </section>
+        </aside>
       </div>
     </section>
   );

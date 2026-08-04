@@ -15,7 +15,7 @@ export type AnalysisFlowStep = {
 type AnalysisFlowStatusProps = {
   title: string;
   description: string;
-  steps: AnalysisFlowStep[];
+  steps?: AnalysisFlowStep[];
   tone: "loading" | "success" | "error";
 };
 
@@ -38,7 +38,7 @@ function StepIcon({ status }: { status: AnalysisFlowStepStatus }) {
 export function AnalysisFlowStatus({
   title,
   description,
-  steps,
+  steps = [],
   tone,
 }: AnalysisFlowStatusProps) {
   return (
@@ -61,26 +61,28 @@ export function AnalysisFlowStatus({
         </div>
       </div>
 
-      <ol className="analysis-flow-steps mt-2 grid overflow-hidden rounded-md border border-[var(--geo-border)] bg-white sm:grid-cols-2 xl:grid-cols-4">
-        {steps.map((step, index) => (
-          <li
-            key={step.id}
-            className={`analysis-flow-step analysis-flow-step-${step.status} flex min-w-0 items-center gap-2 border-b border-[var(--geo-border)] px-3 py-2.5 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0`}
-            aria-label={`${step.label}：${STATUS_LABEL[step.status]}`}
-          >
-            <span className="analysis-flow-step-icon grid size-7 shrink-0 place-items-center rounded-md border">
-              <StepIcon status={step.status} />
-            </span>
-            <span className="min-w-0">
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="geo-soft text-[10px] font-bold tabular-nums">{String(index + 1).padStart(2, "0")}</span>
-                <span className="geo-body text-xs font-semibold">{step.label}</span>
+      {steps.length ? (
+        <ol className="analysis-flow-steps mt-2 grid overflow-hidden rounded-md border border-[var(--geo-border)] bg-white sm:grid-cols-2 xl:grid-cols-4">
+          {steps.map((step, index) => (
+            <li
+              key={step.id}
+              className={`analysis-flow-step analysis-flow-step-${step.status} flex min-w-0 items-center gap-2 border-b border-[var(--geo-border)] px-3 py-2.5 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0`}
+              aria-label={`${step.label}：${STATUS_LABEL[step.status]}`}
+            >
+              <span className="analysis-flow-step-icon grid size-7 shrink-0 place-items-center rounded-md border">
+                <StepIcon status={step.status} />
               </span>
-              {step.meta ? <span className="geo-muted mt-0.5 block text-[10px] font-medium">{step.meta}</span> : null}
-            </span>
-          </li>
-        ))}
-      </ol>
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="geo-soft text-[10px] font-bold tabular-nums">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="geo-body text-xs font-semibold">{step.label}</span>
+                </span>
+                {step.meta ? <span className="geo-muted mt-0.5 block text-[10px] font-medium">{step.meta}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
     </section>
   );
 }

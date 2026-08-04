@@ -276,8 +276,8 @@ export function RecheckComparison({ baseline, current, status }: RecheckComparis
           <div className="recheck-dimension-table mt-4">
             <div className="recheck-dimension-head">
               <span>维度</span>
-              <span>Baseline</span>
-              <span>New Result</span>
+              <span>修改前</span>
+              <span>复检后</span>
               <span>变化</span>
             </div>
             {REPORT_DIMENSION_KEYS.map((key) => {
