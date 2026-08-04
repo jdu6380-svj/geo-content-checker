@@ -3,18 +3,15 @@
 import type { FormEvent, RefObject } from "react";
 import {
   ArrowRight,
-  BarChart3,
-  CircleGauge,
+  Check,
   FileCheck2,
   FileSearch,
   FileText,
   Lock,
   RotateCcw,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 
-import { ReviewWorkflowStepper } from "@/components/review-workflow-stepper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,20 +55,18 @@ type EditorWorkspaceProps = {
   onLoadSample: (index: number) => void;
 };
 
-const REVIEW_OUTCOMES = [
-  { label: "可信度评分", description: "综合评估内容准备度", icon: CircleGauge },
-  { label: "风险诊断", description: "定位问题与影响", icon: BarChart3 },
-  { label: "证据清单", description: "核对来源与引用", icon: FileSearch },
-  { label: "修改建议", description: "形成辅助修改材料", icon: Sparkles },
-  { label: "复检对比", description: "验证修改前后变化", icon: RotateCcw },
+const REVIEW_VALUES = [
+  { label: "提升内容可信度", description: "核对关键判断是否有依据", icon: ShieldCheck },
+  { label: "降低 AI 误读风险", description: "识别表达边界与信息缺口", icon: FileSearch },
+  { label: "增强引用机会", description: "检查原文证据是否可定位", icon: FileCheck2 },
+  { label: "优化内容质量", description: "形成可人工复核的修改方向", icon: FileText },
 ] as const;
 
 const EDITOR_PROCESS_STEPS = [
-  { id: "review", label: "提交内容", description: "等待完整文章" },
-  { id: "report", label: "生成报告", description: "评分与风险" },
-  { id: "advice", label: "获取建议", description: "基于证据" },
-  { id: "edit", label: "修改内容", description: "人工确认后应用" },
-  { id: "recheck", label: "重新验证", description: "对比真实变化" },
+  { id: "review", label: "提交内容", description: "填写完整文章" },
+  { id: "report", label: "生成报告", description: "查看评分与风险" },
+  { id: "advice", label: "修改建议", description: "核对证据后处理" },
+  { id: "recheck", label: "重新验证", description: "比较真实变化" },
 ] as const;
 
 export function EditorWorkspace({
@@ -84,7 +79,6 @@ export function EditorWorkspace({
   titleRef,
   contentRef,
   samples,
-  dimensions,
   recheckContext,
   onSubmit,
   onDraftChange,
@@ -106,7 +100,7 @@ export function EditorWorkspace({
         : { label: recheckContext ? "等待修改" : "等待输入", className: "status-neutral" };
 
   const workflowStage = recheckContext ? "recheck" : "review";
-  const processActiveIndex = workflowStage === "recheck" ? 4 : 0;
+  const processActiveIndex = workflowStage === "recheck" ? 3 : 0;
   const nextAction = readyForReview
     ? recheckContext ? "运行重新验证" : "开始可信度审查"
     : "完成文章输入";
@@ -117,7 +111,17 @@ export function EditorWorkspace({
 
       <div className="editor-workspace-grid">
         <div className="editor-main-column min-w-0">
-          <ReviewWorkflowStepper stage={workflowStage} />
+          <header className="editor-task-header">
+            <div>
+              <p className="section-kicker">内容审查</p>
+              <h2>{recheckContext ? "重新验证修改后的文章" : "开始一次可信度审查"}</h2>
+              <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "提交完整文章，获得可信度评分、风险诊断与原文证据。"}</p>
+            </div>
+            <span className={`editor-task-status ${inputStatus.className}`}>
+              <span aria-hidden="true" />
+              {inputStatus.label}
+            </span>
+          </header>
 
           {recheckContext ? (
             <div className="editor-recheck-context flex flex-col gap-3 border-l-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -137,8 +141,8 @@ export function EditorWorkspace({
           <form onSubmit={onSubmit} className="editor-review-panel">
             <header className="editor-review-panel-header">
               <div>
-                <h3>输入要审查的内容</h3>
-                <p>完整标题与正文有助于准确定位原文证据。</p>
+                <h3>文章内容</h3>
+                <p>标题与正文将用于本次可信度审查。</p>
               </div>
               {!recheckContext && samples.length ? (
                 <div className="editor-sample-toolbar" aria-label="示例文章">
@@ -203,7 +207,6 @@ export function EditorWorkspace({
                   className="editor-canvas field-sizing-fixed resize-y"
                 />
                 {fieldErrors.content ? <span id="content-error" className="editor-field-error">{fieldErrors.content}</span> : null}
-                <p className="editor-content-guidance">建议粘贴完整正文，便于准确审查。</p>
               </div>
 
               {error ? (
@@ -217,7 +220,6 @@ export function EditorWorkspace({
             <footer className="editor-submit-row">
               <div className="editor-trust-row">
                 <span><Lock aria-hidden="true" className="size-3.5" />内容仅用于审查</span>
-                <span><ShieldCheck aria-hidden="true" className="size-3.5" />人工复核保障</span>
                 <span><FileCheck2 aria-hidden="true" className="size-3.5" />最多 12,000 字</span>
               </div>
               <Button type="submit" className="editor-primary">
@@ -226,41 +228,23 @@ export function EditorWorkspace({
               </Button>
             </footer>
           </form>
-
-          <section className="editor-outcome-panel" aria-labelledby="editor-outcome-heading">
-            <h3 id="editor-outcome-heading">你将获得</h3>
-            <div className="editor-outcome-grid">
-              {REVIEW_OUTCOMES.map(({ label, description, icon: Icon }) => (
-                <div key={label} className="editor-outcome-item">
-                  <span className="editor-outcome-icon"><Icon aria-hidden="true" className="size-4" /></span>
-                  <span><strong>{label}</strong><small>{description}</small></span>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
 
         <aside className="editor-context-column" aria-label="当前审查上下文">
           <section className="workspace-context-card">
             <div className="workspace-context-heading">
-              <p>当前审查</p>
-              <span className={`editor-context-status ${inputStatus.className}`}>{inputStatus.label}</span>
+              <p>审查价值</p>
             </div>
-            <dl className="editor-context-ledger">
-              <div><dt>输入状态</dt><dd>{hasTitle && hasContent ? "标题与正文已填写" : "等待完整文章内容"}</dd></div>
-              <div><dt>字数范围</dt><dd>{contentLength.toLocaleString()} / {maxArticleCharacters.toLocaleString()}</dd></div>
-              <div><dt>Evidence</dt><dd>{readyForReview ? "审查后生成逐字引用" : "等待审查"}</dd></div>
-            </dl>
-            <div className="editor-context-scope">
-              <p className="editor-context-subheading">审查范围</p>
-              <div className="editor-scope-list">
-                {dimensions.map((dimension, index) => (
-                  <div key={dimension.label}>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{dimension.label}</strong>
-                  </div>
-                ))}
-              </div>
+            <div className="editor-value-list">
+              {REVIEW_VALUES.map(({ label, description, icon: Icon }) => (
+                <div key={label} className="editor-value-item">
+                  <span className="editor-value-icon"><Icon aria-hidden="true" className="size-4" /></span>
+                  <span>
+                    <strong>{label}</strong>
+                    <small>{description}</small>
+                  </span>
+                </div>
+              ))}
             </div>
           </section>
 
@@ -277,7 +261,7 @@ export function EditorWorkspace({
                     aria-current={isActive ? "step" : undefined}
                   >
                     <span className="editor-process-marker" aria-hidden="true">
-                      {isComplete ? "✓" : ""}
+                      {isComplete ? <Check className="size-3" /> : null}
                     </span>
                     <span className="editor-process-copy">
                       <strong>{step.label}</strong>
@@ -292,7 +276,7 @@ export function EditorWorkspace({
               <div>
                 <span className="editor-context-subheading">下一步</span>
                 <strong>{nextAction}</strong>
-                <p>{readyForReview ? "生成评分、风险、Evidence 与诊断结果。" : "填写标题和正文后即可开始。"}</p>
+                <p>{readyForReview ? "生成评分、风险、证据与诊断结果。" : "填写标题和正文后即可开始。"}</p>
               </div>
             </div>
           </section>

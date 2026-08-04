@@ -10,9 +10,9 @@ type ReportEvidencePanelProps = {
 };
 
 const STATUS_DETAIL = {
-  valid: "引用已通过原文逐字校验。",
-  missing: "原文缺少足够依据。",
-  invalid: "引用未通过逐字校验。",
+  valid: "已通过原文逐字校验",
+  missing: "原文缺少足够依据",
+  invalid: "未通过逐字校验",
 } as const;
 
 export function ReportEvidencePanel({
@@ -44,7 +44,7 @@ export function ReportEvidencePanel({
     <section id="evidence-section" className="report-evidence-panel section-anchor surface-flat min-w-0">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:px-6">
         <div>
-          <p className="section-kicker">证据链</p>
+          <p className="section-kicker">可审计依据</p>
           <h2 className="geo-heading mt-1.5 text-xl font-semibold">原文证据账本</h2>
         </div>
         <div className="evidence-header-summary">

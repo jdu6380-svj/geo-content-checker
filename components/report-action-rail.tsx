@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, ClipboardCheck, FilePenLine, RotateCcw } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCheck, FilePenLine, RotateCcw } from "lucide-react";
 
 type ReportActionRailProps = {
   completedCount: number;
@@ -23,103 +23,61 @@ export function ReportActionRail({
 }: ReportActionRailProps) {
   const diagnosticsComplete = Boolean(totalCount && completedCount === totalCount);
   const patchAvailable = diagnosticsComplete && contentAvailable;
-  const steps = [
-    {
-      id: "diagnostic-section",
-      icon: ClipboardCheck,
-      label: "核对诊断与证据",
-      meta: totalCount
-        ? `${completedCount} / ${totalCount} 项诊断，${evidenceCount} 条逐字引用`
-        : "等待诊断结果",
-      state: diagnosticsComplete ? "complete" as const : "active" as const,
-      disabled: false,
-      onClick: () => onScrollToSection("diagnostic-section"),
-    },
-    {
-      id: "patch-workshop",
-      icon: FilePenLine,
-      label: "准备修改材料",
-      meta: patchAvailable
-        ? "建议与内容草稿可用，应用前需人工复核"
-        : contentAvailable
-          ? "完成诊断核对后进入"
-          : "需要先恢复文章正文",
-      state: patchAvailable ? "available" as const : "locked" as const,
-      disabled: !patchAvailable,
-      onClick: () => onScrollToSection("patch-workshop"),
-    },
-    {
-      id: "recheck",
-      icon: RotateCcw,
-      label: "修改后重新验证",
-      meta: "返回编辑器应用修改，再运行同一套审查进行对比",
-      state: "pending" as const,
-      disabled: !contentAvailable,
-      onClick: onBackToEditor,
-    },
-  ];
 
   return (
-    <aside className="report-action-rail surface-flat min-w-0 p-4 sm:p-5" aria-label="下一步操作">
-      <div className="border-b border-[var(--geo-border)] pb-4">
-        <p className="section-kicker">下一步</p>
-        <h2 className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">处理当前风险</h2>
+    <aside className="report-action-rail surface-flat min-w-0" aria-label="报告完成后的操作">
+      <div className={`report-completion-heading ${diagnosticsComplete ? "is-complete" : "is-pending"}`}>
+        <span className="report-completion-icon" aria-hidden="true"><CheckCircle2 className="size-5" /></span>
+        <div>
+          <p>{diagnosticsComplete ? "审查报告已生成" : "正在生成审查报告"}</p>
+          <span>
+            {totalCount
+              ? `${completedCount} / ${totalCount} 项诊断，${evidenceCount} 条逐字引用`
+              : "正在等待诊断结果"}
+          </span>
+        </div>
       </div>
 
-      <ol className="report-action-list mt-2">
-        {steps.map((step, index) => {
-          const Icon = step.icon;
-          return (
-            <li key={step.id}>
-              <button
-                type="button"
-                onClick={step.onClick}
-                disabled={step.disabled}
-                className={`report-action-step group grid w-full grid-cols-[24px_minmax(0,1fr)_16px] items-center gap-3 border-b border-[var(--geo-border)] px-1 py-3 text-left last:border-b-0 disabled:cursor-not-allowed disabled:opacity-50 ${step.state === "available" || step.state === "active" ? "is-next" : ""}`}
-              >
-                <span className="grid size-6 place-items-center rounded-md border border-[var(--geo-border)] bg-white text-[9px] font-bold text-[var(--geo-text-soft)]">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="min-w-0">
-                  <span className="flex items-center gap-2 text-sm font-semibold text-[var(--geo-text-heading)]">
-                    <Icon aria-hidden="true" className="size-3.5 text-[var(--geo-text-muted)] group-hover:text-[var(--geo-primary)]" />
-                    {step.label}
-                  </span>
-                  <span className="mt-1 block text-[11px] leading-5 text-[var(--geo-text-muted)]">{step.meta}</span>
-                </span>
-                <ArrowRight aria-hidden="true" className="size-3.5 text-[var(--geo-soft)] group-hover:text-[var(--geo-primary)]" />
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="mt-4 grid gap-2 border-t border-[#e7e9ed] pt-4">
+      <div className="report-completion-actions">
         {restoredFromCache && !contentAvailable ? (
-          <button type="button" onClick={onBackToEditor} className="dark-button h-10 w-full px-4 text-sm font-semibold">
+          <button type="button" onClick={onBackToEditor} className="report-completion-button is-primary">
+            <RotateCcw aria-hidden="true" className="size-4" />
             返回编辑器恢复正文
+            <ArrowRight aria-hidden="true" className="size-4" />
           </button>
         ) : (
           <button
             type="button"
             onClick={() => onScrollToSection("diagnostic-section")}
-            className="dark-button h-10 w-full px-4 text-sm font-semibold"
+            className="report-completion-button is-primary"
           >
-            {diagnosticsComplete ? "先核对关键诊断" : "查看诊断进度"}
+            <ClipboardCheck aria-hidden="true" className="size-4" />
+            {diagnosticsComplete ? "查看诊断详情" : "查看诊断进度"}
             <ArrowRight aria-hidden="true" className="size-4" />
           </button>
         )}
-        {patchAvailable ? (
-          <button
-            type="button"
-            onClick={() => onScrollToSection("patch-workshop")}
-            className="secondary-button h-10 w-full px-4 text-sm font-semibold"
-          >
-            进入修改建议
-          </button>
-        ) : null}
-        <p className="text-[11px] leading-5 text-[var(--geo-text-soft)]">所有修改材料均需人工核对，不承诺排名或结果提升。</p>
+        <button
+          type="button"
+          onClick={() => onScrollToSection("patch-workshop")}
+          disabled={!patchAvailable}
+          className="report-completion-button is-secondary"
+        >
+          <FilePenLine aria-hidden="true" className="size-4" />
+          进入修改建议
+          <ArrowRight aria-hidden="true" className="size-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onBackToEditor}
+          disabled={!contentAvailable}
+          className="report-completion-button is-tertiary"
+        >
+          <RotateCcw aria-hidden="true" className="size-4" />
+          重新验证
+          <ArrowRight aria-hidden="true" className="size-4" />
+        </button>
       </div>
+      <p className="report-completion-note">修改建议需人工核对，不承诺排名或结果提升。</p>
     </aside>
   );
 }

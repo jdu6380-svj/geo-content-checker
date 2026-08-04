@@ -19,7 +19,6 @@ export function AppHeader({
   analysisStarted,
   onShowEditor,
   onNewAnalysis,
-  feedbackUrl,
   onFeedbackClick,
   navigation,
 }: AppHeaderProps) {
@@ -42,17 +41,15 @@ export function AppHeader({
         <div className="app-header-navigation min-w-0">{navigation}</div>
 
         <div className="app-header-actions flex items-center justify-end gap-2 sm:gap-3">
-          {feedbackUrl ? (
-            <a
-              href={feedbackUrl}
-              target="_blank"
-              rel="noreferrer"
-              onClick={onFeedbackClick}
-              className="app-feedback-link underline-offset-4 hover:underline"
-            >
-              反馈
-            </a>
-          ) : null}
+          <a
+            href="/feedback"
+            target="_blank"
+            rel="noreferrer"
+            onClick={onFeedbackClick}
+            className="app-feedback-link underline-offset-4 hover:underline"
+          >
+            反馈
+          </a>
           <span className="app-beta-status inline-flex items-center gap-1.5 border px-2.5 py-1.5">
             <ShieldCheck aria-hidden="true" className="size-3.5" />
             受控 Beta

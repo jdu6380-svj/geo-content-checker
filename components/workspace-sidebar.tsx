@@ -34,7 +34,6 @@ export function WorkspaceSidebar({
   onOpenReport,
   onOpenAdvice,
   onOpenRecheck,
-  feedbackUrl,
   onFeedbackClick,
 }: WorkspaceSidebarProps) {
   const availability = {
@@ -76,12 +75,10 @@ export function WorkspaceSidebar({
         <div className="workspace-sidebar-utility">
           <Link href="/privacy">隐私</Link>
           <Link href="/terms">条款</Link>
-          {feedbackUrl ? (
-            <a href={feedbackUrl} target="_blank" rel="noreferrer" onClick={onFeedbackClick}>
-              <MessageSquareText aria-hidden="true" className="size-3.5" />
-              反馈
-            </a>
-          ) : null}
+          <a href="/feedback" target="_blank" rel="noreferrer" onClick={onFeedbackClick}>
+            <MessageSquareText aria-hidden="true" className="size-3.5" />
+            反馈
+          </a>
         </div>
       </div>
     </aside>

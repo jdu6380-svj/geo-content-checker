@@ -13,6 +13,8 @@ export type ReportScoreBand = {
 type ReportScoreRailProps = {
   scoring: LoadState<EvaluateScoringResponse>;
   band: ReportScoreBand | null;
+  riskLabel: string | null;
+  primaryIssue: string | null;
   announceLoading: boolean;
   canRetry: boolean;
   onRetry: () => void;
@@ -23,6 +25,12 @@ const BAND_STYLE: Record<string, string> = {
   基础良好: "status-info",
   需要补强: "status-warning",
   风险较高: "status-danger",
+};
+
+const RISK_STYLE: Record<string, string> = {
+  低风险: "status-success",
+  中风险: "status-warning",
+  高风险: "status-danger",
 };
 
 function ScoreSkeleton({ announce }: { announce: boolean }) {
@@ -44,6 +52,8 @@ function ScoreSkeleton({ announce }: { announce: boolean }) {
 export function ReportScoreRail({
   scoring,
   band,
+  riskLabel,
+  primaryIssue,
   announceLoading,
   canRetry,
   onRetry,
@@ -96,18 +106,21 @@ export function ReportScoreRail({
         </svg>
         <div className="score-ring-center">
           <strong>{report.totalScore}</strong>
-          <span>可信度评分</span>
+          <span><b>/ 100</b>可信度评分</span>
         </div>
       </div>
-      {band ? (
-        <div className="score-band-summary mt-4 text-center">
-          <strong className={BAND_STYLE[band.label] ?? "status-neutral"}>{band.label}</strong>
-          <p>{band.note}</p>
+      <dl className="report-score-conclusion">
+        <div>
+          <dt>当前风险</dt>
+          <dd className={RISK_STYLE[riskLabel ?? ""] ?? BAND_STYLE[band?.label ?? ""] ?? "status-neutral"}>
+            {riskLabel ?? band?.label ?? "待评估"}
+          </dd>
         </div>
-      ) : null}
-      <p className="mt-4 border-t border-[var(--geo-border)] pt-4 text-center text-[11px] leading-5 text-[var(--geo-text-soft)]">
-        四项维度合计 100 分，仅衡量本次内容准备度。
-      </p>
+        <div>
+          <dt>主要问题</dt>
+          <dd>{primaryIssue ?? band?.note ?? "正在汇总诊断结果"}</dd>
+        </div>
+      </dl>
     </aside>
   );
 }
