@@ -223,13 +223,13 @@ export function DiagnosisSection({
 
   return (
     <section id="diagnostic-section" className="section-anchor min-w-0">
-      <div className="diagnosis-stage-header flex flex-wrap items-end justify-between gap-3 border-b border-[#dfe3e7] pb-4">
+      <div className="report-section-heading diagnosis-stage-header">
         <div>
-          <p className="section-kicker">诊断</p>
-          <h2 className="mt-1.5 text-xl font-semibold">关键问题与处理方向</h2>
+          <p className="section-kicker">内容优化助手</p>
+          <h2>发现问题，并明确怎么修改</h2>
         </div>
         {totalCount ? (
-          <span role="status" aria-live="polite" className="text-xs font-semibold text-[var(--geo-text-muted)]">
+          <span role="status" aria-live="polite">
             {completedCount} / {totalCount} 已完成
           </span>
         ) : null}

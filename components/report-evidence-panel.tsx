@@ -1,4 +1,4 @@
-import { Files } from "lucide-react";
+import { Check, ChevronDown, Files, MapPin, ShieldAlert } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import type { DiagnosticsState } from "@/lib/client/report-state";
@@ -13,6 +13,12 @@ const STATUS_DETAIL = {
   valid: "已通过原文逐字校验",
   missing: "原文缺少足够依据",
   invalid: "未通过逐字校验",
+} as const;
+
+const STATUS_VALUE = {
+  valid: "支持该诊断结论",
+  missing: "需要补充可核验来源",
+  invalid: "当前引用未通过原文校验",
 } as const;
 
 export function ReportEvidencePanel({
@@ -41,14 +47,14 @@ export function ReportEvidencePanel({
     0,
   );
   return (
-    <section id="evidence-section" className="report-evidence-panel section-anchor surface-flat min-w-0">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:px-6">
+    <section id="evidence-section" className="report-evidence-panel section-anchor min-w-0">
+      <div className="report-section-heading">
         <div>
-          <p className="section-kicker">可审计依据</p>
-          <h2 className="geo-heading mt-1.5 text-xl font-semibold">原文证据账本</h2>
+          <p className="section-kicker">可信度依据</p>
+          <h2>为什么这样判断</h2>
         </div>
         <div className="evidence-header-summary">
-          <span><Files aria-hidden="true" className="size-4" />{literalEvidenceCount} 条逐字引用</span>
+          <span><Files aria-hidden="true" className="size-4" />{literalEvidenceCount} 条原文引用</span>
           <span className="evidence-count-valid">有效 {counts.valid}</span>
           <span className="evidence-count-missing">缺失 {counts.missing}</span>
           <span className="evidence-count-invalid">无效 {counts.invalid}</span>
@@ -56,14 +62,7 @@ export function ReportEvidencePanel({
       </div>
 
       {records.length ? (
-        <div className="evidence-ledger-table">
-          <div className="evidence-ledger-head hidden px-4 py-2.5 text-[10px] font-semibold text-[#858c97] md:grid sm:px-5" aria-hidden="true">
-            <span>账本 ID</span>
-            <span>诊断与原文依据</span>
-            <span>原文位置</span>
-            <span>校验状态</span>
-          </div>
-          <ol>
+        <ol className="evidence-ledger-list">
             {records.map(({ order, data }) => {
               const evidence = Array.from(
                 new Map(
@@ -77,59 +76,71 @@ export function ReportEvidencePanel({
               const ledgerId = `EV-${String(order).padStart(2, "0")}`;
 
               return (
-                <li key={`${ledgerId}-${data.question}`} className="evidence-ledger-row px-4 py-5 sm:px-5">
-                  <div className="flex items-center gap-2 md:block">
-                    <span className="report-ledger-index">{ledgerId}</span>
-                  </div>
-
-                  <div className="mt-4 min-w-0 md:mt-0">
-                    <h3 className="break-words text-sm font-semibold leading-6 text-[var(--geo-text-heading)]">{data.question}</h3>
-                    {evidence.length ? (
-                      <div className="mt-3 grid gap-3">
-                        {evidence.map((entry) => (
-                          <blockquote
-                            key={`${entry.paragraphId}:${entry.quote}`}
-                            className="border-l-2 border-[var(--geo-info)] pl-3 text-sm leading-6 text-[var(--geo-text-body)]"
-                          >
-                            <span className="sr-only">原文 {entry.paragraphId}：</span>
-                            {entry.quote}
-                          </blockquote>
-                        ))}
+                <li key={`${ledgerId}-${data.question}`} className={`evidence-ledger-row evidence-card-status-${data.evidenceStatus}`}>
+                  <details className="evidence-record" open={order === 1}>
+                    <summary className="evidence-card-header">
+                      <span className="report-ledger-index">{ledgerId}</span>
+                      <span className="evidence-card-title-group">
+                        <span className="evidence-card-label">判断依据 {String(order).padStart(2, "0")}</span>
+                        <strong>{data.question}</strong>
+                      </span>
+                      <span className="evidence-card-status"><EvidenceStatusBadge status={data.evidenceStatus} /></span>
+                      <ChevronDown aria-hidden="true" className="evidence-card-expand size-4" />
+                    </summary>
+                    <div className="evidence-card-body">
+                      <div className="evidence-card-main">
+                        <span className="evidence-card-field">原文依据</span>
+                        {evidence.length ? (
+                          <div className="evidence-quote-list">
+                            {evidence.map((entry) => (
+                              <blockquote key={`${entry.paragraphId}:${entry.quote}`}>
+                                <span className="evidence-quote-location">原文 · {entry.paragraphId}</span>
+                                {entry.quote}
+                              </blockquote>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="evidence-card-empty">
+                            {restoredFromCache
+                              ? "缓存报告保留校验状态，但不保留原文逐字引用。"
+                              : data.evidenceStatus === "missing"
+                                ? "该诊断没有可展示的原文依据。"
+                                : "未保留可作为依据的有效引用。"}
+                          </p>
+                        )}
                       </div>
-                    ) : (
-                      <p className="mt-2 text-xs leading-5 text-[var(--geo-text-muted)]">
-                        {restoredFromCache
-                          ? "缓存报告保留校验状态，但不保留原文逐字引用。"
-                          : data.evidenceStatus === "missing"
-                            ? "该诊断没有可展示的原文依据。"
-                            : "未保留可作为依据的有效引用。"}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-4 md:mt-0">
-                    <p className="mb-2 text-[10px] font-semibold text-[#858c97] md:hidden">原文位置</p>
-                    {locations.length ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {locations.map((paragraphId) => (
-                          <span key={paragraphId} className="report-paragraph-chip">{paragraphId}</span>
-                        ))}
+                      <div className="evidence-card-guidance">
+                        <div>
+                          <span>为什么这样判断</span>
+                          <strong>{STATUS_VALUE[data.evidenceStatus]}</strong>
+                        </div>
+                        <div>
+                          <span>建议怎么处理</span>
+                          <strong>{data.recommendation}</strong>
+                        </div>
                       </div>
-                    ) : (
-                      <span className="text-xs leading-5 text-[#8b939e]">无可定位段落</span>
-                    )}
-                  </div>
-
-                  <div className="mt-4 md:mt-0">
-                    <p className="mb-2 text-[10px] font-semibold text-[#858c97] md:hidden">校验状态</p>
-                    <EvidenceStatusBadge status={data.evidenceStatus} />
-                    <p className="mt-2 text-[11px] leading-5 text-[var(--geo-text-muted)]">{STATUS_DETAIL[data.evidenceStatus]}</p>
-                  </div>
+                      <details className="evidence-audit-details">
+                        <summary>
+                          查看详细校验记录
+                          <ChevronDown aria-hidden="true" className="size-4" />
+                        </summary>
+                        <dl className="evidence-card-meta">
+                          <div>
+                            <dt><MapPin aria-hidden="true" className="size-3.5" />原文位置</dt>
+                            <dd>{locations.length ? locations.join("、") : "无可定位段落"}</dd>
+                          </div>
+                          <div>
+                            <dt>{data.evidenceStatus === "valid" ? <Check aria-hidden="true" className="size-3.5" /> : <ShieldAlert aria-hidden="true" className="size-3.5" />}校验结果</dt>
+                            <dd>{STATUS_DETAIL[data.evidenceStatus]}</dd>
+                          </div>
+                        </dl>
+                      </details>
+                    </div>
+                  </details>
                 </li>
               );
             })}
-          </ol>
-        </div>
+        </ol>
       ) : pending || Object.keys(diagnostics).length === 0 ? (
         <div role="status" aria-live="polite" className="grid gap-3 px-4 py-5 sm:px-5">
           <span className="h-3 w-20 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />

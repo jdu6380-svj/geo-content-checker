@@ -25,22 +25,20 @@ export function ReportActionRail({
   const patchAvailable = diagnosticsComplete && contentAvailable;
 
   return (
-    <aside className="report-action-rail surface-flat min-w-0" aria-label="报告完成后的操作">
-      <div className={`report-completion-heading ${diagnosticsComplete ? "is-complete" : "is-pending"}`}>
-        <span className="report-completion-icon" aria-hidden="true"><CheckCircle2 className="size-5" /></span>
-        <div>
-          <p>{diagnosticsComplete ? "审查报告已生成" : "正在生成审查报告"}</p>
+    <aside className="report-action-rail report-hero-action min-w-0" aria-label="报告完成后的操作">
+      <div className="report-action-heading">
+        <div className={`report-completion-icon ${diagnosticsComplete ? "is-complete" : "is-pending"}`} aria-hidden="true">
+          <CheckCircle2 className="size-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="section-kicker">下一步建议</p>
+          <h2>{diagnosticsComplete ? "从结论到处理" : "报告正在生成"}</h2>
           <span>
             {totalCount
-              ? `${completedCount} / ${totalCount} 项诊断，${evidenceCount} 条逐字引用`
+              ? `${completedCount} / ${totalCount} 项诊断 · ${evidenceCount} 条逐字引用`
               : "正在等待诊断结果"}
           </span>
         </div>
-      </div>
-
-      <div className="report-next-action-copy">
-        <strong>下一步建议</strong>
-        <p>先查看高风险诊断与原文证据，再决定是否进入修改建议。</p>
       </div>
 
       <div className="report-completion-actions">
@@ -82,7 +80,7 @@ export function ReportActionRail({
           <ArrowRight aria-hidden="true" className="size-4" />
         </button>
       </div>
-      <p className="report-completion-note">修改建议需人工核对，不承诺排名或结果提升。</p>
+      <p className="report-completion-note">修改建议需人工核对；复检只呈现真实变化。</p>
     </aside>
   );
 }

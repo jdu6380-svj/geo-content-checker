@@ -5,62 +5,50 @@ type ReportDimensionLedgerProps = {
 };
 
 const DIMENSIONS = [
-  { key: "questionCoverage", label: "问题覆盖度", description: "是否覆盖用户与 AI 搜索可能提出的核心问题", barClassName: "score-bar-question" },
-  { key: "factCompleteness", label: "事实完整度", description: "关键判断是否具备事实、来源与适用边界", barClassName: "score-bar-fact" },
-  { key: "structureClarity", label: "结构清晰度", description: "信息层级是否便于理解、扫描与引用", barClassName: "score-bar-structure" },
-  { key: "freshness", label: "时效性", description: "时间与适用版本是否清楚", barClassName: "score-bar-freshness" },
+  { key: "questionCoverage", label: "问题覆盖度", icon: "Q", direction: "补充 FAQ 与读者问题拆解" },
+  { key: "factCompleteness", label: "事实完整度", icon: "F", direction: "补充数据、来源与适用边界" },
+  { key: "structureClarity", label: "结构清晰度", icon: "S", direction: "拆分信息层级并明确结论与步骤" },
+  { key: "freshness", label: "时效性", icon: "T", direction: "补充发布日期、版本与时效边界" },
 ] as const;
 
 export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
   return (
-    <section className="report-dimension-ledger border-t border-[var(--geo-border)]" aria-labelledby="dimension-ledger-heading">
-      <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4 sm:px-6">
+    <section className="report-dimension-ledger" aria-labelledby="dimension-ledger-heading">
+      <div className="report-section-heading">
         <div>
-          <p className="section-kicker">评分账本</p>
-          <h2 id="dimension-ledger-heading" className="mt-1.5 text-base font-semibold text-[var(--geo-text-heading)]">评分维度</h2>
+          <p className="section-kicker">评分维度</p>
+          <h2 id="dimension-ledger-heading">四项评分如何构成结论</h2>
         </div>
-        <span className="text-xs font-semibold text-[var(--geo-text-soft)]">合计 100 分</span>
+        <span>合计 100 分</span>
       </div>
 
-      <div className="report-dimension-table border-t border-[var(--geo-border)]">
-        <div className="report-dimension-table-head hidden px-5 py-2.5 text-[10px] font-semibold text-[#858c97] md:grid sm:px-6" aria-hidden="true">
-          <span>维度</span>
-          <span>得分</span>
-          <span>占比</span>
-          <span>评分依据</span>
-        </div>
-        <ol>
-          {DIMENSIONS.map(({ key, label, description, barClassName }, index) => {
+      <ol className="report-dimension-cards">
+          {DIMENSIONS.map(({ key, label, icon, direction }, index) => {
             const dimension = report.dimensions[key];
             const percentage = Math.round((dimension.score / dimension.max) * 100);
             return (
-              <li key={key} className="report-dimension-row px-5 py-4 sm:px-6">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="report-dimension-index">{String(index + 1).padStart(2, "0")}</span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-[var(--geo-text-heading)]">{label}</span>
-                    <span className="sr-only">{description}</span>
+              <li key={key} className="report-dimension-card">
+                <div className="report-dimension-card-heading">
+                  <span className="report-dimension-icon">{icon}</span>
+                  <span>
+                    <span className="report-dimension-index">{String(index + 1).padStart(2, "0")}</span>
+                    <strong>{label}</strong>
                   </span>
                 </div>
-                <div className="mt-3 flex items-baseline gap-1 md:mt-0">
-                  <strong className="text-lg tabular-nums text-[var(--geo-text-heading)]">{dimension.score}</strong>
-                  <span className="text-xs text-[var(--geo-text-soft)]">/ {dimension.max}</span>
+                <div className="report-dimension-score">
+                  <strong>{dimension.score}</strong>
+                  <span>/ {dimension.max}</span>
                 </div>
-                <div className="mt-3 md:mt-0">
-                  <div className="flex items-center justify-between gap-3 text-[10px] font-semibold text-[var(--geo-text-muted)]">
-                    <span>{percentage}%</span>
-                    <span>{dimension.max} 分</span>
-                  </div>
-                  <div className="metric-track mt-2">
-                    <div className={`h-full rounded-full ${barClassName}`} style={{ width: `${percentage}%` }} />
-                  </div>
+                <div className="report-dimension-meter" aria-label={`${label} ${percentage}%`}>
+                  <span>{percentage}%</span>
+                  <div className="metric-track"><div style={{ width: `${percentage}%` }} /></div>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-[var(--geo-text-body)] md:mt-0">{dimension.reason}</p>
+                <p className="report-dimension-reason">{dimension.reason}</p>
+                <p className="report-dimension-direction"><span>优化方向</span>{direction}</p>
               </li>
             );
           })}
-        </ol>
-      </div>
+      </ol>
     </section>
   );
 }

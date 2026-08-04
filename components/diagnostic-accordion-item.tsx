@@ -43,6 +43,12 @@ const RISK_STYLE = {
   high: { label: "高风险", className: "status-danger" },
 } as const;
 
+const RISK_IMPACT = {
+  low: "当前信息基本能够支撑判断，发布前仍应核对引用与适用边界。",
+  medium: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
+  high: "关键依据不足可能直接影响内容可信判断，应在发布前优先处理。",
+} as const;
+
 function selectDiagnosticPresentation(fromCachedReport: boolean): DiagnosticPresentation {
   return {
     evidenceEmptyMessage: fromCachedReport
@@ -164,7 +170,11 @@ export function DiagnosticAccordionItem({
           {item.data ? (
             <div className="grid bg-[var(--geo-surface-subtle)] text-sm min-[760px]:grid-cols-[1.1fr_.9fr]">
               <section className="px-4 py-5 sm:px-5">
-                <p className="diagnosis-step-label"><span>02</span>原文证据</p>
+                <p className="diagnosis-step-label"><span>02</span>为什么重要</p>
+                <p className="mt-3 rounded-lg bg-[var(--geo-status-warning-soft)] px-3 py-3 leading-6 text-[var(--geo-text-body)]">
+                  {RISK_IMPACT[item.data.riskLevel]}
+                </p>
+                <p className="diagnosis-step-label mt-5"><span>03</span>原文依据</p>
                 {item.data.evidenceStatus === "invalid" ? (
                   <p className="mt-3 border-l-2 border-[var(--geo-status-danger)] bg-[var(--geo-status-danger-soft)] px-3 py-2 text-xs leading-5 text-[var(--geo-status-danger)]">
                     无法定位的引用已被移除。
@@ -187,7 +197,7 @@ export function DiagnosticAccordionItem({
               <div className="grid content-start gap-5 border-t border-[#e1e6ea] px-4 py-5 sm:px-5 min-[760px]:border-l min-[760px]:border-t-0">
                 <section>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="diagnosis-step-label"><span>03</span>缺失信息</p>
+                    <p className="diagnosis-step-label"><span>04</span>需要补充</p>
                     <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${RISK_STYLE[item.data.riskLevel].className}`}>
                       {RISK_STYLE[item.data.riskLevel].label}
                     </span>
@@ -206,7 +216,7 @@ export function DiagnosticAccordionItem({
                   )}
                 </section>
                 <section className="border-l-2 border-[var(--geo-info)] bg-[var(--geo-info-soft)] px-3 py-3">
-                  <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改方向</p>
+                  <p className="diagnosis-step-label text-[var(--geo-info)]"><span>05</span>怎么修改</p>
                   <p className="mt-2 leading-6 text-[var(--geo-text-body)]">{item.data.recommendation}</p>
                 </section>
                 <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />

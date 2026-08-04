@@ -4,7 +4,6 @@ import type { FormEvent, RefObject } from "react";
 import { AnalysisFlowStatus } from "@/components/analysis-flow-status";
 import { DiagnosisSection } from "@/components/diagnosis-section";
 import { PatchWorkshop } from "@/components/patch-workshop";
-import { ReportActionRail } from "@/components/report-action-rail";
 import { ReportContextRail } from "@/components/report-context-rail";
 import { ReportEvidencePanel } from "@/components/report-evidence-panel";
 import { RecheckComparison } from "@/components/recheck-comparison";
@@ -177,6 +176,16 @@ export function ReportWorkspace({
       aria-busy={Boolean(loadingMessage)}
     >
       <div className="report-workspace-grid">
+        {!flowComplete || restoredFromCache ? (
+          <div className="report-status-inline" aria-label="报告生成状态">
+            <AnalysisFlowStatus
+              title={flowPresentation.title}
+              description={flowPresentation.description}
+              tone={flowPresentation.tone}
+            />
+          </div>
+        ) : null}
+
         <div className="report-main-column min-w-0">
           {recheckBaseline ? (
             <RecheckComparison baseline={recheckBaseline} current={currentComparison} status={recheckStatus} />
@@ -209,6 +218,11 @@ export function ReportWorkspace({
                   onScrollToSection("diagnostic-section");
                 }}
                 onScrollToSection={onScrollToSection}
+                completedCount={completedCount}
+                evidenceCount={evidenceCount}
+                contentAvailable={contentAvailable}
+                restoredFromCache={restoredFromCache}
+                onBackToEditor={onBackToEditor}
               />
 
               <ReportEvidencePanel
@@ -257,24 +271,6 @@ export function ReportWorkspace({
           )}
         </div>
 
-        <aside className="report-context-column min-w-0" aria-label="报告状态与下一步操作">
-          <AnalysisFlowStatus
-            title={flowPresentation.title}
-            description={flowPresentation.description}
-            tone={flowPresentation.tone}
-          />
-          {session.status !== "error" ? (
-            <ReportActionRail
-              completedCount={completedCount}
-              totalCount={questionOrder.length}
-              evidenceCount={evidenceCount}
-              contentAvailable={contentAvailable}
-              restoredFromCache={restoredFromCache}
-              onScrollToSection={onScrollToSection}
-              onBackToEditor={onBackToEditor}
-            />
-          ) : null}
-        </aside>
       </div>
     </section>
   );

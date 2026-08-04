@@ -6,15 +6,14 @@ import {
   BarChart3,
   Check,
   FileCheck2,
+  FilePenLine,
   FileSearch,
   FileText,
-  Lightbulb,
   Lock,
   RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 
-import { ReviewWorkflowStepper } from "@/components/review-workflow-stepper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,10 +58,10 @@ type EditorWorkspaceProps = {
 };
 
 const REVIEW_VALUES = [
-  { label: "提升内容可信度", description: "核对关键判断是否有依据", icon: ShieldCheck },
-  { label: "降低 AI 误读风险", description: "识别表达边界与信息缺口", icon: FileSearch },
-  { label: "增强引用机会", description: "检查原文证据是否可定位", icon: FileCheck2 },
-  { label: "优化内容质量", description: "形成可人工复核的修改方向", icon: FileText },
+  { label: "可信判断", description: "核对关键结论是否有依据", icon: ShieldCheck },
+  { label: "理解边界", description: "识别表达歧义与信息缺口", icon: FileSearch },
+  { label: "引用准备", description: "检查原文证据是否可定位", icon: FileCheck2 },
+  { label: "修改闭环", description: "形成可人工复核的处理方向", icon: FileText },
 ] as const;
 
 const EDITOR_PROCESS_STEPS = [
@@ -73,11 +72,11 @@ const EDITOR_PROCESS_STEPS = [
 ] as const;
 
 const REVIEW_OUTPUTS = [
-  { label: "可信度评分", description: "综合评估内容质量", icon: BarChart3, tone: "is-purple" },
-  { label: "风险诊断", description: "定位问题与影响", icon: FileSearch, tone: "is-coral" },
-  { label: "证据清单", description: "核对来源与依据", icon: FileCheck2, tone: "is-blue" },
-  { label: "修改建议", description: "形成可执行方向", icon: Lightbulb, tone: "is-violet" },
-  { label: "复检对比", description: "验证修改后变化", icon: RotateCcw, tone: "is-sky" },
+  { label: "可信度评分", description: "理解整体内容状态", icon: BarChart3, tone: "is-purple" },
+  { label: "风险诊断", description: "定位发布前关键问题", icon: FileSearch, tone: "is-orange" },
+  { label: "判断依据", description: "核对原文证据位置", icon: FileCheck2, tone: "is-blue" },
+  { label: "修改建议", description: "获得人工复核方向", icon: FilePenLine, tone: "is-green" },
+  { label: "复检结果", description: "比较修改前后变化", icon: RotateCcw, tone: "is-violet" },
 ] as const;
 
 export function EditorWorkspace({
@@ -110,8 +109,7 @@ export function EditorWorkspace({
         ? { label: recheckContext ? "修改中" : "草稿编辑中", className: "status-info" }
         : { label: recheckContext ? "等待修改" : "等待输入", className: "status-neutral" };
 
-  const workflowStage = recheckContext ? "recheck" : "review";
-  const processActiveIndex = workflowStage === "recheck" ? 3 : 0;
+  const processActiveIndex = recheckContext ? 3 : 0;
   const nextAction = readyForReview
     ? recheckContext ? "运行重新验证" : "开始可信度审查"
     : "完成文章输入";
@@ -125,8 +123,8 @@ export function EditorWorkspace({
           <header className="editor-task-header">
             <div>
               <p className="section-kicker">内容可信度审查</p>
-              <h2>{recheckContext ? "重新验证修改后的文章" : "让内容更容易被 AI 正确理解与引用"}</h2>
-              <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "面向内容创作者与运营团队的专业内容可信度审查工作台。"}</p>
+              <h2>{recheckContext ? "重新验证修改后的文章" : "开始一次可信度审查"}</h2>
+              <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "粘贴完整文章，获得评分、风险、判断依据与修改方向。"}</p>
             </div>
             {hasInputIssue || recheckContext ? (
               <span className={`editor-task-status ${inputStatus.className}`}>
@@ -135,8 +133,6 @@ export function EditorWorkspace({
               </span>
             ) : null}
           </header>
-
-          <ReviewWorkflowStepper stage={workflowStage} />
 
           {recheckContext ? (
             <div className="editor-recheck-context flex flex-col gap-3 border-l-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -157,7 +153,7 @@ export function EditorWorkspace({
             <header className="editor-review-panel-header">
               <div>
                 <h3>文章内容</h3>
-                <p>标题与正文将用于本次可信度审查。</p>
+                <p>完整内容有助于定位真实证据与风险。</p>
               </div>
               {!recheckContext && samples.length ? (
                 <div className="editor-sample-toolbar" aria-label="示例文章">
@@ -221,7 +217,7 @@ export function EditorWorkspace({
                   placeholder="粘贴或输入你的文章内容…"
                   className="editor-canvas field-sizing-fixed resize-y"
                 />
-                <p className="editor-content-guidance">建议粘贴完整正文，便于准确识别证据缺口与结构风险。</p>
+                <p className="editor-content-guidance">建议保留完整段落结构，便于准确定位判断依据。</p>
                 {fieldErrors.content ? <span id="content-error" className="editor-field-error">{fieldErrors.content}</span> : null}
               </div>
 
@@ -246,20 +242,6 @@ export function EditorWorkspace({
             </footer>
           </form>
 
-          <section className="editor-outcome-panel" aria-labelledby="editor-outcome-heading">
-            <h3 id="editor-outcome-heading">你将获得</h3>
-            <div className="editor-outcome-grid">
-              {REVIEW_OUTPUTS.map(({ label, description, icon: Icon, tone }) => (
-                <div key={label} className="editor-outcome-item">
-                  <span className={`editor-outcome-icon ${tone}`}><Icon aria-hidden="true" className="size-4" /></span>
-                  <span>
-                    <strong>{label}</strong>
-                    <small>{description}</small>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
 
         <aside className="editor-context-column" aria-label="当前审查上下文">
@@ -314,6 +296,29 @@ export function EditorWorkspace({
           </section>
         </aside>
       </div>
+
+      {!recheckContext ? (
+        <section className="editor-output-strip" aria-labelledby="editor-output-heading">
+          <header>
+            <div>
+              <p className="section-kicker">完成审查后</p>
+              <h2 id="editor-output-heading">获得一条可验证的内容处理路径</h2>
+            </div>
+            <span>所有结果均来自当前文章的真实分析</span>
+          </header>
+          <div className="editor-output-grid">
+            {REVIEW_OUTPUTS.map(({ label, description, icon: Icon, tone }) => (
+              <div key={label} className="editor-output-item">
+                <span className={`editor-output-icon ${tone}`}><Icon aria-hidden="true" className="size-4" /></span>
+                <span>
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

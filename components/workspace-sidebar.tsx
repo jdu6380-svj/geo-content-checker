@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, FileText, MessageSquareText, RotateCcw, Sparkles } from "lucide-react";
+import { BarChart3, FilePenLine, FileText, MessageSquareText, RotateCcw } from "lucide-react";
 import Link from "next/link";
 
 import type { WorkspaceStage } from "@/components/workspace-command-bar";
@@ -21,7 +21,7 @@ type WorkspaceSidebarProps = {
 const ITEMS = [
   { id: "review", label: "提交内容", icon: FileText },
   { id: "report", label: "审查报告", icon: BarChart3 },
-  { id: "advice", label: "修改建议", icon: Sparkles },
+  { id: "advice", label: "修改建议", icon: FilePenLine },
   { id: "recheck", label: "重新验证", icon: RotateCcw },
 ] as const;
 

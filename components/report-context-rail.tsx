@@ -3,6 +3,7 @@
 import { ArrowRight, FileSearch } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
+import { ReportActionRail } from "@/components/report-action-rail";
 import { ReportDimensionLedger } from "@/components/report-dimension-ledger";
 import { ReportScoreRail, type ReportScoreBand } from "@/components/report-score-rail";
 import type { DiagnosticsState, LoadState } from "@/lib/client/report-state";
@@ -23,6 +24,11 @@ type ReportContextRailProps = {
   onRetryScoring: () => void;
   onFocusQuestion: (question: string) => void;
   onScrollToSection: (sectionId: string) => void;
+  completedCount: number;
+  evidenceCount: number;
+  contentAvailable: boolean;
+  restoredFromCache: boolean;
+  onBackToEditor: () => void;
 };
 
 const RISK_PRIORITY = { low: 1, medium: 2, high: 3 } as const;
@@ -63,6 +69,11 @@ export function ReportContextRail({
   onRetryScoring,
   onFocusQuestion,
   onScrollToSection,
+  completedCount,
+  evidenceCount,
+  contentAvailable,
+  restoredFromCache,
+  onBackToEditor,
 }: ReportContextRailProps) {
   const diagnosticItems = questionOrder.flatMap((question) => {
     const item = diagnostics[question];
@@ -87,23 +98,21 @@ export function ReportContextRail({
   );
 
   return (
-    <section
-      id="report-core"
-      className="report-overview-panel surface-flat min-w-0 overflow-hidden"
-    >
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--geo-border)] px-5 py-4 sm:px-6">
+    <section id="report-core" className="report-overview-panel min-w-0">
+      <header className="report-header-line">
         <div className="min-w-0">
-          <p className="section-kicker">内容可信度审查报告</p>
-          <h1 className="mt-1.5 break-words text-lg font-semibold leading-7 text-[var(--geo-text-heading)] sm:text-xl">
+          <p className="section-kicker">审查报告</p>
+          <h1 className="report-page-title">
             {title || "未命名内容"}
           </h1>
+          <p className="report-page-subtitle">内容可信度审查 · 结论、判断依据与下一步行动</p>
         </div>
-        <span className={`status-badge w-fit shrink-0 border px-2.5 py-1 text-[11px] font-semibold ${reportStatus.className}`}>
+        <span className={`report-status-label ${reportStatus.className}`}>
           {reportStatus.label}
         </span>
       </header>
 
-      <div className="report-overview-grid grid lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="report-hero-grid">
         <ReportScoreRail
           scoring={scoring}
           announceLoading={announceLoading}
@@ -111,30 +120,25 @@ export function ReportContextRail({
           onRetry={onRetryScoring}
         />
 
-        <section className="report-priority-risk min-w-0 p-5 sm:p-6" aria-labelledby="priority-risk-heading">
+        <section className="report-priority-risk" aria-labelledby="priority-risk-heading">
           <p className="section-kicker">审查结论</p>
 
           {priorityItem?.data && priorityRisk ? (
             <>
               <h2 id="priority-risk-heading" className="report-conclusion-title">
-                结论：<span className={priorityRisk.className}>{priorityRisk.label}</span>
+                当前风险：<span className={priorityRisk.className}>{priorityRisk.label.replace("风险", "")}</span>
               </h2>
               <p className="report-conclusion-summary">{priorityRisk.impact}</p>
-
-              <dl className="report-conclusion-meta">
-                <div>
-                  <dt>最大风险</dt>
-                  <dd className={priorityRisk.className}>{priorityRisk.label}</dd>
-                </div>
-                <div>
-                  <dt>证据完整度</dt>
-                  <dd><EvidenceStatusBadge status={priorityItem.data.evidenceStatus} /></dd>
-                </div>
-              </dl>
-
-              <div className="report-primary-issue">
+              {scoreBand ? <p className="report-score-band-note">{scoreBand.label} · {scoreBand.note}</p> : null}
+              <div className="report-conclusion-block report-conclusion-issues">
                 <span>主要问题</span>
-                <strong>{priorityItem.question}</strong>
+                <ul>
+                  {keyFindings.map(({ question }) => <li key={question}>{question}</li>)}
+                </ul>
+              </div>
+              <div className="report-conclusion-block is-evidence">
+                <span>证据状态</span>
+                <EvidenceStatusBadge status={priorityItem.data.evidenceStatus} />
               </div>
             </>
           ) : diagnosticsPending || questionOrder.length === 0 ? (
@@ -148,6 +152,16 @@ export function ReportContextRail({
             <p className="mt-5 text-sm leading-6 text-[#687386]">当前没有可展示的已完成诊断。</p>
           )}
         </section>
+
+        <ReportActionRail
+          completedCount={completedCount}
+          totalCount={questionOrder.length}
+          evidenceCount={evidenceCount}
+          contentAvailable={contentAvailable}
+          restoredFromCache={restoredFromCache}
+          onScrollToSection={onScrollToSection}
+          onBackToEditor={onBackToEditor}
+        />
       </div>
 
       <section className="report-key-findings" aria-labelledby="report-key-findings-heading">
@@ -156,7 +170,7 @@ export function ReportContextRail({
             <p className="section-kicker">优先级</p>
             <h2 id="report-key-findings-heading">关键风险（Top 3）</h2>
           </div>
-          <span>{keyFindings.length ? `显示 ${keyFindings.length} 项真实诊断` : "等待诊断"}</span>
+          <span>{keyFindings.length ? `基于 ${keyFindings.length} 项最高优先级诊断` : "等待诊断"}</span>
         </header>
 
         {keyFindings.length ? (
@@ -169,10 +183,12 @@ export function ReportContextRail({
                     <span className={`report-finding-index risk-${data.riskLevel}`}>{String(index + 1).padStart(2, "0")}</span>
                     <span className="report-finding-copy">
                       <strong>{question}</strong>
-                      <small>{risk.impact}</small>
+                      <small>影响：{risk.impact}</small>
                     </span>
-                    <span className={`report-finding-state ${risk.className}`}>{risk.label}</span>
-                    <span className="report-finding-evidence">证据：{EVIDENCE_LABEL[data.evidenceStatus]}</span>
+                    <span className="report-finding-copy-meta">
+                      <span className={`report-finding-state ${risk.className}`}>{risk.label.replace("风险", "")}</span>
+                      <span className="report-finding-evidence">证据：{EVIDENCE_LABEL[data.evidenceStatus]}</span>
+                    </span>
                     <ArrowRight aria-hidden="true" className="report-finding-arrow size-4" />
                   </button>
                 </li>
@@ -185,7 +201,7 @@ export function ReportContextRail({
         <div className="report-key-findings-footer">
           <button type="button" onClick={() => onScrollToSection("evidence-section")}>
             <FileSearch aria-hidden="true" className="size-4" />
-            查看完整证据账本
+            查看完整判断依据
             <ArrowRight aria-hidden="true" className="size-4" />
           </button>
         </div>

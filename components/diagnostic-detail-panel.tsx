@@ -28,6 +28,12 @@ const RISK_STYLE = {
   high: { label: "高风险", className: "status-danger" },
 } as const;
 
+const RISK_IMPACT = {
+  low: "当前信息基本能够支撑判断，发布前仍应核对引用与适用边界。",
+  medium: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
+  high: "关键依据不足可能直接影响内容可信判断，应在发布前优先处理。",
+} as const;
+
 export function DiagnosticDetailPanel({
   item,
   fromCachedReport,
@@ -92,71 +98,63 @@ export function DiagnosticDetailPanel({
     : "当前问题没有明显信息缺口。";
 
   return (
-    <div id="diagnosis-detail-panel" className="min-h-[420px] bg-[var(--geo-surface-subtle)]">
-      <section className="border-b border-[#e3e7eb] bg-white px-5 py-5" aria-labelledby="diagnosis-problem-heading">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="max-w-2xl">
-            <p id="diagnosis-problem-heading" className="diagnosis-step-label"><span>01</span>问题</p>
-            <h3 className="mt-2 text-base font-semibold leading-7 text-[#111827]">{item.question}</h3>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <span className={`diagnosis-answerability text-xs font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
-              {item.data.answerability}
-            </span>
-            <span className={`status-badge px-2.5 py-1 text-xs font-semibold ${risk.className}`}>
-              {risk.label}
-            </span>
-            <EvidenceStatusBadge status={item.data.evidenceStatus} />
-          </div>
+    <div id="diagnosis-detail-panel" className="diagnosis-detail-panel">
+      <section className="diagnosis-detail-hero" aria-labelledby="diagnosis-problem-heading">
+        <p id="diagnosis-problem-heading" className="diagnosis-step-label"><span>01</span>发现的问题</p>
+        <h3>{item.question}</h3>
+        <div className="diagnosis-detail-status">
+          <span className={risk.className}>{risk.label}</span>
+          <span className={`diagnosis-answerability ${STATUS_STYLE[item.data.answerability]}`}>
+            判断：{item.data.answerability}
+          </span>
+          <span className="diagnosis-evidence-state">依据：<EvidenceStatusBadge status={item.data.evidenceStatus} /></span>
         </div>
       </section>
 
-      <div className="grid">
-        <section className="px-5 py-5">
-          <p className="diagnosis-step-label"><span>02</span>原文证据</p>
+      <div className="diagnosis-detail-grid">
+        <section className="diagnosis-detail-card is-impact">
+          <p className="diagnosis-step-label"><span>02</span>为什么重要</p>
+          <p className="diagnosis-impact-copy">{RISK_IMPACT[item.data.riskLevel]}</p>
+        </section>
+
+        <section className="diagnosis-detail-card is-evidence">
+          <p className="diagnosis-step-label"><span>03</span>原文依据</p>
           {item.data.evidenceStatus === "invalid" ? (
-            <p className="mt-3 border-l-2 border-[var(--geo-status-danger)] bg-[var(--geo-status-danger-soft)] px-3 py-2 text-xs leading-5 text-[var(--geo-status-danger)]">
+            <p className="diagnosis-invalid-evidence">
               模型返回了无法逐字定位的引用；无效内容已移除。
             </p>
           ) : null}
           {item.data.evidence.length ? (
-            <div className="mt-4 grid gap-4">
+            <div className="diagnosis-evidence-list">
               {item.data.evidence.map((evidence) => (
-                <blockquote key={`${evidence.paragraphId}-${evidence.quote}`} className="border-l-2 border-[var(--geo-info)] pl-4 text-sm leading-7 text-[var(--geo-text-body)]">
-                  <span className="mb-1 block font-mono text-xs font-bold text-[var(--geo-info)]">{evidence.paragraphId}</span>
+                <blockquote key={`${evidence.paragraphId}-${evidence.quote}`}>
+                  <span>{evidence.paragraphId}</span>
                   {evidence.quote}
                 </blockquote>
               ))}
             </div>
           ) : (
-            <p className="mt-4 text-sm leading-7 text-[#687386]">{evidenceEmptyMessage}</p>
+            <p className="diagnosis-empty-copy">{evidenceEmptyMessage}</p>
           )}
         </section>
 
-        <div className="grid content-start gap-5 border-t border-[#e1e6ea] px-5 py-5">
-          <section>
-            <p className="diagnosis-step-label"><span>03</span>缺失信息</p>
-            {item.data.missingInfo.length ? (
-              <ul className="mt-3 grid gap-2 text-sm text-[#465266]">
-                {item.data.missingInfo.map((missing) => (
-                  <li key={missing} className="flex gap-2 leading-6">
-                    <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-[#a66a13]" />
-                    <span>{missing}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 text-sm leading-6 text-[#687386]">{missingInfoEmptyMessage}</p>
-            )}
-          </section>
+        <section className="diagnosis-detail-card is-missing">
+          <p className="diagnosis-step-label"><span>04</span>需要补充</p>
+          {item.data.missingInfo.length ? (
+            <ul className="diagnosis-missing-list">
+              {item.data.missingInfo.map((missing) => <li key={missing}>{missing}</li>)}
+            </ul>
+          ) : (
+            <p className="diagnosis-empty-copy">{missingInfoEmptyMessage}</p>
+          )}
+        </section>
 
-          <section className="diagnosis-recommendation border-l-2 border-[var(--geo-info)] px-4 py-4">
-            <p className="diagnosis-step-label text-[var(--geo-info)]"><span>04</span>修改方向</p>
-            <p className="mt-2 text-sm leading-7 text-[var(--geo-text-body)]">{item.data.recommendation}</p>
-          </section>
-          <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
-        </div>
+        <section className="diagnosis-detail-card diagnosis-recommendation">
+          <p className="diagnosis-step-label"><span>05</span>怎么修改</p>
+          <p className="diagnosis-recommendation-copy">{item.data.recommendation}</p>
+        </section>
       </div>
+      <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
     </div>
   );
 }
