@@ -142,7 +142,7 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
         <div>
           <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Recheck</p>
           <h1>重新验证结果</h1>
-          <p>Patch 已应用 · 基于原始报告重新核验</p>
+          <p>已基于人工修改后的正文 · 对照原始报告重新核验</p>
           <span className={`phase2-recheck-complete ${scorePresentation.className}`}><CheckCircle2 aria-hidden="true" />复核完成 · {scorePresentation.label} {scoreChangeLabel(scoreChange)}</span>
         </div>
         <div className="phase2-subpage-actions"><button type="button" onClick={onOpenOverview}>返回报告概览</button></div>
@@ -151,7 +151,7 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
       <div className="phase2-recheck-layout">
         <div>
           <section className="phase2-recheck-score-card">
-            <header><h2>评分变化</h2><p>应用 Patch 后的可信度重新评估</p></header>
+            <header><h2>评分变化</h2><p>人工修改后内容的可信度重新评估</p></header>
             <div className="phase2-recheck-score-change">
               <div><span>Before</span><strong><AnimatedNumber value={baseline.totalScore} duration={620} /></strong><small>/100</small></div>
               <ArrowRight aria-hidden="true" />

@@ -348,7 +348,7 @@ export function PatchWorkshop({
                 </div>
               ))}
             </div>
-            <footer>原文保持不变，应用建议前需人工确认。</footer>
+            <footer>原文保持不变；建议加入修改清单后，仍需由你手动编辑正文。</footer>
           </section>
 
           <section className="phase2-patch-suggestions" aria-labelledby="patch-suggestion-heading">
@@ -358,7 +358,7 @@ export function PatchWorkshop({
                 <p>修改建议</p>
               </div>
             </header>
-            <p className="phase2-patch-guidance">仅显示必要修改，不改变文章原意。</p>
+            <p className="phase2-patch-guidance">建议仅加入修改清单，不会自动改写正文。</p>
             <div className="phase2-patch-suggestion-body">
               {activePatch.status === "success" ? (
                 <>
@@ -371,7 +371,7 @@ export function PatchWorkshop({
                           key={action.id}
                           className={`${index === 2 ? "is-danger" : "is-warning"} ${index === 0 ? "is-primary" : "is-compact"} ${applied ? "is-applied" : ""}`}
                         >
-                          <span>{applied ? "已应用" : index === 0 ? "待应用" : index === 1 ? "注意" : "高风险"}</span>
+                          <span>{applied ? "已加入清单" : index === 0 ? "待确认" : index === 1 ? "注意" : "高风险"}</span>
                           <dl>
                             <div><dt>问题</dt><dd>{presentation.title}</dd></div>
                             <div><dt>建议</dt><dd>{presentation.body}</dd></div>
@@ -381,7 +381,7 @@ export function PatchWorkshop({
                           <div className="phase2-patch-card-actions">
                             <button type="button" onClick={() => applyPatch(action.id)} disabled={applied}>
                               {applied ? <Check aria-hidden="true" /> : null}
-                              {applied ? "已应用" : "应用建议"}
+                              {applied ? "已加入" : "加入修改清单"}
                             </button>
                             <button type="button" disabled>忽略</button>
                           </div>
@@ -391,8 +391,8 @@ export function PatchWorkshop({
                   </div>
                   {appliedVisibleCount ? (
                     <div className="phase3-patch-recheck-bar" role="status" aria-live="polite">
-                      <span><Check aria-hidden="true" />已应用 {appliedVisibleCount} 项建议</span>
-                      <p>人工确认正文修改后，进入重新验证。</p>
+                      <span><Check aria-hidden="true" />修改清单已有 {appliedVisibleCount} 项建议</span>
+                      <p>请先人工修改正文，再进入重新验证。</p>
                       <button type="button" onClick={onOpenRecheck}>
                         进入重新验证
                         <ArrowRight aria-hidden="true" />

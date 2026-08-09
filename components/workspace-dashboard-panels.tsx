@@ -9,10 +9,10 @@ type RecentReviewCardProps = {
 };
 
 const GUIDE_STEPS = [
-  { label: "上传或粘贴内容", description: "支持多种文档格式与直接粘贴" },
+  { label: "上传或粘贴内容", description: "支持 Markdown、TXT 与直接粘贴" },
   { label: "AI 分析审查", description: "多维度识别风险与可信度问题" },
   { label: "获取审查报告", description: "查看问题诊断与优化建议" },
-  { label: "优化与验证", description: "应用建议并重新验证效果" },
+  { label: "优化与验证", description: "记录建议，人工修改后重新验证" },
 ] as const;
 
 const SCORE_ITEMS = [
@@ -43,27 +43,25 @@ export function QuickStartGuide() {
 
 export function RecentReviewCard({
   score = 72,
-  title = "独立创作者如何为 AI 搜索优化长文",
+  title = "Demo 内容：AI 搜索长文审查示例",
   onOpenReport,
 }: RecentReviewCardProps) {
   return (
     <section className="phase-rail-card phase-recent-report" aria-labelledby="phase-recent-report-title">
       <header>
-        <h2 id="phase-recent-report-title">最近审查报告</h2>
-        <button type="button" onClick={onOpenReport} disabled={!onOpenReport}>
-          查看全部 <ArrowRight aria-hidden="true" />
-        </button>
+        <h2 id="phase-recent-report-title">Demo 报告预览</h2>
+        {onOpenReport ? <button type="button" onClick={onOpenReport}>打开报告 <ArrowRight aria-hidden="true" /></button> : null}
       </header>
 
       <div className="phase-recent-summary">
         <div className="phase-recent-score">
           <strong>{score}</strong>
           <span>/100</span>
-          <small>中风险</small>
+          <small>示例分数</small>
         </div>
         <div>
           <h3>{title}</h3>
-          <p>审查完成 · 2025-05-28 14:30</p>
+          <p>示例数据 · 仅用于说明报告结构</p>
         </div>
       </div>
 
@@ -79,7 +77,7 @@ export function RecentReviewCard({
       </ul>
 
       <button type="button" className="phase-view-report-button" onClick={onOpenReport} disabled={!onOpenReport}>
-        查看完整报告 <ArrowRight aria-hidden="true" />
+        {onOpenReport ? "打开当前报告" : "Demo 报告结构"} <ArrowRight aria-hidden="true" />
       </button>
     </section>
   );

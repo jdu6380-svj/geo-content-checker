@@ -66,7 +66,7 @@ export function ReportCompletionSummary({
             <section>
               <span>可信度评分</span>
               <div><strong><AnimatedNumber value={scoring.totalScore} from={baseline.totalScore} /></strong><small>/100</small></div>
-              <p>Patch 已应用并完成重新验证，内容可信度已重新评估。</p>
+              <p>已基于人工修改后的内容完成重新验证，可信度已重新评估。</p>
               <span>{validCount} 项已验证 · {pendingCount} 项待跟进 · {highRiskCount} 项高风险</span>
               <b>Before {baseline.totalScore} <span>→</span> After {current.totalScore} · {scoreChangeLabel} <em className={scoreChangeClassName}>{scoreChange > 0 ? `+${scoreChange}` : scoreChange}</em></b>
             </section>

@@ -285,6 +285,10 @@
 .phase-account-menu-group button:hover { background: #f7f7fb; color: var(--phase-purple); }
 .phase-account-menu-group svg, .phase-account-logout svg { width: 17px; height: 17px; stroke-width: 1.8; }
 .phase-account-logout { min-height: 52px; border-radius: 0; color: #ef4444; padding-inline: 18px; }
+.phase-account-logout.is-neutral { color: #6c7281; }
+.phase-account-menu-group button:disabled,
+.phase-share-methods button:disabled,
+.phase-invite-link-row button:disabled { cursor: default; opacity: .78; }
 
 .phase-modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(31, 35, 47, .46); padding: 24px; }
 .phase-invite-modal { position: relative; width: min(500px, 100%); max-height: min(720px, calc(100vh - 48px)); overflow: auto; border-radius: 13px; background: #fff; padding: 31px 32px 29px; box-shadow: 0 24px 75px rgba(17, 21, 35, .2); }

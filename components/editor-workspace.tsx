@@ -65,7 +65,7 @@ type EditorWorkspaceProps = {
 };
 
 type EditorMode = "upload" | "paste";
-type SelectedFile = { name: string; size: number; type: string };
+type SelectedFile = { name: string; size: number; format: "MD" | "TXT" };
 
 const TOOLBAR_ITEMS = [
   { label: "标题", icon: Heading },
@@ -78,11 +78,13 @@ const TOOLBAR_ITEMS = [
   { label: "图片", icon: ImageIcon },
 ] as const;
 
-const RECENT_FILES = [
-  { extension: "W", tone: "is-word", meta: "8,560 字 · 上传于 2 小时前" },
-  { extension: "PDF", tone: "is-pdf", meta: "6,230 字 · 上传于 1 天前" },
-  { extension: "Mᵈ", tone: "is-markdown", meta: "4,120 字 · 上传于 3 天前" },
+const SAMPLE_PRESENTATION = [
+  { marker: "01", tone: "is-word" },
+  { marker: "02", tone: "is-pdf" },
+  { marker: "03", tone: "is-markdown" },
 ] as const;
+
+const SUPPORTED_UPLOAD_PATTERN = /\.(md|markdown|txt)$/i;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -107,6 +109,7 @@ export function EditorWorkspace({
 }: EditorWorkspaceProps) {
   const [mode, setMode] = useState<EditorMode>("upload");
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
+  const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contentText = draft.content ?? "";
 
@@ -114,25 +117,46 @@ export function EditorWorkspace({
     if (recheckContext) setMode("paste");
   }, [recheckContext]);
 
-  function handleFile(file: File) {
-    setSelectedFile({ name: file.name, size: file.size, type: file.type });
-    if (file.type.startsWith("text/") || /\.md$/i.test(file.name)) {
-      void file.text().then((text) => {
-        if (!text.trim()) return;
-        onDraftChange("title", file.name.replace(/\.[^.]+$/, ""));
-        onDraftChange("content", text.slice(0, maxArticleCharacters));
+  async function handleFile(file: File) {
+    setUploadError("");
+
+    if (!SUPPORTED_UPLOAD_PATTERN.test(file.name)) {
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploadError("当前 Beta 仅支持 Markdown（.md、.markdown）与 TXT 文本文件。PDF、DOCX 尚未开放解析。");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      if (!text.trim()) {
+        setSelectedFile(null);
+        setUploadError("文件内容为空，或无法按 UTF-8 文本读取。请改用粘贴正文。");
+        return;
+      }
+
+      setSelectedFile({
+        name: file.name,
+        size: file.size,
+        format: /\.txt$/i.test(file.name) ? "TXT" : "MD",
       });
+      onDraftChange("title", file.name.replace(/\.[^.]+$/, ""));
+      onDraftChange("content", text.slice(0, maxArticleCharacters));
+    } catch {
+      setSelectedFile(null);
+      setUploadError("文件读取失败，请确认文件为 UTF-8 文本，或改用粘贴正文。");
     }
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (file) void handleFile(file);
   }
 
   function handleSample(index: number) {
     setSelectedFile(null);
+    setUploadError("");
     setMode("paste");
     onLoadSample(index);
   }
@@ -181,23 +205,23 @@ export function EditorWorkspace({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.md,.txt"
+                  accept=".md,.markdown,.txt,text/markdown,text/plain"
                   className="phase-file-input"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
-                    if (file) handleFile(file);
+                    if (file) void handleFile(file);
                   }}
                 />
 
                 {selectedFile ? (
                   <>
                     <span className="phase-upload-state-icon is-complete"><FileCheck2 aria-hidden="true" /></span>
-                    <h2>文件上传完成</h2>
-                    <p>文件已准备就绪，可开始分析</p>
+                    <h2>文本文件读取完成</h2>
+                    <p>正文已载入当前草稿，可开始分析</p>
                     <div className="phase-selected-file">
-                      <span className="phase-file-type">{selectedFile.name.toLowerCase().endsWith(".pdf") ? "PDF" : "W"}</span>
+                      <span className="phase-file-type">{selectedFile.format}</span>
                       <div><strong>{selectedFile.name}</strong><span>{formatBytes(selectedFile.size)}</span></div>
-                      <b><Check aria-hidden="true" />上传完成</b>
+                      <b><Check aria-hidden="true" />已载入</b>
                     </div>
                     <div className="phase-upload-actions">
                       <button type="button" className="phase-secondary-button" onClick={() => fileInputRef.current?.click()}>
@@ -212,13 +236,15 @@ export function EditorWorkspace({
                   <>
                     <span className="phase-upload-state-icon"><Upload aria-hidden="true" /></span>
                     <h2>拖入文章文件，或选择文件上传</h2>
-                    <p>支持 PDF、DOCX、Markdown、TXT 格式</p>
+                    <p>支持 Markdown、TXT（UTF-8 文本，最多读取 {maxArticleCharacters.toLocaleString()} 字）</p>
                     <button type="button" className="phase-primary-button phase-file-button" onClick={() => fileInputRef.current?.click()}>
                       选择文件 <ChevronDown aria-hidden="true" />
                     </button>
                     <span className="phase-upload-hint">或直接拖拽文件到此处</span>
                   </>
                 )}
+
+                {uploadError ? <p className="phase-editor-error" role="alert">{uploadError}</p> : null}
 
                 <div className="phase-upload-features">
                   <div><span><Sparkles aria-hidden="true" /></span><strong>智能解析结构</strong><small>自动提取标题、段落、引用</small></div>
@@ -271,16 +297,15 @@ export function EditorWorkspace({
             )}
 
             <section className="phase-recent-list" aria-labelledby="phase-recent-list-title">
-              <h2 id="phase-recent-list-title">最近使用</h2>
+              <h2 id="phase-recent-list-title">示例审查内容</h2>
               <ul>
                 {samples.slice(0, 3).map((sample, index) => {
-                  const file = RECENT_FILES[index] ?? RECENT_FILES[0];
-                  const suffix = index === 0 ? ".docx" : index === 1 ? ".pdf" : ".md";
+                  const presentation = SAMPLE_PRESENTATION[index] ?? SAMPLE_PRESENTATION[0];
                   return (
                     <li key={sample.id}>
-                      <span className={`phase-recent-file-icon ${file.tone}`}>{file.extension}</span>
-                      <div><strong>{sample.title}{suffix}</strong><span>{file.meta}</span></div>
-                      <button type="button" onClick={() => handleSample(index)}>继续审查 <ArrowRight aria-hidden="true" /></button>
+                      <span className={`phase-recent-file-icon ${presentation.tone}`}>{presentation.marker}</span>
+                      <div><strong>Demo 内容 · {sample.title}</strong><span>{sample.status} · {sample.description}</span></div>
+                      <button type="button" onClick={() => handleSample(index)}>载入示例 <ArrowRight aria-hidden="true" /></button>
                     </li>
                   );
                 })}
@@ -291,7 +316,7 @@ export function EditorWorkspace({
 
         <aside className="phase-editor-rail" aria-label="审查辅助信息">
           <QuickStartGuide />
-          <RecentReviewCard score={recheckContext?.score ?? 72} />
+          <RecentReviewCard />
         </aside>
       </div>
 

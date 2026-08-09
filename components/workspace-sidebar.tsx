@@ -11,7 +11,6 @@ import {
   LayoutGrid,
   MessageSquareText,
   RotateCcw,
-  Settings,
   UsersRound,
 } from "lucide-react";
 
@@ -63,8 +62,8 @@ export function WorkspaceSidebar({
           <button type="button" onClick={onOpenReport} disabled={!canOpenReport} className={stage === "report" ? "is-active" : ""}>
             <FileText aria-hidden="true" />我的审查
           </button>
-          <button type="button" aria-disabled="true"><Folder aria-hidden="true" />草稿箱</button>
-          <button type="button" aria-disabled="true"><UsersRound aria-hidden="true" />团队空间</button>
+          <button type="button" disabled><Folder aria-hidden="true" />当前草稿</button>
+          <button type="button" disabled><UsersRound aria-hidden="true" />单用户 Beta</button>
         </div>
 
         <div className="phase-sidebar-section">
@@ -75,13 +74,12 @@ export function WorkspaceSidebar({
           <button type="button" onClick={onOpenRecheck} disabled={!canOpenRecheck} className={stage === "recheck" ? "is-active" : ""}>
             <RotateCcw aria-hidden="true" />重新验证
           </button>
-          <button type="button" aria-disabled="true"><LayoutGrid aria-hidden="true" />模板库</button>
+          <button type="button" disabled><LayoutGrid aria-hidden="true" />示例内容</button>
         </div>
 
         <div className="phase-sidebar-section">
-          <p>账户</p>
-          <button type="button" aria-disabled="true"><Settings aria-hidden="true" />设置</button>
-          <button type="button" aria-disabled="true"><CircleHelp aria-hidden="true" />帮助中心</button>
+          <p>Beta 体验</p>
+          <button type="button" disabled><CircleHelp aria-hidden="true" />单用户模式</button>
           <a href="/feedback" target="_blank" rel="noreferrer" onClick={onFeedbackClick}>
             <MessageSquareText aria-hidden="true" />反馈建议
           </a>
@@ -89,10 +87,10 @@ export function WorkspaceSidebar({
       </nav>
 
       <div className="phase-sidebar-footer">
-        <span className="phase-user-avatar">N</span>
+        <span className="phase-user-avatar">B</span>
         <div>
-          <strong>Nana</strong>
-          <span>Pro Plan</span>
+          <strong>Beta 访客</strong>
+          <span>本地体验</span>
         </div>
         <ChevronDown aria-hidden="true" />
       </div>
