@@ -2,346 +2,197 @@
 
 import {
   AlertTriangle,
-  ArrowDownRight,
+  ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
   CheckCircle2,
-  CircleDot,
-  Minus,
+  FileCheck2,
+  Link2,
   RotateCcw,
+  ShieldCheck,
 } from "lucide-react";
 
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import {
-  REPORT_DIMENSION_KEYS,
   isReportIssue,
-  type ReportComparisonDiagnostic,
   type ReportComparisonSnapshot,
-  type ReportDimensionKey,
 } from "@/lib/client/report-comparison";
 
 type RecheckComparisonProps = {
   baseline: ReportComparisonSnapshot;
   current: ReportComparisonSnapshot | null;
   status: "running" | "complete" | "error" | "cached";
+  onOpenOverview: () => void;
 };
-
-const DIMENSION_LABELS: Record<ReportDimensionKey, string> = {
-  questionCoverage: "问题覆盖度",
-  factCompleteness: "事实完整度",
-  structureClarity: "结构清晰度",
-  freshness: "时效性",
-};
-
-const RISK_RANK = { low: 0, medium: 1, high: 2 } as const;
-const ANSWERABILITY_RANK = { "有风险": 0, "信息不足": 1, "可以完全回答": 2 } as const;
-
-type ComparisonOutcome = "improved" | "unchanged" | "regressed";
-
-function normalizedQuestion(question: string): string {
-  return question.trim().replace(/\s+/g, " ");
-}
-
-function comparisonStatus(
-  before: ReportComparisonDiagnostic,
-  after: ReportComparisonDiagnostic,
-): ComparisonOutcome {
-  const evidenceChange = before.evidenceStatus === after.evidenceStatus
-    ? 0
-    : after.evidenceStatus === "valid"
-      ? 1
-      : before.evidenceStatus === "valid"
-        ? -1
-        : 0;
-  const changes = [
-    RISK_RANK[before.riskLevel] - RISK_RANK[after.riskLevel],
-    ANSWERABILITY_RANK[after.answerability] - ANSWERABILITY_RANK[before.answerability],
-    evidenceChange,
-  ];
-  const hasImprovement = changes.some((change) => change > 0);
-  const hasRegression = changes.some((change) => change < 0);
-  if (hasRegression) return "regressed";
-  return hasImprovement ? "improved" : "unchanged";
-}
 
 function scoreChangeLabel(change: number): string {
   if (change > 0) return `+${change}`;
-  if (change < 0) return String(change);
-  return "无变化";
+  return String(change);
+}
+
+function changePresentation(change: number) {
+  if (change > 0) return { label: "提升", className: "is-positive" };
+  if (change < 0) return { label: "下降", className: "is-negative" };
+  return { label: "持平", className: "is-neutral" };
 }
 
 function statusCopy(status: RecheckComparisonProps["status"]) {
   if (status === "cached") {
     return {
       title: "尚未生成新的复检结果",
-      description: "当前内容与上次分析输入一致，因此显示的是缓存报告。修改正文后再次分析，才会形成可比较的新结果。",
+      description: "修改正文后再次分析，才会形成可比较的新结果。",
       icon: RotateCcw,
-      className: "status-warning",
+      className: "is-warning",
     };
   }
   if (status === "error") {
     return {
       title: "复检尚未完整结束",
-      description: "本轮分析存在未完成模块。已保留修改前基线，待完整分析成功后再显示变化判断。",
+      description: "本轮分析存在未完成模块，已保留修改前基线。",
       icon: AlertTriangle,
-      className: "status-danger",
+      className: "is-danger",
     };
   }
   return {
     title: "正在重新验证修改结果",
-    description: "系统正在运行同一套完整审查。结果完成前，不提前判断风险是否改善。",
+    description: "系统正在使用同一套审查规则重新检测内容。",
     icon: RotateCcw,
-    className: "status-info",
+    className: "is-info",
   };
 }
 
-export function RecheckComparison({ baseline, current, status }: RecheckComparisonProps) {
+export function RecheckComparison({ baseline, current, status, onOpenOverview }: RecheckComparisonProps) {
   if (status !== "complete" || !current) {
     const presentation = statusCopy(status);
     const StatusIcon = presentation.icon;
-    const baselineIssueCount = baseline.diagnostics.filter(isReportIssue).length;
-
     return (
-      <section id="recheck-comparison" className={`recheck-comparison surface-flat mt-4 overflow-hidden border-l-[3px] ${presentation.className}`}>
-        <div className="flex items-start gap-3 px-4 py-4 sm:px-5">
-          <StatusIcon aria-hidden="true" className={`mt-0.5 size-4 shrink-0 ${status === "running" ? "animate-spin motion-reduce:animate-none" : ""}`} />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">{presentation.title}</p>
-            <p className="mt-1 text-xs leading-5 opacity-80">{presentation.description}</p>
-            <p className="mt-2 text-[11px] font-semibold opacity-75">
-              修改前基线：{baseline.totalScore} 分 · {baselineIssueCount} 项需关注
-            </p>
+      <section id="recheck-comparison" className="phase2-recheck-page section-anchor">
+        <header className="phase2-subpage-header">
+          <div>
+            <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Recheck</p>
+            <h1>重新验证结果</h1>
+            <p>基于原始报告重新核验已修改内容。</p>
           </div>
+          <div className="phase2-subpage-actions"><button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button></div>
+        </header>
+        <div className={`phase2-loading-surface ${presentation.className}`} role="status" aria-live="polite">
+          <StatusIcon aria-hidden="true" />
+          <div><strong>{presentation.title}</strong><p>{presentation.description}</p></div>
         </div>
       </section>
     );
   }
 
-  const currentByQuestion = new Map(
-    current.diagnostics.map((item) => [normalizedQuestion(item.question), item]),
-  );
-  const baselineIssues = baseline.diagnostics.filter(isReportIssue);
-  const matched = baseline.diagnostics.flatMap((before) => {
-    const after = currentByQuestion.get(normalizedQuestion(before.question));
-    return after ? [{ before, after, status: comparisonStatus(before, after) }] : [];
-  });
-  const improved = matched.filter((item) => item.status === "improved");
-  const unchanged = matched.filter((item) => item.status === "unchanged");
-  const regressed = matched.filter((item) => item.status === "regressed");
-  const unpaired = baseline.diagnostics.filter(
-    (item) => !currentByQuestion.has(normalizedQuestion(item.question)),
-  );
-  const baselineQuestions = new Set(baseline.diagnostics.map((item) => normalizedQuestion(item.question)));
-  const newIssues = current.diagnostics.filter(
-    (item) => isReportIssue(item) && !baselineQuestions.has(normalizedQuestion(item.question)),
-  );
   const scoreChange = current.totalScore - baseline.totalScore;
-  const beforeRisk = baselineIssues.filter((item) => item.riskLevel === "high" || item.riskLevel === "medium").length;
-  const afterIssues = current.diagnostics.filter(isReportIssue);
-  const afterRisk = afterIssues.filter((item) => item.riskLevel === "high" || item.riskLevel === "medium").length;
-  const notComparableItems = [
-    ...unpaired.map((item) => ({ question: item.question, context: "修改前问题未在本轮以相同文本出现" })),
-    ...newIssues.map((item) => ({ question: item.question, context: "本轮新增关注项" })),
-  ];
-  const outcomeGroups = [
+  const scorePresentation = changePresentation(scoreChange);
+  const baselineIssues = baseline.diagnostics.filter(isReportIssue);
+  const currentIssues = current.diagnostics.filter(isReportIssue);
+  const improvedIssueCount = Math.max(0, baselineIssues.length - currentIssues.length);
+  const dimensionCards = [
     {
-      label: "改善",
-      count: improved.length,
-      icon: CheckCircle2,
-      className: "recheck-outcome-improved",
-      description: "同一问题至少一项判断改善，且没有出现下降。",
-      empty: "暂无可确认的逐项改善。",
-      items: improved.map(({ after }) => ({ question: after.question, context: "同一问题可直接对照" })),
+      key: "factCompleteness" as const,
+      label: "事实完整度",
+      icon: FileCheck2,
+      description: "关键事实覆盖更完整。",
     },
     {
-      label: "无变化",
-      count: unchanged.length,
-      icon: Minus,
-      className: "recheck-outcome-unchanged",
-      description: "同一问题的风险、回答度与证据状态均未变化。",
-      empty: "暂无完全不变的同名问题。",
-      items: unchanged.map(({ after }) => ({ question: after.question, context: "判断结果保持一致" })),
+      key: "questionCoverage" as const,
+      label: "Evidence 覆盖",
+      icon: Link2,
+      description: "观点与来源关联更清晰。",
     },
     {
-      label: "下降",
-      count: regressed.length,
-      icon: ArrowDownRight,
-      className: "recheck-outcome-regressed",
-      description: "同一问题至少一项判断下降，需要优先人工核对。",
-      empty: "同名问题中未发现明确下降。",
-      items: regressed.map(({ after }) => ({ question: after.question, context: "至少一项判断出现下降" })),
-    },
-    {
-      label: "不可比较",
-      count: notComparableItems.length,
-      icon: CircleDot,
-      className: "recheck-outcome-unpaired",
-      description: "问题文本没有一一对应，不推断为改善或下降。",
-      empty: "所有问题均可与修改前直接对照。",
-      items: notComparableItems,
+      key: "freshness" as const,
+      label: "可验证性",
+      icon: ShieldCheck,
+      description: "来源与定位信息便于复核。",
     },
   ];
-  const scoreChangeClassName = scoreChange > 0
-    ? "recheck-change-positive"
+  const evidenceValidBefore = baseline.diagnostics.filter((item) => item.evidenceStatus === "valid").length;
+  const evidenceValidAfter = current.diagnostics.filter((item) => item.evidenceStatus === "valid").length;
+  const highRiskBefore = baseline.diagnostics.filter((item) => item.riskLevel === "high").length;
+  const highRiskAfter = current.diagnostics.filter((item) => item.riskLevel === "high").length;
+  const summaryItems = [
+    evidenceValidAfter > evidenceValidBefore
+      ? "更多关键观点已获得有效 Evidence 支撑"
+      : evidenceValidAfter < evidenceValidBefore
+        ? "有效 Evidence 数量下降，建议复核来源关联"
+        : "关键观点与 Evidence 已重新核验",
+    current.dimensions.factCompleteness.score > baseline.dimensions.factCompleteness.score
+      ? "事实完整度得到改善"
+      : current.dimensions.factCompleteness.score < baseline.dimensions.factCompleteness.score
+        ? "事实完整度下降，建议核对本轮修改"
+        : "事实完整度保持稳定",
+    highRiskAfter < highRiskBefore
+      ? "高风险问题数量已下降"
+      : highRiskAfter > highRiskBefore
+        ? "高风险问题数量增加，建议继续处理"
+        : "高风险表述已完成复核",
+  ];
+  const SummaryIcon = scoreChange < 0 ? AlertTriangle : ShieldCheck;
+  const summaryTitle = scoreChange > 0 ? "可信度提升" : scoreChange < 0 ? "可信度下降" : "可信度保持稳定";
+  const summaryDescription = scoreChange > 0
+    ? "本轮修改改善了来源透明度、Evidence 覆盖与结论可验证性。"
     : scoreChange < 0
-      ? "recheck-change-negative"
-      : "recheck-change-neutral";
+      ? "本轮修改未形成预期改善，建议返回 Evidence 与 Diagnosis 核对新增缺口。"
+      : "本轮修改完成复核，整体可信度评分保持稳定。";
 
   return (
-    <section id="recheck-comparison" className="recheck-comparison surface-flat mt-4 overflow-hidden border-t-[3px] border-t-[var(--geo-secondary)]">
-      <header className="flex flex-col gap-3 border-b border-[var(--geo-border)] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
-        <div className="min-w-0">
-          <p className="section-kicker text-[var(--geo-secondary)]">重新验证</p>
-          <h2 className="mt-1.5 text-lg font-semibold text-[var(--geo-text)]">修改前后真实变化</h2>
+    <section id="recheck-comparison" className="phase2-recheck-page section-anchor">
+      <header className="phase2-subpage-header">
+        <div>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Recheck</p>
+          <h1>重新验证结果</h1>
+          <p>Patch 已应用 · 基于原始报告重新核验</p>
+          <span className={`phase2-recheck-complete ${scorePresentation.className}`}><CheckCircle2 aria-hidden="true" />复核完成 · {scorePresentation.label} {scoreChangeLabel(scoreChange)}</span>
         </div>
-        <span className="inline-flex w-fit items-center gap-1.5 text-xs font-semibold text-[var(--geo-secondary)]">
-          <CheckCircle2 aria-hidden="true" className="size-3.5" />
-          同一审查规则
-        </span>
+        <div className="phase2-subpage-actions"><button type="button" onClick={onOpenOverview}>返回报告概览</button></div>
       </header>
 
-      <div className="recheck-snapshot-grid grid md:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]">
-        <section className="recheck-snapshot px-4 py-5 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="data-label">修改前基线</p>
-          </div>
-          <div className="mt-3 flex items-end gap-2">
-            <span className="text-3xl font-semibold tabular-nums text-[var(--geo-text)]">{baseline.totalScore}</span>
-            <span className="mb-1 text-xs text-[var(--geo-text-soft)]">/ 100</span>
-          </div>
-          <dl className="recheck-snapshot-meta mt-4 grid grid-cols-2 gap-3">
-            <div>
-              <dt>中高风险</dt>
-              <dd>{beforeRisk} 项</dd>
+      <div className="phase2-recheck-layout">
+        <div>
+          <section className="phase2-recheck-score-card">
+            <header><h2>评分变化</h2><p>应用 Patch 后的可信度重新评估</p></header>
+            <div className="phase2-recheck-score-change">
+              <div><span>Before</span><strong><AnimatedNumber value={baseline.totalScore} duration={620} /></strong><small>/100</small></div>
+              <ArrowRight aria-hidden="true" />
+              <div className={`is-change ${scorePresentation.className}`}><strong><AnimatedNumber value={scoreChange} duration={520} delay={360} showSign /></strong><span>{scorePresentation.label}</span></div>
+              <div className="is-after"><span>After</span><strong><AnimatedNumber value={current.totalScore} from={baseline.totalScore} duration={760} delay={180} /></strong><small>/100</small></div>
             </div>
-            <div>
-              <dt>需关注诊断</dt>
-              <dd>{baselineIssues.length} 项</dd>
-            </div>
-          </dl>
-        </section>
+            <p>{scoreChange > 0 ? "来源引用与 Evidence 关联完成补强，整体可信度重新计算完成。" : scoreChange < 0 ? "重新验证后评分下降，建议回到 Evidence 与 Diagnosis 核对新增缺口。" : "重新验证完成，整体评分保持稳定。"}</p>
+          </section>
 
-        <div className="recheck-transition" aria-label={`总分变化 ${scoreChangeLabel(scoreChange)}`}>
-          <ArrowRight aria-hidden="true" className="size-4" />
-          <span className={scoreChangeClassName}>{scoreChangeLabel(scoreChange)}</span>
+          <section className="phase2-recheck-metrics">
+            <h2>指标变化</h2>
+            <div>
+              {dimensionCards.map(({ key, label, icon: Icon, description }) => {
+                const before = baseline.dimensions[key].score;
+                const after = current.dimensions[key].score;
+                const change = after - before;
+                const presentation = changePresentation(change);
+                return (
+                  <article key={key} className={presentation.className}>
+                    <header><Icon aria-hidden="true" /><strong>{label}</strong></header>
+                    <div><b>{scoreChangeLabel(change)}</b><span>{presentation.label}</span></div>
+                    <p>{change > 0 ? description : change < 0 ? "该维度评分下降，建议复核本轮修改。" : "该维度评分保持稳定。"}</p>
+                    <small>{before} <ArrowRight aria-hidden="true" /> {after}</small>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         </div>
 
-        <section className="recheck-snapshot is-current px-4 py-5 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="data-label">复检结果</p>
-          </div>
-          <div className="mt-3 flex items-end gap-2">
-            <span className="text-3xl font-semibold tabular-nums text-[var(--geo-text)]">{current.totalScore}</span>
-            <span className="mb-1 text-xs text-[var(--geo-text-soft)]">/ 100</span>
-          </div>
-          <dl className="recheck-snapshot-meta mt-4 grid grid-cols-2 gap-3">
-            <div>
-              <dt>中高风险</dt>
-              <dd>{afterRisk} 项</dd>
-            </div>
-            <div>
-              <dt>需关注诊断</dt>
-              <dd>{afterIssues.length} 项</dd>
-            </div>
-          </dl>
-        </section>
+        <aside className="phase2-recheck-summary">
+          <h2>改进总结</h2>
+          <div className={`phase2-recheck-summary-title ${scorePresentation.className}`}><SummaryIcon aria-hidden="true" /><strong>{summaryTitle}</strong></div>
+          <p>{summaryDescription}</p>
+          <ul>{summaryItems.map((item) => <li key={item}><CheckCircle2 aria-hidden="true" />{item}</li>)}</ul>
+          <span>{improvedIssueCount} 项问题改善 · 复核完成</span>
+          <button type="button" onClick={onOpenOverview}>查看完整报告</button>
+        </aside>
       </div>
 
-      <div className="recheck-outcome-grid grid border-t border-[var(--geo-border)] sm:grid-cols-2 xl:grid-cols-4" aria-label="复检结果分类">
-        {outcomeGroups.map((group) => {
-          const OutcomeIcon = group.icon;
-          return (
-            <div key={group.label} className={`recheck-outcome-summary ${group.className}`}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 text-xs font-semibold">
-                  <OutcomeIcon aria-hidden="true" className="size-3.5" />
-                  {group.label}
-                </span>
-                <span className="text-xl font-semibold tabular-nums">{group.count}</span>
-              </div>
-              <span className="sr-only">{group.description}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="recheck-detail-grid grid border-t border-[var(--geo-border)] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-        <section className="border-b border-[var(--geo-border)] px-4 py-5 sm:px-6 lg:border-b-0 lg:border-r">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <p className="data-label">评分账本</p>
-              <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">四项评分变化</h3>
-            </div>
-            <span className={`text-xs font-semibold ${scoreChangeClassName}`}>总分 {scoreChangeLabel(scoreChange)}</span>
-          </div>
-          <div className="recheck-dimension-table mt-4">
-            <div className="recheck-dimension-head">
-              <span>维度</span>
-              <span>修改前</span>
-              <span>复检后</span>
-              <span>变化</span>
-            </div>
-            {REPORT_DIMENSION_KEYS.map((key) => {
-              const before = baseline.dimensions[key].score;
-              const after = current.dimensions[key].score;
-              const change = after - before;
-              const ChangeIcon = change > 0 ? ArrowUpRight : change < 0 ? ArrowDownRight : Minus;
-              return (
-                <div key={key} className="recheck-dimension-row">
-                  <span className="text-xs font-medium text-[var(--geo-text-body)]">{DIMENSION_LABELS[key]}</span>
-                  <span className="font-mono text-xs tabular-nums text-[var(--geo-text-muted)]">{before}</span>
-                  <span className="font-mono text-xs tabular-nums text-[var(--geo-text)]">{after}</span>
-                  <span className={`inline-flex items-center justify-end gap-1 text-xs font-semibold ${change > 0 ? "recheck-change-positive" : change < 0 ? "recheck-change-negative" : "recheck-change-neutral"}`}>
-                    <ChangeIcon aria-hidden="true" className="size-3.5" />
-                    {scoreChangeLabel(change)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <p className="mt-4 text-[11px] leading-5 text-[var(--geo-text-soft)]">分数变化只反映本次审查结果，不代表外部平台收录、引用或排名变化。</p>
-        </section>
-
-        <section className="px-4 py-5 sm:px-6">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <p className="data-label">诊断变化记录</p>
-              <h3 className="mt-1 text-sm font-semibold text-[var(--geo-text)]">逐项变化记录</h3>
-            </div>
-            <span className="text-xs text-[var(--geo-text-soft)]">仅列出前 3 项</span>
-          </div>
-          <div className="recheck-outcome-details mt-4 grid sm:grid-cols-2">
-            {outcomeGroups.map((group) => {
-              const OutcomeIcon = group.icon;
-              return (
-                <section key={group.label} className={`recheck-outcome-detail ${group.className}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="flex items-center gap-2 text-xs font-semibold">
-                      <OutcomeIcon aria-hidden="true" className="size-3.5" />
-                      {group.label}
-                    </p>
-                    <span className="font-mono text-[10px] font-semibold tabular-nums">{group.count}</span>
-                  </div>
-                  {group.items.length ? (
-                    <ul className="mt-3 grid gap-3">
-                      {group.items.slice(0, 3).map((item) => (
-                        <li key={`${group.label}-${item.question}`}>
-                          <p className="text-xs leading-5 text-[var(--geo-text-body)]">{item.question}</p>
-                          <p className="mt-1 text-[10px] leading-4 text-[var(--geo-text-soft)]">{item.context}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-3 text-xs leading-5 text-[var(--geo-text-soft)]">{group.empty}</p>
-                  )}
-                </section>
-              );
-            })}
-          </div>
-          <p className="mt-4 border-t border-[var(--geo-border)] pt-3 text-[11px] leading-5 text-[var(--geo-text-soft)]">
-            改善、无变化与下降仅来自同名问题的真实状态变化；新增或未配对问题统一归入不可比较。
-          </p>
-        </section>
-      </div>
+      <footer className="phase2-recheck-evidence-first"><ShieldCheck aria-hidden="true" /><strong>Evidence First</strong><span>每项评分变化均可追溯至应用的 Patch 与来源。</span></footer>
     </section>
   );
 }

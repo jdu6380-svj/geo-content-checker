@@ -27,7 +27,7 @@ export interface AnalysisSessionClientData {
 }
 
 export type GeoConcurrencyPool = {
-  schedule<T>(task: () => Promise<T>): Promise<T>;
+  schedule<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T>;
 };
 
 let memoryClientId: string | null = null;
@@ -157,44 +157,99 @@ export async function postGeoBetaEvent(event: BetaEvent): Promise<void> {
   }
 }
 
+export function createGeoAbortError(): Error {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("The operation was aborted.", "AbortError");
+  }
+
+  const error = new Error("The operation was aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
+export function isGeoAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export function createGeoConcurrencyPool(concurrency: number): GeoConcurrencyPool {
   const limit = Math.max(1, Math.floor(concurrency));
   const queue: Array<() => void> = [];
   let activeCount = 0;
 
-  async function acquire(): Promise<void> {
-    if (activeCount < limit) {
-      activeCount += 1;
-      return;
+  function drain(): void {
+    while (activeCount < limit && queue.length > 0) {
+      queue.shift()?.();
     }
-
-    await new Promise<void>((resolve) => {
-      queue.push(() => {
-        activeCount += 1;
-        resolve();
-      });
-    });
-  }
-
-  function release(): void {
-    activeCount = Math.max(0, activeCount - 1);
-    queue.shift()?.();
   }
 
   return {
-    async schedule<T>(task: () => Promise<T>): Promise<T> {
-      await acquire();
-      try {
-        return await task();
-      } finally {
-        release();
-      }
+    schedule<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+      if (signal?.aborted) return Promise.reject(createGeoAbortError());
+
+      return new Promise<T>((resolve, reject) => {
+        let started = false;
+        let settled = false;
+        let start: () => void;
+
+        const rejectOnce = (error: Error) => {
+          if (settled) return;
+          settled = true;
+          reject(error);
+        };
+
+        const onAbort = () => {
+          if (started) return;
+          const index = queue.indexOf(start);
+          if (index >= 0) queue.splice(index, 1);
+          rejectOnce(createGeoAbortError());
+          drain();
+        };
+
+        start = () => {
+          signal?.removeEventListener("abort", onAbort);
+          if (signal?.aborted) {
+            rejectOnce(createGeoAbortError());
+            drain();
+            return;
+          }
+
+          started = true;
+          activeCount += 1;
+          void Promise.resolve()
+            .then(task)
+            .then(
+              (value) => {
+                if (!settled) {
+                  settled = true;
+                  resolve(value);
+                }
+              },
+              (error: unknown) => {
+                if (!settled) {
+                  settled = true;
+                  reject(error);
+                }
+              },
+            )
+            .finally(() => {
+              activeCount = Math.max(0, activeCount - 1);
+              drain();
+            });
+        };
+
+        signal?.addEventListener("abort", onAbort, { once: true });
+        queue.push(start);
+        drain();
+      });
     },
   };
 }
 
 const diagnosticPool = createGeoConcurrencyPool(2);
 
-export function scheduleGeoDiagnostic<T>(task: () => Promise<T>): Promise<T> {
-  return diagnosticPool.schedule(task);
+export function scheduleGeoDiagnostic<T>(
+  task: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return diagnosticPool.schedule(task, signal);
 }

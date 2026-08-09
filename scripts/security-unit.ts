@@ -38,6 +38,10 @@ import {
   serializeDraftSession,
 } from "../lib/client/analysis-persistence.ts";
 import {
+  createGeoConcurrencyPool,
+  isGeoAbortError,
+} from "../lib/client/geo-api.ts";
+import {
   readCachedReport,
   saveCachedReport,
 } from "../lib/client/report-state.ts";
@@ -65,6 +69,7 @@ import {
   areDistinctSecuritySecrets,
   isStrongSecuritySecret,
 } from "../lib/server/security-config.ts";
+import { isLightweightDevelopmentMode } from "../lib/server/development-runtime.ts";
 import {
   classifyGeoProviderResponseReadError,
   GEO_FALLBACK_REASONS,
@@ -179,6 +184,52 @@ import {
   validatePreviewDeploymentMetadata,
   withAutomationBypassRequestInit,
 } from "./preview-automation.mjs";
+
+const geoConcurrencyPool = createGeoConcurrencyPool(1);
+const geoConcurrencyTrace: string[] = [];
+let releaseActiveGeoTask: (() => void) | undefined;
+let markActiveGeoTaskStarted: (() => void) | undefined;
+const activeGeoTaskStarted = new Promise<void>((resolve) => {
+  markActiveGeoTaskStarted = resolve;
+});
+const holdActiveGeoTask = new Promise<void>((resolve) => {
+  releaseActiveGeoTask = resolve;
+});
+const activeGeoTask = geoConcurrencyPool.schedule(async () => {
+  geoConcurrencyTrace.push("active:start");
+  markActiveGeoTaskStarted?.();
+  await holdActiveGeoTask;
+  geoConcurrencyTrace.push("active:end");
+  return "active";
+});
+await activeGeoTaskStarted;
+
+let cancelledGeoTaskExecuted = false;
+const queuedGeoTaskController = new AbortController();
+const cancelledGeoTask = geoConcurrencyPool.schedule(async () => {
+  cancelledGeoTaskExecuted = true;
+  geoConcurrencyTrace.push("cancelled");
+  return "cancelled";
+}, queuedGeoTaskController.signal);
+queuedGeoTaskController.abort();
+await assert.rejects(cancelledGeoTask, isGeoAbortError);
+
+const subsequentGeoTask = geoConcurrencyPool.schedule(async () => {
+  geoConcurrencyTrace.push("subsequent");
+  return "subsequent";
+});
+releaseActiveGeoTask?.();
+assert.equal(await activeGeoTask, "active");
+assert.equal(await subsequentGeoTask, "subsequent");
+assert.equal(cancelledGeoTaskExecuted, false);
+assert.deepEqual(geoConcurrencyTrace, ["active:start", "active:end", "subsequent"]);
+
+assert.equal(isLightweightDevelopmentMode({ NODE_ENV: "development" }), true);
+assert.equal(
+  isLightweightDevelopmentMode({ NODE_ENV: "development", EVIDRA_DEV_MODEL: "true" }),
+  false,
+);
+assert.equal(isLightweightDevelopmentMode({ NODE_ENV: "production" }), false);
 
 assert.equal(MAX_ARTICLE_CHARACTERS, 12_000);
 const scoringRouteSource = readFileSync(

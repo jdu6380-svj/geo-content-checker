@@ -1,29 +1,38 @@
 "use client";
 
-import { BarChart3, FilePenLine, FileText, MessageSquareText, RotateCcw } from "lucide-react";
-import Link from "next/link";
+import {
+  Bot,
+  ChevronDown,
+  CircleHelp,
+  FileClock,
+  FileText,
+  Folder,
+  Home,
+  LayoutGrid,
+  MessageSquareText,
+  RotateCcw,
+  Settings,
+  UsersRound,
+} from "lucide-react";
 
+import type { ReportWorkspaceView } from "@/components/report-workspace";
 import type { WorkspaceStage } from "@/components/workspace-command-bar";
 
 type WorkspaceSidebarProps = {
   stage: WorkspaceStage;
+  reportView: ReportWorkspaceView;
   canOpenReport: boolean;
   canOpenAdvice: boolean;
   canOpenRecheck: boolean;
   onOpenReview: () => void;
   onOpenReport: () => void;
+  onOpenEvidence: () => void;
+  onOpenDiagnosis: () => void;
   onOpenAdvice: () => void;
   onOpenRecheck: () => void;
   feedbackUrl?: string;
   onFeedbackClick: () => void;
 };
-
-const ITEMS = [
-  { id: "review", label: "提交内容", icon: FileText },
-  { id: "report", label: "审查报告", icon: BarChart3 },
-  { id: "advice", label: "修改建议", icon: FilePenLine },
-  { id: "recheck", label: "重新验证", icon: RotateCcw },
-] as const;
 
 export function WorkspaceSidebar({
   stage,
@@ -36,51 +45,59 @@ export function WorkspaceSidebar({
   onOpenRecheck,
   onFeedbackClick,
 }: WorkspaceSidebarProps) {
-  const availability = {
-    review: true,
-    report: canOpenReport,
-    advice: canOpenAdvice,
-    recheck: canOpenRecheck,
-  } as const;
-  const handlers = {
-    review: onOpenReview,
-    report: onOpenReport,
-    advice: onOpenAdvice,
-    recheck: onOpenRecheck,
-  } as const;
-
   return (
     <aside className="workspace-sidebar" aria-label="Evidra 工作台导航">
-      <div>
-        <p className="workspace-sidebar-label">审查工作台</p>
-        <nav className="workspace-sidebar-nav" aria-label="核心工作流">
-          {ITEMS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={handlers[id]}
-              disabled={!availability[id]}
-              aria-current={stage === id ? "page" : undefined}
-              className={`workspace-sidebar-link ${stage === id ? "is-active" : ""}`}
-            >
-              <Icon aria-hidden="true" className="size-4" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
+      <nav className="phase-sidebar-nav">
+        <button
+          type="button"
+          className={`phase-sidebar-home ${stage === "review" ? "is-active" : ""}`}
+          onClick={onOpenReview}
+          aria-current={stage === "review" ? "page" : undefined}
+        >
+          <Home aria-hidden="true" />
+          首页
+        </button>
 
-      <div className="workspace-sidebar-footer">
-        <p>内容仅用于本次审查，所有结果需要人工复核。</p>
-        <div className="workspace-sidebar-utility">
-          <Link href="/privacy">隐私</Link>
-          <Link href="/terms">条款</Link>
+        <div className="phase-sidebar-section">
+          <p>工作空间</p>
+          <button type="button" onClick={onOpenReport} disabled={!canOpenReport} className={stage === "report" ? "is-active" : ""}>
+            <FileText aria-hidden="true" />我的审查
+          </button>
+          <button type="button" aria-disabled="true"><Folder aria-hidden="true" />草稿箱</button>
+          <button type="button" aria-disabled="true"><UsersRound aria-hidden="true" />团队空间</button>
+        </div>
+
+        <div className="phase-sidebar-section">
+          <p>工具</p>
+          <button type="button" onClick={onOpenAdvice} disabled={!canOpenAdvice} className={stage === "advice" ? "is-active" : ""}>
+            <Bot aria-hidden="true" />AI 修改建议
+          </button>
+          <button type="button" onClick={onOpenRecheck} disabled={!canOpenRecheck} className={stage === "recheck" ? "is-active" : ""}>
+            <RotateCcw aria-hidden="true" />重新验证
+          </button>
+          <button type="button" aria-disabled="true"><LayoutGrid aria-hidden="true" />模板库</button>
+        </div>
+
+        <div className="phase-sidebar-section">
+          <p>账户</p>
+          <button type="button" aria-disabled="true"><Settings aria-hidden="true" />设置</button>
+          <button type="button" aria-disabled="true"><CircleHelp aria-hidden="true" />帮助中心</button>
           <a href="/feedback" target="_blank" rel="noreferrer" onClick={onFeedbackClick}>
-            <MessageSquareText aria-hidden="true" className="size-3.5" />
-            反馈
+            <MessageSquareText aria-hidden="true" />反馈建议
           </a>
         </div>
+      </nav>
+
+      <div className="phase-sidebar-footer">
+        <span className="phase-user-avatar">N</span>
+        <div>
+          <strong>Nana</strong>
+          <span>Pro Plan</span>
+        </div>
+        <ChevronDown aria-hidden="true" />
       </div>
+
+      <span className="phase-sidebar-hidden-icon" aria-hidden="true"><FileClock /></span>
     </aside>
   );
 }

@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { EditorWorkspace } from "@/components/editor-workspace";
-import { ReportWorkspace } from "@/components/report-workspace";
+import { ReportWorkspace, type ReportWorkspaceView } from "@/components/report-workspace";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
 import {
   WorkspaceCommandBar,
@@ -12,12 +12,15 @@ import {
   type WorkspaceStatus,
 } from "@/components/workspace-command-bar";
 import {
+  clearDraftAnalysis,
   createAnalysisHash,
   markDraftAnalysis,
   readDraftSession,
   saveDraftSession,
 } from "@/lib/client/analysis-persistence";
 import {
+  createGeoAbortError,
+  isGeoAbortError,
   postGeoBetaEvent,
   postGeoJson,
   scheduleGeoDiagnostic,
@@ -64,6 +67,13 @@ type SessionState =
 
 const EMPTY_DRAFT: ArticleDraft = { title: "", content: "", publishedAt: "" };
 const DAILY_USAGE_KEY = "geo:daily-usage:v2";
+const DRAFT_SAVE_DEBOUNCE_MS = 500;
+const ANALYSIS_PROGRESS_TRANSITIONS = [
+  { delay: 1_100, step: 1 },
+  { delay: 2_200, step: 2 },
+  { delay: 3_400, step: 3 },
+] as const;
+const ANALYSIS_PROGRESS_COMPLETE_DELAY_MS = 5_000;
 
 const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
   {
@@ -170,8 +180,22 @@ function recordUsage(): void {
   }
 }
 
-function wait(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(createGeoAbortError());
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, milliseconds);
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", handleAbort);
+      reject(createGeoAbortError());
+    };
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
 }
 
 function retryDelay(response: Response): number {
@@ -199,16 +223,17 @@ async function requestDiagnostic(
   title: string,
   paragraphs: Paragraph[],
   question: string,
+  signal: AbortSignal,
 ): Promise<DiagnosticResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const response = await postGeoJson("/api/qa-diagnostic", {
       title,
       numbered_paragraphs: paragraphs,
       question,
-    });
+    }, { signal });
 
     if (response.status === 429 && attempt === 0) {
-      await wait(retryDelay(response) + Math.round(Math.random() * 250));
+      await wait(retryDelay(response) + Math.round(Math.random() * 250), signal);
       continue;
     }
     if (!response.ok) {
@@ -251,7 +276,13 @@ export default function Home() {
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const latestQuestionRef = useRef<HTMLDivElement>(null);
   const activeRunRef = useRef(0);
+  const analysisControllerRef = useRef<AbortController | null>(null);
   const activeAnalysisHashRef = useRef<string | null>(null);
+  const draftRef = useRef<ArticleDraft>(draft);
+  const draftSaveTimerRef = useRef<number | null>(null);
+  const analysisProgressTimersRef = useRef<number[]>([]);
+  const analysisCompletionHandledRef = useRef(false);
+  const storageReadyRef = useRef(false);
   const reportedRunIdsRef = useRef(new Set<string>());
   const editorStartedReportedRef = useRef(false);
   const reportViewedRunIdsRef = useRef(new Set<string>());
@@ -259,6 +290,9 @@ export default function Home() {
   const [activeSessionRunId, setActiveSessionRunId] = useState<string | null>(null);
   const [recheckBaseline, setRecheckBaseline] = useState<ReportComparisonSnapshot | null>(null);
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("review");
+  const [reportView, setReportView] = useState<ReportWorkspaceView>("overview");
+  const [analysisProgressStep, setAnalysisProgressStep] = useState(0);
+  const [analysisProgressComplete, setAnalysisProgressComplete] = useState(false);
 
   const contentText = draft?.content ?? "";
   const contentLength = contentText.length;
@@ -271,8 +305,10 @@ export default function Home() {
   const currentScoreBand = scoring.status === "success" ? scoreBand(scoring.data.totalScore) : null;
   const canAskFollowUp = paragraphs.length > 0 && questionOrder.length < 10;
   const canSubmitFollowUp = canAskFollowUp && Boolean(followUpQuestion.trim());
+  const analysisPresentationComplete = restoredFromCache || analysisProgressComplete;
   const reportReady = !restoredFromCache &&
     analysisStarted &&
+    analysisPresentationComplete &&
     scoring.status === "success" &&
     questions.status === "success" &&
     questionOrder.length > 0 &&
@@ -283,11 +319,11 @@ export default function Home() {
   const diagnosticsComplete = questionOrder.length > 0 && questionOrder.every(
     (question) => diagnostics[question]?.status === "success",
   );
-  const workspaceFlowComplete = analysisStarted && scoring.status === "success" &&
-    questions.status === "success" && diagnosticsComplete;
+  const workspaceFlowComplete = analysisStarted && analysisPresentationComplete &&
+    scoring.status === "success" && questions.status === "success" && diagnosticsComplete;
   const workspaceHasError = session.status === "error" || scoring.status === "error" ||
     questions.status === "error" || Object.values(diagnostics).some((item) => item.status === "error");
-  const workspaceIsAnalyzing = session.status === "loading" || scoring.status === "loading" ||
+  const workspaceIsAnalyzing = !analysisPresentationComplete || session.status === "loading" || scoring.status === "loading" ||
     questions.status === "loading" || Object.values(diagnostics).some(
       (item) => item.status === "queued" || item.status === "loading",
     );
@@ -310,13 +346,66 @@ export default function Home() {
   const canOpenAdvice = analysisStarted && (workspaceFlowComplete || restoredFromCache);
   const canOpenRecheck = canOpenAdvice && Boolean(contentText.trim());
 
+  const abortActiveAnalysis = useCallback(() => {
+    analysisControllerRef.current?.abort();
+    analysisControllerRef.current = null;
+  }, []);
+
+  const clearAnalysisProgressTimers = useCallback(() => {
+    analysisProgressTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    analysisProgressTimersRef.current = [];
+  }, []);
+
+  const beginAnalysisProgress = useCallback(() => {
+    clearAnalysisProgressTimers();
+    analysisCompletionHandledRef.current = false;
+    setAnalysisProgressStep(0);
+    setAnalysisProgressComplete(false);
+
+    const transitionTimers = ANALYSIS_PROGRESS_TRANSITIONS.map(({ delay, step }) =>
+      window.setTimeout(() => setAnalysisProgressStep(step), delay)
+    );
+    const completionTimer = window.setTimeout(() => {
+      setAnalysisProgressComplete(true);
+      analysisProgressTimersRef.current = [];
+    }, ANALYSIS_PROGRESS_COMPLETE_DELAY_MS);
+
+    analysisProgressTimersRef.current = [...transitionTimers, completionTimer];
+  }, [clearAnalysisProgressTimers]);
+
+  useEffect(() => clearAnalysisProgressTimers, [clearAnalysisProgressTimers]);
+
+  const flushDraftSession = useCallback((nextDraft?: ArticleDraft) => {
+    if (nextDraft) draftRef.current = nextDraft;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    if (!storageReadyRef.current) return;
+    saveDraftSession(draftRef.current);
+  }, []);
+
+  const clearPersistedDraftAnalysis = useCallback((nextDraft?: ArticleDraft) => {
+    if (nextDraft) draftRef.current = nextDraft;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    if (!storageReadyRef.current) return;
+    clearDraftAnalysis(draftRef.current);
+  }, []);
+
   const restoreCachedAnalysis = useCallback((cached: CacheEnvelope, restoredDraft: ArticleDraft) => {
+    abortActiveAnalysis();
+    clearAnalysisProgressTimers();
+    analysisCompletionHandledRef.current = true;
     activeAnalysisHashRef.current = cached.analysisHash;
     setActiveSessionRunId(null);
     setGeoAnalysisToken(null);
     if (restoredDraft.content) {
       markDraftAnalysis(restoredDraft, cached.analysisHash, "success");
     }
+    draftRef.current = restoredDraft;
     setDraft(restoredDraft);
     setParagraphs([]);
     setScoring({ status: "success", data: cached.report.scoring });
@@ -332,8 +421,11 @@ export default function Home() {
     setFeedbackByQuestion({});
     setAnalysisStarted(true);
     setRestoredFromCache(true);
+    setAnalysisProgressStep(3);
+    setAnalysisProgressComplete(true);
     setWorkspaceStage("report");
-  }, []);
+    setReportView("overview");
+  }, [abortActiveAnalysis, clearAnalysisProgressTimers]);
 
   useEffect(() => {
     void postGeoBetaEvent({ event: "visit" });
@@ -353,6 +445,18 @@ export default function Home() {
     reportedRunIdsRef.current.add(runId);
     void postGeoBetaEvent({ event: "analysis_completed", runId });
   }, [activeSessionRunId, analysisStarted, diagnostics, questionOrder, questions.status, restoredFromCache, scoring.status]);
+
+  useEffect(() => {
+    if (!workspaceFlowComplete || analysisCompletionHandledRef.current) return;
+    analysisCompletionHandledRef.current = true;
+    setWorkspaceStage(recheckBaseline ? "recheck" : "report");
+    setReportView(recheckBaseline ? "recheck" : "overview");
+
+    window.requestAnimationFrame(() => {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    });
+  }, [recheckBaseline, workspaceFlowComplete]);
 
   useEffect(() => {
     const runId = activeSessionRunId;
@@ -433,6 +537,7 @@ export default function Home() {
         const storedHash = await createAnalysisHash(stored.draft);
         if (cancelled) return;
 
+        draftRef.current = stored.draft;
         setDraft(stored.draft);
         if (stored.analysis?.status === "running") {
           markDraftAnalysis(stored.draft, storedHash, "failed");
@@ -452,7 +557,10 @@ export default function Home() {
         });
       }
 
-      if (!cancelled) setStorageReady(true);
+      if (!cancelled) {
+        storageReadyRef.current = true;
+        setStorageReady(true);
+      }
     }
 
     void restoreSession();
@@ -463,8 +571,44 @@ export default function Home() {
 
   useEffect(() => {
     if (!storageReady) return;
-    saveDraftSession(draft);
+    draftRef.current = draft;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+    }
+
+    const timerId = window.setTimeout(() => {
+      if (draftSaveTimerRef.current !== timerId) return;
+      draftSaveTimerRef.current = null;
+      saveDraftSession(draftRef.current);
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+    draftSaveTimerRef.current = timerId;
+
+    return () => {
+      if (draftSaveTimerRef.current !== timerId) return;
+      window.clearTimeout(timerId);
+      draftSaveTimerRef.current = null;
+    };
   }, [draft, storageReady]);
+
+  useEffect(() => {
+    const handlePageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        flushDraftSession();
+        return;
+      }
+      clearPersistedDraftAnalysis();
+      abortActiveAnalysis();
+      setGeoAnalysisToken(null);
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      flushDraftSession();
+      abortActiveAnalysis();
+      setGeoAnalysisToken(null);
+    };
+  }, [abortActiveAnalysis, clearPersistedDraftAnalysis, flushDraftSession]);
 
   useEffect(() => {
     if (restoredFromCache || !analysisStarted || scoring.status !== "success" || questions.status !== "success") return;
@@ -494,7 +638,11 @@ export default function Home() {
       editorStartedReportedRef.current = true;
       void postGeoBetaEvent({ event: "editor_started" });
     }
-    setDraft((current) => ({ ...current, [field]: value }));
+    setDraft((current) => {
+      const nextDraft = { ...current, [field]: value };
+      draftRef.current = nextDraft;
+      return nextDraft;
+    });
     if (field === "title" || field === "content") {
       setFieldErrors((current) => ({ ...current, [field]: undefined }));
     }
@@ -506,9 +654,19 @@ export default function Home() {
       void postGeoBetaEvent({ event: "editor_started" });
     }
     activeRunRef.current += 1;
-    setDraft({ title: sample.title, content: sample.content, publishedAt: sample.publishedAt });
+    abortActiveAnalysis();
+    setGeoAnalysisToken(null);
+    const nextDraft = {
+      title: sample.title,
+      content: sample.content,
+      publishedAt: sample.publishedAt,
+    };
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
+    clearPersistedDraftAnalysis(nextDraft);
     setAnalysisStarted(false);
     setWorkspaceStage("review");
+    setReportView("overview");
     setSession({ status: "idle" });
     setScoring({ status: "idle" });
     setQuestions({ status: "idle" });
@@ -532,13 +690,18 @@ export default function Home() {
     }
   }
 
-  async function loadScoring(runId: number, article: ArticleDraft) {
+  async function loadScoring(
+    runId: number,
+    article: ArticleDraft,
+    signal: AbortSignal,
+  ) {
     try {
-      const response = await postGeoJson("/api/evaluate-scoring", article);
+      const response = await postGeoJson("/api/evaluate-scoring", article, { signal });
       if (!response.ok) throw new Error(await responseError(response, "评分暂时失败。"));
       const data = (await response.json()) as EvaluateScoringResponse;
       if (activeRunRef.current === runId) setScoring({ status: "success", data });
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
       const analysisHash = activeAnalysisHashRef.current;
       if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
@@ -554,21 +717,23 @@ export default function Home() {
     title: string,
     articleParagraphs: Paragraph[],
     question: string,
+    signal: AbortSignal,
   ) {
-    if (activeRunRef.current !== runId) return;
+    if (activeRunRef.current !== runId || signal.aborted) return;
     setDiagnostics((current) => ({
       ...current,
       [question]: { ...current[question], question, status: "loading" },
     }));
 
     try {
-      const data = await requestDiagnostic(title, articleParagraphs, question);
+      const data = await requestDiagnostic(title, articleParagraphs, question, signal);
       if (activeRunRef.current !== runId) return;
       setDiagnostics((current) => ({
         ...current,
         [question]: { ...current[question], question, status: "success", data, error: undefined },
       }));
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
       setDiagnostics((current) => ({
         ...current,
@@ -586,12 +751,13 @@ export default function Home() {
     runId: number,
     articleParagraphs: Paragraph[],
     article: ArticleDraft,
+    signal: AbortSignal,
   ) {
     try {
       const response = await postGeoJson("/api/predict-questions", {
         title: article.title,
         numbered_paragraphs: articleParagraphs,
-      });
+      }, { signal });
       if (!response.ok) throw new Error(await responseError(response, "问题预测暂时失败。"));
       const data = (await response.json()) as PredictQuestionsResponse;
       if (activeRunRef.current !== runId) return;
@@ -601,12 +767,14 @@ export default function Home() {
       setDiagnostics(initialDiagnostics(data.questions));
       await Promise.all(
         data.questions.map((question) =>
-          scheduleGeoDiagnostic(() =>
-            diagnoseQuestion(runId, article.title, articleParagraphs, question),
+          scheduleGeoDiagnostic(
+            () => diagnoseQuestion(runId, article.title, articleParagraphs, question, signal),
+            signal,
           ),
         ),
       );
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
       const analysisHash = activeAnalysisHashRef.current;
       if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
@@ -621,12 +789,13 @@ export default function Home() {
     runId: number,
     article: ArticleDraft,
     articleParagraphs: Paragraph[],
+    signal: AbortSignal,
   ) {
     try {
       const response = await postGeoJson(
         "/api/analysis-session",
         {},
-        { includeAnalysisToken: false },
+        { includeAnalysisToken: false, signal },
       );
       if (!response.ok) {
         throw new Error(await responseError(response, "暂时无法开始体检。"));
@@ -643,9 +812,10 @@ export default function Home() {
       setSession({ status: "success" });
       recordUsage();
       void postGeoBetaEvent({ event: "analysis_started", runId: session.runId });
-      void loadScoring(runId, article);
-      void loadQuestionsAndDiagnostics(runId, articleParagraphs, article);
+      void loadScoring(runId, article, signal);
+      void loadQuestionsAndDiagnostics(runId, articleParagraphs, article, signal);
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
       const analysisHash = activeAnalysisHashRef.current;
       if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
@@ -657,10 +827,15 @@ export default function Home() {
   }
 
   async function startAnalysis(article: ArticleDraft, force = false) {
+    flushDraftSession(article);
     const runId = activeRunRef.current + 1;
     activeRunRef.current = runId;
+    abortActiveAnalysis();
+    const controller = new AbortController();
+    analysisControllerRef.current = controller;
+    const { signal } = controller;
     const analysisHash = await createAnalysisHash(article);
-    if (activeRunRef.current !== runId) return;
+    if (activeRunRef.current !== runId || signal.aborted) return;
 
     const cached = readCachedReport();
     if (!force && cached?.analysisHash === analysisHash) {
@@ -675,7 +850,9 @@ export default function Home() {
     markDraftAnalysis(article, analysisHash, "running");
     setParagraphs(articleParagraphs);
     setAnalysisStarted(true);
+    beginAnalysisProgress();
     setWorkspaceStage("report");
+    setReportView("overview");
     setSession({ status: "loading" });
     setRestoredFromCache(false);
     setExpandedQuestion(null);
@@ -695,7 +872,7 @@ export default function Home() {
       window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
     });
 
-    void openAnalysisSession(runId, article, articleParagraphs);
+    void openAnalysisSession(runId, article, articleParagraphs, signal);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -728,6 +905,12 @@ export default function Home() {
 
   function backToEditor() {
     activeRunRef.current += 1;
+    abortActiveAnalysis();
+    clearAnalysisProgressTimers();
+    analysisCompletionHandledRef.current = false;
+    setAnalysisProgressStep(0);
+    setAnalysisProgressComplete(false);
+    clearPersistedDraftAnalysis();
     setActiveSessionRunId(null);
     setGeoAnalysisToken(null);
     setAnalysisStarted(false);
@@ -755,19 +938,42 @@ export default function Home() {
   function startNewAnalysis() {
     setRecheckBaseline(null);
     setWorkspaceStage("review");
+    setReportView("overview");
     backToEditor();
     focusEditor();
   }
 
   function scrollToSection(sectionId: string) {
-    if (sectionId === "patch-workshop") setWorkspaceStage("advice");
-    else if (sectionId === "report-overview" || sectionId === "report-core" || sectionId === "diagnostic-section" || sectionId === "evidence-section") {
+    if (!workspaceFlowComplete && !restoredFromCache && (
+      sectionId === "patch-workshop" ||
+      sectionId === "diagnostic-section" ||
+      sectionId === "evidence-section" ||
+      sectionId === "recheck-comparison"
+    )) return;
+
+    if (sectionId === "patch-workshop") {
+      setWorkspaceStage("advice");
+      setReportView("patch");
+    } else if (sectionId === "diagnostic-section") {
       setWorkspaceStage("report");
+      setReportView("diagnosis");
+    } else if (sectionId === "evidence-section") {
+      setWorkspaceStage("report");
+      setReportView("evidence");
+    } else if (sectionId === "recheck-comparison") {
+      if (!recheckBaseline) return;
+      setWorkspaceStage("recheck");
+      setReportView("recheck");
+    } else if (sectionId === "report-overview" || sectionId === "report-core") {
+      setWorkspaceStage("report");
+      setReportView("overview");
     }
-    const section = document.getElementById(sectionId);
-    if (!section) return;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    section.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+      });
+    });
   }
 
   function retryScoring() {
@@ -801,13 +1007,28 @@ export default function Home() {
     const current = diagnostics[question];
     if (!current || current.errorCount >= 2 || !paragraphs.length) return;
 
+    const runId = activeRunRef.current;
+    const signal = analysisControllerRef.current?.signal;
+    if (!signal || signal.aborted) return;
     setDiagnostics((state) => ({
       ...state,
       [question]: { ...state[question], status: "queued", errorCount: state[question].errorCount + 1 },
     }));
-    void scheduleGeoDiagnostic(() =>
-      diagnoseQuestion(activeRunRef.current, draft.title, paragraphs, question),
-    );
+    void scheduleGeoDiagnostic(
+      () => diagnoseQuestion(runId, draft.title, paragraphs, question, signal),
+      signal,
+    ).catch((scheduleError: unknown) => {
+      if (isGeoAbortError(scheduleError) || activeRunRef.current !== runId) return;
+      setDiagnostics((state) => ({
+        ...state,
+        [question]: {
+          ...state[question],
+          question,
+          status: "error",
+          error: scheduleError instanceof Error ? scheduleError.message : "该问题分析失败。",
+        },
+      }));
+    });
   }
 
   function focusEditor() {
@@ -819,6 +1040,8 @@ export default function Home() {
       startNewAnalysis();
       return;
     }
+    setRecheckBaseline(null);
+    setReportView("overview");
     setWorkspaceStage("review");
     focusEditor();
   }
@@ -835,6 +1058,10 @@ export default function Home() {
 
   function openRecheckStage() {
     if (!canOpenRecheck) return;
+    if (recheckBaseline && workspaceFlowComplete) {
+      scrollToSection("recheck-comparison");
+      return;
+    }
     openEditorForRecheck();
   }
 
@@ -860,6 +1087,11 @@ export default function Home() {
     }
 
     const runId = activeRunRef.current;
+    const signal = analysisControllerRef.current?.signal;
+    if (!signal || signal.aborted) {
+      setFollowUpError("当前分析会话已结束，请重新运行体检后再追问。");
+      return;
+    }
     setFollowUpQuestion("");
     setFollowUpError("");
     setLatestQuestion(question);
@@ -869,9 +1101,21 @@ export default function Home() {
       ...current,
       [question]: { question, status: "queued", errorCount: 0 },
     }));
-    void scheduleGeoDiagnostic(() =>
-      diagnoseQuestion(runId, draft.title, paragraphs, question),
-    );
+    void scheduleGeoDiagnostic(
+      () => diagnoseQuestion(runId, draft.title, paragraphs, question, signal),
+      signal,
+    ).catch((scheduleError: unknown) => {
+      if (isGeoAbortError(scheduleError) || activeRunRef.current !== runId) return;
+      setDiagnostics((state) => ({
+        ...state,
+        [question]: {
+          ...state[question],
+          question,
+          status: "error",
+          error: scheduleError instanceof Error ? scheduleError.message : "该问题分析失败。",
+        },
+      }));
+    });
   }
 
   function submitDiagnosisFeedback(question: string, helpful: boolean) {
@@ -918,11 +1162,14 @@ export default function Home() {
       <div className="workspace-shell-layout">
         <WorkspaceSidebar
           stage={workspaceStage}
+          reportView={reportView}
           canOpenReport={analysisStarted}
           canOpenAdvice={canOpenAdvice}
           canOpenRecheck={canOpenRecheck}
           onOpenReview={openReviewStage}
           onOpenReport={openReportStage}
+          onOpenEvidence={() => scrollToSection("evidence-section")}
+          onOpenDiagnosis={() => scrollToSection("diagnostic-section")}
           onOpenAdvice={openAdviceStage}
           onOpenRecheck={openRecheckStage}
           feedbackUrl={feedbackUrl}
@@ -932,7 +1179,9 @@ export default function Home() {
         <div className="workspace-shell-content">
           {analysisStarted ? (
             <ReportWorkspace
+            view={reportView}
             title={draft.title}
+            analysisSignal={analysisControllerRef.current?.signal}
             contentAvailable={Boolean(draft.content)}
             reportStatus={reportStatus()}
             session={session}
@@ -948,6 +1197,9 @@ export default function Home() {
             latestQuestion={latestQuestion}
             latestQuestionRef={latestQuestionRef}
             restoredFromCache={restoredFromCache}
+            analysisProgressStep={analysisProgressStep}
+            analysisProgressAnimationKey={activeRunRef.current}
+            analysisProgressComplete={analysisProgressComplete}
             paragraphs={paragraphs}
             followUpQuestion={followUpQuestion}
             followUpError={followUpError}

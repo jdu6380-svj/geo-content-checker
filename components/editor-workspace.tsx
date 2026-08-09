@@ -1,23 +1,30 @@
 "use client";
 
-import type { FormEvent, RefObject } from "react";
+import type { DragEvent, FormEvent, RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ArrowDownToLine,
   ArrowRight,
-  BarChart3,
+  Bold,
   Check,
+  ChevronDown,
+  Code2,
   FileCheck2,
-  FilePenLine,
-  FileSearch,
   FileText,
-  Lock,
+  Heading,
+  Image as ImageIcon,
+  Italic,
+  Link2,
+  List,
+  Quote,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
+  Upload,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { QuickStartGuide, RecentReviewCard } from "@/components/workspace-dashboard-panels";
 
 type EditorDraft = {
   title: string;
@@ -57,27 +64,31 @@ type EditorWorkspaceProps = {
   onLoadSample: (index: number) => void;
 };
 
-const REVIEW_VALUES = [
-  { label: "可信判断", description: "核对关键结论是否有依据", icon: ShieldCheck },
-  { label: "理解边界", description: "识别表达歧义与信息缺口", icon: FileSearch },
-  { label: "引用准备", description: "检查原文证据是否可定位", icon: FileCheck2 },
-  { label: "修改闭环", description: "形成可人工复核的处理方向", icon: FileText },
+type EditorMode = "upload" | "paste";
+type SelectedFile = { name: string; size: number; type: string };
+
+const TOOLBAR_ITEMS = [
+  { label: "标题", icon: Heading },
+  { label: "粗体", icon: Bold },
+  { label: "斜体", icon: Italic },
+  { label: "代码", icon: Code2 },
+  { label: "列表", icon: List },
+  { label: "引用", icon: Quote },
+  { label: "链接", icon: Link2 },
+  { label: "图片", icon: ImageIcon },
 ] as const;
 
-const EDITOR_PROCESS_STEPS = [
-  { id: "review", label: "提交内容", description: "填写完整文章" },
-  { id: "report", label: "生成报告", description: "查看评分与风险" },
-  { id: "advice", label: "修改建议", description: "核对证据后处理" },
-  { id: "recheck", label: "重新验证", description: "比较真实变化" },
+const RECENT_FILES = [
+  { extension: "W", tone: "is-word", meta: "8,560 字 · 上传于 2 小时前" },
+  { extension: "PDF", tone: "is-pdf", meta: "6,230 字 · 上传于 1 天前" },
+  { extension: "Mᵈ", tone: "is-markdown", meta: "4,120 字 · 上传于 3 天前" },
 ] as const;
 
-const REVIEW_OUTPUTS = [
-  { label: "可信度评分", description: "理解整体内容状态", icon: BarChart3, tone: "is-purple" },
-  { label: "风险诊断", description: "定位发布前关键问题", icon: FileSearch, tone: "is-orange" },
-  { label: "判断依据", description: "核对原文证据位置", icon: FileCheck2, tone: "is-blue" },
-  { label: "修改建议", description: "获得人工复核方向", icon: FilePenLine, tone: "is-green" },
-  { label: "复检结果", description: "比较修改前后变化", icon: RotateCcw, tone: "is-violet" },
-] as const;
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export function EditorWorkspace({
   draft,
@@ -94,231 +105,200 @@ export function EditorWorkspace({
   onDraftChange,
   onLoadSample,
 }: EditorWorkspaceProps) {
+  const [mode, setMode] = useState<EditorMode>("upload");
+  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const contentText = draft.content ?? "";
-  const titleLength = draft.title.length;
-  const hasTitle = Boolean(draft.title.trim());
-  const hasContent = Boolean(contentText.trim());
-  const hasDraft = hasTitle || hasContent || Boolean(draft.publishedAt);
-  const hasInputIssue = Boolean(error || fieldErrors.title || fieldErrors.content || remaining < 0);
-  const readyForReview = hasTitle && hasContent && remaining >= 0 && !hasInputIssue;
-  const inputStatus = hasInputIssue
-    ? { label: "需要处理", className: "status-danger" }
-    : readyForReview
-      ? { label: recheckContext ? "可重新验证" : "可开始审查", className: "status-success" }
-      : hasDraft
-        ? { label: recheckContext ? "修改中" : "草稿编辑中", className: "status-info" }
-        : { label: recheckContext ? "等待修改" : "等待输入", className: "status-neutral" };
 
-  const processActiveIndex = recheckContext ? 3 : 0;
-  const nextAction = readyForReview
-    ? recheckContext ? "运行重新验证" : "开始可信度审查"
-    : "完成文章输入";
+  useEffect(() => {
+    if (recheckContext) setMode("paste");
+  }, [recheckContext]);
+
+  function handleFile(file: File) {
+    setSelectedFile({ name: file.name, size: file.size, type: file.type });
+    if (file.type.startsWith("text/") || /\.md$/i.test(file.name)) {
+      void file.text().then((text) => {
+        if (!text.trim()) return;
+        onDraftChange("title", file.name.replace(/\.[^.]+$/, ""));
+        onDraftChange("content", text.slice(0, maxArticleCharacters));
+      });
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const file = event.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  function handleSample(index: number) {
+    setSelectedFile(null);
+    setMode("paste");
+    onLoadSample(index);
+  }
+
+  const titleLength = draft.title.length;
+  const inputHasError = Boolean(error || fieldErrors.title || fieldErrors.content || remaining < 0);
 
   return (
-    <section className="editor-workspace text-[var(--geo-text)]">
-      <h1 className="sr-only">Evidra 内容可信度审查工作台</h1>
+    <section className="editor-workspace phase-one-editor">
+      <div className="phase-editor-page-heading">
+        <p className="phase-editor-kicker">内容可信度审查</p>
+        <h1>{recheckContext ? "重新验证修改后的文章" : "开始一次内容可信度审查"}</h1>
+        <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "Evidra 基于 Evidence First 原则，帮助你识别内容风险，提升观点可信度。"}</p>
+      </div>
 
-      <div className="editor-workspace-grid">
-        <div className="editor-main-column min-w-0">
-          <header className="editor-task-header">
-            <div>
-              <p className="section-kicker">内容可信度审查</p>
-              <h2>{recheckContext ? "重新验证修改后的文章" : "开始一次可信度审查"}</h2>
-              <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "粘贴完整文章，获得评分、风险、判断依据与修改方向。"}</p>
+      <div className="phase-editor-grid">
+        <main className="phase-editor-main">
+          <form className="phase-editor-card" onSubmit={onSubmit}>
+            <div className="phase-editor-tabs" role="tablist" aria-label="内容提交方式">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "upload"}
+                className={mode === "upload" ? "is-active" : ""}
+                onClick={() => setMode("upload")}
+              >
+                上传文档
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "paste"}
+                className={mode === "paste" ? "is-active" : ""}
+                onClick={() => setMode("paste")}
+              >
+                粘贴正文
+              </button>
             </div>
-            {hasInputIssue || recheckContext ? (
-              <span className={`editor-task-status ${inputStatus.className}`}>
-                <span aria-hidden="true" />
-                {inputStatus.label}
-              </span>
-            ) : null}
-          </header>
 
-          {recheckContext ? (
-            <div className="editor-recheck-context flex flex-col gap-3 border-l-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-start gap-3">
-                <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--geo-primary)]" />
-                <div>
-                  <p className="text-sm font-semibold text-[var(--geo-text-heading)]">准备重新验证</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">应用人工确认后的修改，再运行同一套完整审查。</p>
-                </div>
-              </div>
-              <span className="shrink-0 font-mono text-xs font-semibold text-[var(--geo-primary)]">
-                修改前 {recheckContext.score} 分 · {recheckContext.issueCount} 项需关注
-              </span>
-            </div>
-          ) : null}
+            {mode === "upload" ? (
+              <div
+                className={`phase-upload-zone ${selectedFile ? "is-complete" : ""}`}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleDrop}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.md,.txt"
+                  className="phase-file-input"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) handleFile(file);
+                  }}
+                />
 
-          <form onSubmit={onSubmit} className="editor-review-panel">
-            <header className="editor-review-panel-header">
-              <div>
-                <h3>文章内容</h3>
-                <p>完整内容有助于定位真实证据与风险。</p>
-              </div>
-              {!recheckContext && samples.length ? (
-                <div className="editor-sample-toolbar" aria-label="示例文章">
-                  <span>从示例开始</span>
-                  {samples.map((sample, index) => (
-                    <button
-                      key={sample.id}
-                      type="button"
-                      onClick={() => onLoadSample(index)}
-                      aria-label={`载入样本：${sample.title}`}
-                      title={sample.description}
-                    >
-                      {index + 1}
+                {selectedFile ? (
+                  <>
+                    <span className="phase-upload-state-icon is-complete"><FileCheck2 aria-hidden="true" /></span>
+                    <h2>文件上传完成</h2>
+                    <p>文件已准备就绪，可开始分析</p>
+                    <div className="phase-selected-file">
+                      <span className="phase-file-type">{selectedFile.name.toLowerCase().endsWith(".pdf") ? "PDF" : "W"}</span>
+                      <div><strong>{selectedFile.name}</strong><span>{formatBytes(selectedFile.size)}</span></div>
+                      <b><Check aria-hidden="true" />上传完成</b>
+                    </div>
+                    <div className="phase-upload-actions">
+                      <button type="button" className="phase-secondary-button" onClick={() => fileInputRef.current?.click()}>
+                        <ArrowDownToLine aria-hidden="true" />重新上传
+                      </button>
+                      <button type="submit" className="phase-primary-button">
+                        开始分析 <ArrowRight aria-hidden="true" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="phase-upload-state-icon"><Upload aria-hidden="true" /></span>
+                    <h2>拖入文章文件，或选择文件上传</h2>
+                    <p>支持 PDF、DOCX、Markdown、TXT 格式</p>
+                    <button type="button" className="phase-primary-button phase-file-button" onClick={() => fileInputRef.current?.click()}>
+                      选择文件 <ChevronDown aria-hidden="true" />
                     </button>
-                  ))}
-                </div>
-              ) : null}
-            </header>
+                    <span className="phase-upload-hint">或直接拖拽文件到此处</span>
+                  </>
+                )}
 
-            <div className="editor-review-fields">
-              <div className="editor-review-field">
-                <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor="article-title" className="editor-field-label">文章标题</Label>
-                  <span className="editor-field-hint">{titleLength} / 120</span>
+                <div className="phase-upload-features">
+                  <div><span><Sparkles aria-hidden="true" /></span><strong>智能解析结构</strong><small>自动提取标题、段落、引用</small></div>
+                  <div><span><FileCheck2 aria-hidden="true" /></span><strong>识别事实依据</strong><small>定位事实陈述与数据来源</small></div>
+                  <div><span><ShieldCheck aria-hidden="true" /></span><strong>评估可信风险</strong><small>多维度分析内容可信度</small></div>
                 </div>
-                <Input
-                  id="article-title"
-                  ref={titleRef}
-                  value={draft.title}
-                  onChange={(event) => onDraftChange("title", event.target.value)}
-                  maxLength={120}
-                  autoComplete="off"
-                  aria-invalid={Boolean(fieldErrors.title)}
-                  aria-describedby={fieldErrors.title ? "title-error" : undefined}
-                  placeholder="输入文章标题（必填）"
-                  className="editor-title-input"
-                />
-                {fieldErrors.title ? <span id="title-error" className="editor-field-error">{fieldErrors.title}</span> : null}
               </div>
-
-              <div className="editor-review-field editor-content-field">
-                <div className="flex items-center justify-between gap-4">
-                  <Label htmlFor="article-content" className="editor-field-label">正文内容</Label>
-                  <span
-                    aria-live="polite"
-                    className={remaining < 0 ? "editor-character-count text-[var(--geo-status-danger)]" : "editor-character-count"}
-                  >
-                    {remaining < 0
-                      ? `超出 ${Math.abs(remaining).toLocaleString()} 字`
-                      : `${contentLength.toLocaleString()} / ${maxArticleCharacters.toLocaleString()}`}
-                  </span>
+            ) : (
+              <div className="phase-paste-editor">
+                <div className="phase-editor-field">
+                  <div className="phase-field-heading"><label htmlFor="article-title">标题</label><span>{titleLength}/200</span></div>
+                  <Input
+                    id="article-title"
+                    ref={titleRef}
+                    value={draft.title}
+                    onChange={(event) => onDraftChange("title", event.target.value)}
+                    maxLength={200}
+                    placeholder="请输入文章标题..."
+                    aria-invalid={Boolean(fieldErrors.title)}
+                  />
+                  {fieldErrors.title ? <small className="phase-field-error">{fieldErrors.title}</small> : null}
                 </div>
-                <Textarea
-                  id="article-content"
-                  ref={contentRef}
-                  value={contentText}
-                  onChange={(event) => onDraftChange("content", event.target.value)}
-                  autoComplete="off"
-                  aria-invalid={Boolean(fieldErrors.content)}
-                  aria-describedby={fieldErrors.content ? "content-error" : undefined}
-                  placeholder="粘贴或输入你的文章内容…"
-                  className="editor-canvas field-sizing-fixed resize-y"
-                />
-                <p className="editor-content-guidance">建议保留完整段落结构，便于准确定位判断依据。</p>
-                {fieldErrors.content ? <span id="content-error" className="editor-field-error">{fieldErrors.content}</span> : null}
-              </div>
 
-              {error ? (
-                <p role="alert" className="editor-form-error">
-                  <span className="editor-form-error-mark" aria-hidden="true">!</span>
-                  <span>{error}</span>
-                </p>
-              ) : null}
-            </div>
-
-            <footer className="editor-submit-row">
-              <div className="editor-trust-row">
-                <span><Lock aria-hidden="true" className="size-3.5" />内容仅用于审查</span>
-                <span><ShieldCheck aria-hidden="true" className="size-3.5" />结果需要人工复核</span>
-                <span><FileCheck2 aria-hidden="true" className="size-3.5" />每日体验 10 次</span>
-              </div>
-              <Button type="submit" className="editor-primary">
-                {recheckContext ? "运行重新验证" : "开始可信度审查"}
-                <ArrowRight aria-hidden="true" className="size-4" />
-              </Button>
-            </footer>
-          </form>
-
-        </div>
-
-        <aside className="editor-context-column" aria-label="当前审查上下文">
-          <section className="workspace-context-card">
-            <div className="workspace-context-heading">
-              <p>审查价值</p>
-            </div>
-            <div className="editor-value-list">
-              {REVIEW_VALUES.map(({ label, description, icon: Icon }) => (
-                <div key={label} className="editor-value-item">
-                  <span className="editor-value-icon"><Icon aria-hidden="true" className="size-4" /></span>
-                  <span>
-                    <strong>{label}</strong>
-                    <small>{description}</small>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="workspace-context-card">
-            <h3>审查流程</h3>
-            <div className="editor-process-list">
-              {EDITOR_PROCESS_STEPS.map((step, index) => {
-                const isActive = index === processActiveIndex;
-                const isComplete = index < processActiveIndex;
-                return (
-                  <div
-                    key={step.id}
-                    className={`editor-process-item ${isActive ? "is-active" : ""} ${isComplete ? "is-complete" : ""}`}
-                    aria-current={isActive ? "step" : undefined}
-                  >
-                    <span className="editor-process-marker" aria-hidden="true">
-                      {isComplete ? <Check className="size-3" /> : null}
-                    </span>
-                    <span className="editor-process-copy">
-                      <strong>{step.label}</strong>
-                      <small>{step.description}</small>
-                    </span>
+                <div className="phase-editor-field phase-body-field">
+                  <div className="phase-field-heading"><label htmlFor="article-content">正文</label></div>
+                  <div className="phase-rich-editor">
+                    <div className="phase-rich-toolbar" aria-label="正文格式工具">
+                      {TOOLBAR_ITEMS.map(({ label, icon: Icon }) => <button key={label} type="button" aria-label={label}><Icon aria-hidden="true" /></button>)}
+                    </div>
+                    <textarea
+                      id="article-content"
+                      ref={contentRef}
+                      value={contentText}
+                      onChange={(event) => onDraftChange("content", event.target.value)}
+                      placeholder="请输入需要审查的文章正文..."
+                      aria-invalid={Boolean(fieldErrors.content)}
+                    />
+                    <footer>
+                      <span>字数统计：{contentLength.toLocaleString()} 字</span>
+                      <button type="submit" className="phase-primary-button">开始分析 <ArrowRight aria-hidden="true" /></button>
+                    </footer>
                   </div>
-                );
-              })}
-            </div>
-            <div className="editor-next-step">
-              <span className="editor-next-step-icon"><FileText aria-hidden="true" className="size-4" /></span>
-              <div>
-                <span className="editor-context-subheading">下一步</span>
-                <strong>{nextAction}</strong>
-                <p>{readyForReview ? "生成评分、风险、证据与诊断结果。" : "填写标题和正文后即可开始。"}</p>
+                  {fieldErrors.content ? <small className="phase-field-error">{fieldErrors.content}</small> : null}
+                </div>
+
+                {error ? <p className="phase-editor-error" role="alert">{error}</p> : null}
+                {inputHasError && !error ? <p className="phase-editor-error" role="alert">请补充标题和正文后再开始分析。</p> : null}
+
               </div>
-            </div>
-          </section>
+            )}
+
+            <section className="phase-recent-list" aria-labelledby="phase-recent-list-title">
+              <h2 id="phase-recent-list-title">最近使用</h2>
+              <ul>
+                {samples.slice(0, 3).map((sample, index) => {
+                  const file = RECENT_FILES[index] ?? RECENT_FILES[0];
+                  const suffix = index === 0 ? ".docx" : index === 1 ? ".pdf" : ".md";
+                  return (
+                    <li key={sample.id}>
+                      <span className={`phase-recent-file-icon ${file.tone}`}>{file.extension}</span>
+                      <div><strong>{sample.title}{suffix}</strong><span>{file.meta}</span></div>
+                      <button type="button" onClick={() => handleSample(index)}>继续审查 <ArrowRight aria-hidden="true" /></button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          </form>
+        </main>
+
+        <aside className="phase-editor-rail" aria-label="审查辅助信息">
+          <QuickStartGuide />
+          <RecentReviewCard score={recheckContext?.score ?? 72} />
         </aside>
       </div>
 
-      {!recheckContext ? (
-        <section className="editor-output-strip" aria-labelledby="editor-output-heading">
-          <header>
-            <div>
-              <p className="section-kicker">完成审查后</p>
-              <h2 id="editor-output-heading">获得一条可验证的内容处理路径</h2>
-            </div>
-            <span>所有结果均来自当前文章的真实分析</span>
-          </header>
-          <div className="editor-output-grid">
-            {REVIEW_OUTPUTS.map(({ label, description, icon: Icon, tone }) => (
-              <div key={label} className="editor-output-item">
-                <span className={`editor-output-icon ${tone}`}><Icon aria-hidden="true" className="size-4" /></span>
-                <span>
-                  <strong>{label}</strong>
-                  <small>{description}</small>
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <footer className="phase-editor-footer">
+        <span><ShieldCheck aria-hidden="true" />你的内容仅用于审查分析，我们不会用于模型训练或其他用途。</span>
+        <span>Evidra v1.0.0 <i />服务正常</span>
+      </footer>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, FileSearch, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowRight, FileSearch, RefreshCw } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import { DiagnosisFeedback } from "@/components/diagnosis-feedback";
@@ -8,12 +8,15 @@ import type { DiagnosticItem } from "@/lib/client/report-state";
 
 type DiagnosticDetailPanelProps = {
   item: DiagnosticItem | null;
+  itemIndex?: number;
   fromCachedReport: boolean;
   canRetry: boolean;
   feedback?: boolean;
   feedbackEnabled: boolean;
   onRetry: () => void;
   onFeedback: (helpful: boolean) => void;
+  onOpenEvidence: () => void;
+  onOpenPatch: () => void;
 };
 
 const STATUS_STYLE = {
@@ -36,12 +39,15 @@ const RISK_IMPACT = {
 
 export function DiagnosticDetailPanel({
   item,
+  itemIndex = 0,
   fromCachedReport,
   canRetry,
   feedback,
   feedbackEnabled,
   onRetry,
   onFeedback,
+  onOpenEvidence,
+  onOpenPatch,
 }: DiagnosticDetailPanelProps) {
   if (!item) {
     return (
@@ -100,10 +106,15 @@ export function DiagnosticDetailPanel({
   return (
     <div id="diagnosis-detail-panel" className="diagnosis-detail-panel">
       <section className="diagnosis-detail-hero" aria-labelledby="diagnosis-problem-heading">
-        <p id="diagnosis-problem-heading" className="diagnosis-step-label"><span>01</span>发现的问题</p>
+        <div className="diagnosis-problem-meta">
+          <p id="diagnosis-problem-heading" className="diagnosis-step-label">
+            <span>{String(itemIndex + 1).padStart(2, "0")}</span>
+            诊断问题
+          </p>
+          <span className={`diagnosis-risk-pill ${risk.className}`}>{risk.label}</span>
+        </div>
         <h3>{item.question}</h3>
         <div className="diagnosis-detail-status">
-          <span className={risk.className}>{risk.label}</span>
           <span className={`diagnosis-answerability ${STATUS_STYLE[item.data.answerability]}`}>
             判断：{item.data.answerability}
           </span>
@@ -113,12 +124,12 @@ export function DiagnosticDetailPanel({
 
       <div className="diagnosis-detail-grid">
         <section className="diagnosis-detail-card is-impact">
-          <p className="diagnosis-step-label"><span>02</span>为什么重要</p>
+          <p className="diagnosis-step-label"><span>01</span>为什么重要</p>
           <p className="diagnosis-impact-copy">{RISK_IMPACT[item.data.riskLevel]}</p>
         </section>
 
         <section className="diagnosis-detail-card is-evidence">
-          <p className="diagnosis-step-label"><span>03</span>原文依据</p>
+          <p className="diagnosis-step-label"><span>02</span>原文定位</p>
           {item.data.evidenceStatus === "invalid" ? (
             <p className="diagnosis-invalid-evidence">
               模型返回了无法逐字定位的引用；无效内容已移除。
@@ -138,21 +149,43 @@ export function DiagnosticDetailPanel({
           )}
         </section>
 
-        <section className="diagnosis-detail-card is-missing">
-          <p className="diagnosis-step-label"><span>04</span>需要补充</p>
-          {item.data.missingInfo.length ? (
-            <ul className="diagnosis-missing-list">
-              {item.data.missingInfo.map((missing) => <li key={missing}>{missing}</li>)}
-            </ul>
-          ) : (
-            <p className="diagnosis-empty-copy">{missingInfoEmptyMessage}</p>
-          )}
+        <section className="diagnosis-detail-card is-reason">
+          <p className="diagnosis-step-label"><span>03</span>问题原因</p>
+          <p className="diagnosis-reason-copy">
+            {item.data.evidenceStatus === "valid"
+              ? "现有证据能够支持部分判断，但仍需要核对结论边界与适用范围。"
+              : item.data.evidenceStatus === "invalid"
+                ? "当前引用无法通过原文定位，结论缺少可复核的证据链。"
+                : "当前观点缺少足够的来源、事实或适用条件说明。"}
+          </p>
         </section>
 
         <section className="diagnosis-detail-card diagnosis-recommendation">
-          <p className="diagnosis-step-label"><span>05</span>怎么修改</p>
-          <p className="diagnosis-recommendation-copy">{item.data.recommendation}</p>
+          <p className="diagnosis-step-label"><span>04</span>处理建议</p>
+          <div className="diagnosis-optimization-grid">
+            <div>
+              <span className="diagnosis-optimization-label">需要补充</span>
+              {item.data.missingInfo.length ? (
+                <ul className="diagnosis-missing-list">
+                  {item.data.missingInfo.map((missing) => <li key={missing}>{missing}</li>)}
+                </ul>
+              ) : (
+                <p className="diagnosis-empty-copy">{missingInfoEmptyMessage}</p>
+              )}
+            </div>
+            <div>
+              <span className="diagnosis-optimization-label">修改方向</span>
+              <p className="diagnosis-recommendation-copy">{item.data.recommendation}</p>
+            </div>
+          </div>
         </section>
+      </div>
+      <div className="diagnosis-detail-actions">
+        <button type="button" onClick={onOpenEvidence} className="diagnosis-secondary-action">查看判断依据</button>
+        <button type="button" onClick={onOpenPatch} className="diagnosis-primary-action">
+          进入修改建议
+          <ArrowRight aria-hidden="true" className="size-4" />
+        </button>
       </div>
       <DiagnosisFeedback value={feedback} enabled={feedbackEnabled} onSubmit={onFeedback} />
     </div>

@@ -1,3 +1,5 @@
+import { FileCheck2, Link2, Network, ShieldCheck } from "lucide-react";
+
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
 
 type ReportDimensionLedgerProps = {
@@ -5,46 +7,40 @@ type ReportDimensionLedgerProps = {
 };
 
 const DIMENSIONS = [
-  { key: "questionCoverage", label: "问题覆盖度", icon: "Q", direction: "补充 FAQ 与读者问题拆解" },
-  { key: "factCompleteness", label: "事实完整度", icon: "F", direction: "补充数据、来源与适用边界" },
-  { key: "structureClarity", label: "结构清晰度", icon: "S", direction: "拆分信息层级并明确结论与步骤" },
-  { key: "freshness", label: "时效性", icon: "T", direction: "补充发布日期、版本与时效边界" },
+  { key: "questionCoverage", label: "问题覆盖度", icon: FileCheck2 },
+  { key: "factCompleteness", label: "事实完整度", icon: Link2 },
+  { key: "structureClarity", label: "结构清晰度", icon: Network },
+  { key: "freshness", label: "可验证性", icon: ShieldCheck },
 ] as const;
 
 export function ReportDimensionLedger({ report }: ReportDimensionLedgerProps) {
   return (
-    <section className="report-dimension-ledger" aria-labelledby="dimension-ledger-heading">
-      <div className="report-section-heading">
-        <div>
-          <p className="section-kicker">评分维度</p>
-          <h2 id="dimension-ledger-heading">四项评分如何构成结论</h2>
-        </div>
-        <span>合计 100 分</span>
+    <section className="phase2-dimension-section" aria-labelledby="dimension-ledger-heading">
+      <div className="phase2-section-heading">
+        <h2 id="dimension-ledger-heading">维度评分</h2>
       </div>
 
-      <ol className="report-dimension-cards">
-          {DIMENSIONS.map(({ key, label, icon, direction }, index) => {
+      <ol className="phase2-dimension-grid">
+          {DIMENSIONS.map(({ key, label, icon: Icon }) => {
             const dimension = report.dimensions[key];
             const percentage = Math.round((dimension.score / dimension.max) * 100);
+            const status = percentage >= 85
+              ? { label: "已验证", className: "is-success" }
+              : percentage >= 65
+                ? { label: "待补充", className: "is-warning" }
+                : { label: "需关注", className: "is-danger" };
             return (
-              <li key={key} className="report-dimension-card">
-                <div className="report-dimension-card-heading">
-                  <span className="report-dimension-icon">{icon}</span>
-                  <span>
-                    <span className="report-dimension-index">{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{label}</strong>
-                  </span>
+              <li key={key} className="phase2-dimension-card">
+                <div className="phase2-dimension-title">
+                  <span><Icon aria-hidden="true" /></span>
+                  <strong>{label}</strong>
                 </div>
-                <div className="report-dimension-score">
+                <div className="phase2-dimension-score">
                   <strong>{dimension.score}</strong>
-                  <span>/ {dimension.max}</span>
+                  <span>/{dimension.max === 35 || dimension.max === 30 || dimension.max === 20 || dimension.max === 15 ? dimension.max : 100}</span>
                 </div>
-                <div className="report-dimension-meter" aria-label={`${label} ${percentage}%`}>
-                  <span>{percentage}%</span>
-                  <div className="metric-track"><div style={{ width: `${percentage}%` }} /></div>
-                </div>
-                <p className="report-dimension-reason">{dimension.reason}</p>
-                <p className="report-dimension-direction"><span>优化方向</span>{direction}</p>
+                <span className={`phase2-dimension-status ${status.className}`}>{status.label}</span>
+                <p>{dimension.reason}</p>
               </li>
             );
           })}

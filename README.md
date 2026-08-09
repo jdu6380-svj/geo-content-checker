@@ -4,16 +4,45 @@ Evidra 是面向 AI 搜索时代的内容可信度审查平台。用户提交文
 
 ## 本地运行
 
+项目统一使用 Node.js 22.x；本地与 CI 验证基线为 `v22.23.1`。`.nvmrc`、GitHub Actions 与 B.1.5 校验使用该基线，`package.json#engines` 声明兼容的 `22.23.x` 运行时。不要使用 Node.js 24+ 运行安装、开发服务、检查或构建。
+
 ```bash
-npm install
+nvm install
+nvm use
+node --version # 必须为 v22.23.1
+npm ci
 npm run dev
 ```
 
 默认地址：`http://127.0.0.1:3000`
 
+- `npm run dev`：使用 Turbopack 的轻量开发模式；显式禁用真实模型并清空 Upstash Redis 环境变量，分析结果使用既有安全降级链路。
+- `npm run dev:model`：使用 Turbopack 的真实 AI 链路，读取本机 `.env.local` 中的模型与 Redis 配置，仅用于显式的本地 Beta 验收；它不会替你补齐或创建 Redis 配置。
+- `npm run dev:webpack`：轻量模式的 webpack 回退；Turbopack 遇到兼容性问题时使用。
+- `npm run typecheck:app`：仅检查 `app`、`components`、`lib` 与 Next.js 运行配置，适合开发中快速反馈。
+- `npm run check`：完整检查应用、验证脚本与 ESLint，继续作为 CI 门禁。
+
 复制 `.env.example` 中的变量到本地环境后配置模型、Redis、令牌密钥和限流盐值。没有模型密钥时使用安全本地兜底；生产环境没有 Redis 或安全密钥时失败关闭。
 
 只读健康检查位于 `GET /api/health`。配置完整时返回 `200 / ok`，缺少模型、Redis 或生产安全配置时返回 `503 / degraded`；响应只包含布尔状态，不返回环境变量内容。
+
+### 开发模式与真实服务验收
+
+轻量模式验收使用 `npm run dev`。运行一轮文章审查后，应在结构化日志中看到评分、问题预测和诊断的 `source: "fallback"`、`modelStatus: "disabled"` 与 `rateLimitMode: "memory"`；这确认开发模式没有调用真实 AI 或 Redis。
+
+真实模式验收前，先在本机 `.env.local` 配置 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`、`UPSTASH_REDIS_REST_URL`、`UPSTASH_REDIS_REST_TOKEN`，以及现有的安全密钥。随后在 Node `v22.23.1` 下启动：
+
+```bash
+npm run dev:model
+```
+
+在服务运行期间检查 `GET /api/health` 的 `checks.modelConfigured` 与 `checks.redisConfigured` 都为 `true`，再执行：
+
+```bash
+npm run blackbox:model
+```
+
+完整分析流程必须返回 `source: "model"`，并在结构化日志或响应头中确认 `rateLimitMode: "redis"`。`dev:model` 缺少 Upstash 凭据时会在开发环境回退到 `memory`，即使模型可用也不算 Redis 验证通过。健康接口只有在全部健康项（也包含反馈入口和 Sentry）均配置完成时才返回 `200 / ok`；因此真实模型和 Redis 验收应以这两个单项检查、模型来源和 Redis 限流模式共同判断。
 
 服务端为所有 API 输出结构化日志，字段仅包含请求 ID、路由、状态码、耗时、结果来源、模型状态和限流模式。日志不会记录文章正文、问题证据、分析 Token、API Key 或内部 Prompt。
 

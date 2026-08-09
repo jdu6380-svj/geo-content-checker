@@ -1,9 +1,9 @@
 "use client";
 
 import type { FormEvent, RefObject } from "react";
-import { ChevronRight, MessageSquare } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Circle, ShieldAlert } from "lucide-react";
 
-import { DiagnosticAccordionItem } from "@/components/diagnostic-accordion-item";
 import { DiagnosticDetailPanel } from "@/components/diagnostic-detail-panel";
 import type { DiagnosticItem, DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import type { PredictQuestionsResponse } from "@/lib/schemas/geo";
@@ -35,12 +35,23 @@ type DiagnosisSectionProps = {
   onFollowUpQuestionChange: (value: string) => void;
   onSubmitFollowUp: (event: FormEvent<HTMLFormElement>) => void;
   onDiagnosisFeedback: (question: string, helpful: boolean) => void;
+  onOpenOverview: () => void;
+  onOpenEvidence: () => void;
+  onOpenPatch: () => void;
 };
 
-const STATUS_STYLE = {
-  "可以完全回答": "status-success",
-  "信息不足": "status-warning",
-  "有风险": "status-danger",
+type DiagnosisFilter = "all" | "high" | "medium" | "low";
+
+const RISK_META = {
+  high: { label: "高风险", shortLabel: "高风险 · High", className: "is-danger" },
+  medium: { label: "中风险", shortLabel: "注意 · Medium", className: "is-warning" },
+  low: { label: "低风险", shortLabel: "通过 · Low", className: "is-success" },
+} as const;
+
+const RISK_IMPACT = {
+  high: "关键依据不足可能直接影响内容可信判断。",
+  medium: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
+  low: "当前信息基本能够支撑判断。",
 } as const;
 
 function createDiagnosticItem(question: string, diagnostics: DiagnosticsState): DiagnosticItem {
@@ -49,33 +60,6 @@ function createDiagnosticItem(question: string, diagnostics: DiagnosticsState): 
     status: "queued",
     errorCount: 0,
   };
-}
-
-function DiagnosisWorkbenchSkeleton({ announce }: { announce: boolean }) {
-  return (
-    <div
-      className="diagnosis-master-detail mt-4 overflow-hidden rounded-lg border border-[var(--geo-border)] bg-white"
-      role={announce ? "status" : undefined}
-      aria-live={announce ? "polite" : undefined}
-      aria-label="正在预测读者问题"
-    >
-      <div className="grid xl:grid-cols-[280px_minmax(0,1fr)]">
-        <div className="divide-y divide-[#e5e8eb] border-b border-[#e5e8eb] xl:border-b-0 xl:border-r">
-          {Array.from({ length: 5 }, (_, index) => (
-            <div key={index} className="flex min-h-[74px] items-center gap-3 p-4">
-              <span className="size-8 rounded-md bg-[var(--geo-surface-inset)]" />
-              <span className="h-4 w-2/3 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
-            </div>
-          ))}
-        </div>
-        <div className="hidden min-h-[430px] bg-[var(--geo-surface-subtle)] p-6 xl:block">
-          <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
-          <div className="mt-8 h-28 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
-          <div className="mt-4 h-36 animate-pulse rounded-md bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function DiagnosisSection({
@@ -91,187 +75,131 @@ export function DiagnosisSection({
   restoredFromCache,
   canRetryQuestions,
   canRetryDiagnostic,
-  followUpQuestion,
-  followUpError,
-  canAskFollowUp,
-  canSubmitFollowUp,
-  customQuestionCount,
-  answeredCustomQuestionCount,
   feedbackByQuestion,
   feedbackEnabled,
   onRetryQuestions,
   onRetryDiagnostic,
   onToggleQuestion,
-  onFollowUpQuestionChange,
-  onSubmitFollowUp,
   onDiagnosisFeedback,
+  onOpenOverview,
+  onOpenEvidence,
+  onOpenPatch,
 }: DiagnosisSectionProps) {
+  const [filter, setFilter] = useState<DiagnosisFilter>("all");
   const diagnosticItems = questionOrder.map((question) => createDiagnosticItem(question, diagnostics));
-  const fallbackQuestion = diagnosticItems.find((item) => item.status === "success")?.question ?? questionOrder[0] ?? null;
-  const activeQuestion = expandedQuestion && questionOrder.includes(expandedQuestion) ? expandedQuestion : fallbackQuestion;
-  const activeItem = activeQuestion ? createDiagnosticItem(activeQuestion, diagnostics) : null;
-
-  let diagnosisContent;
-
-  if (questions.status === "loading" || questions.status === "idle") {
-    diagnosisContent = <DiagnosisWorkbenchSkeleton announce={!sessionLoading} />;
-  } else if (questions.status === "error") {
-    diagnosisContent = (
-      <div className="surface-flat mt-4 p-5">
-        <p className="font-semibold text-[var(--geo-status-danger)]">读者问题未生成</p>
-        <p role="alert" aria-live="assertive" className="mt-2 text-sm leading-6 text-[var(--geo-text-body)]">
-          {questions.error}
-        </p>
-        <p className="mt-2 text-xs leading-5 text-[#858c97]">评分结果可能已经完成。重新运行会从头生成本次报告。</p>
-        {canRetryQuestions ? (
-          <button type="button" onClick={onRetryQuestions} className="primary-button mt-3 h-9 px-4 text-sm font-semibold">
-            重新运行分析
-          </button>
-        ) : null}
-      </div>
-    );
-  } else {
-    diagnosisContent = (
-      <div ref={latestQuestion ? latestQuestionRef : undefined} className="mt-4">
-        <div className="diagnosis-master-detail hidden overflow-hidden rounded-lg border border-[var(--geo-border)] bg-white xl:grid xl:grid-cols-[280px_minmax(0,1fr)]">
-          <div className="min-w-0 border-r border-[#e1e6ea] bg-white">
-            <div className="border-b border-[#e5e8eb] px-4 py-3">
-              <span className="text-[11px] font-semibold text-[#858c97]">诊断索引</span>
-            </div>
-            <div className="divide-y divide-[#e8ebee]">
-              {diagnosticItems.map((item, index) => {
-                const selected = item.question === activeQuestion;
-                const interactive = item.status === "success" || item.status === "error";
-                return (
-                  <button
-                    key={item.question}
-                    type="button"
-                    aria-current={selected ? "true" : undefined}
-                    aria-controls="diagnosis-detail-panel"
-                    disabled={!interactive}
-                    onClick={() => {
-                      if (!selected || expandedQuestion !== item.question) onToggleQuestion(item.question);
-                    }}
-                    className={`grid min-h-[78px] w-full grid-cols-[30px_minmax(0,1fr)_18px] items-center gap-3 border-l-[3px] px-4 py-3 text-left disabled:cursor-default ${
-                      selected
-                        ? "border-l-[var(--geo-primary)] bg-[var(--geo-secondary-soft)]"
-                        : "border-l-transparent bg-white hover:bg-[var(--geo-surface-subtle)]"
-                    }`}
-                  >
-                    <span className={`grid size-[30px] place-items-center rounded-md font-mono text-xs font-bold ${selected ? "bg-[var(--geo-status-info-soft)] text-[var(--geo-primary)]" : "bg-[var(--geo-surface-subtle)] text-[var(--geo-text-muted)]"}`}>
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="text-clamp-2 block text-sm font-semibold leading-6 text-[#252a31]">{item.question}</span>
-                      <span className="mt-1.5 block min-h-5">
-                        {item.data ? (
-                          <span className={`diagnosis-answerability text-[11px] font-semibold ${STATUS_STYLE[item.data.answerability]}`}>
-                            {item.data.answerability}
-                          </span>
-                        ) : item.status === "error" ? (
-                          <span className="text-xs font-semibold text-[#a43e2b]">分析失败</span>
-                        ) : item.status === "loading" ? (
-                          <span className="text-xs font-semibold text-[#416b8a]">正在分析</span>
-                        ) : (
-                          <span className="text-xs text-[#8b939e]">等待分析</span>
-                        )}
-                      </span>
-                    </span>
-                    <ChevronRight aria-hidden="true" className={`size-4 ${selected ? "text-[var(--geo-primary)]" : "text-[var(--geo-soft)]"}`} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <DiagnosticDetailPanel
-            item={activeItem}
-            fromCachedReport={restoredFromCache}
-            canRetry={activeQuestion ? canRetryDiagnostic(activeQuestion) : false}
-            feedback={activeQuestion ? feedbackByQuestion[activeQuestion] : undefined}
-            feedbackEnabled={feedbackEnabled && Boolean(activeQuestion)}
-            onRetry={() => {
-              if (activeQuestion) onRetryDiagnostic(activeQuestion);
-            }}
-            onFeedback={(helpful) => {
-              if (activeQuestion) onDiagnosisFeedback(activeQuestion, helpful);
-            }}
-          />
-        </div>
-
-        <div className="diagnostic-stack overflow-hidden rounded-lg border border-[var(--geo-border)] bg-white xl:hidden">
-          {diagnosticItems.map((item, index) => (
-            <div key={item.question} className="border-b border-[#e1e7e4] last:border-b-0">
-              <DiagnosticAccordionItem
-                id={String(index + 1).padStart(2, "0")}
-                item={item}
-                expanded={expandedQuestion === item.question}
-                onToggle={() => onToggleQuestion(item.question)}
-                onRetry={() => onRetryDiagnostic(item.question)}
-                canRetry={canRetryDiagnostic(item.question)}
-                fromCachedReport={restoredFromCache}
-                feedback={feedbackByQuestion[item.question]}
-                feedbackEnabled={feedbackEnabled}
-                onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const completedItems = diagnosticItems.filter((item) => item.status === "success" && item.data);
+  const highCount = completedItems.filter((item) => item.data?.riskLevel === "high").length;
+  const mediumCount = completedItems.filter((item) => item.data?.riskLevel === "medium").length;
+  const lowCount = completedItems.filter((item) => item.data?.riskLevel === "low").length;
+  const overallRisk = highCount ? RISK_META.high : mediumCount ? RISK_META.medium : RISK_META.low;
+  const visibleItems = diagnosticItems.filter((item) => (
+    filter === "all" || item.data?.riskLevel === filter
+  ));
 
   return (
-    <section id="diagnostic-section" className="section-anchor min-w-0">
-      <div className="report-section-heading diagnosis-stage-header">
+    <section id="diagnostic-section" className="phase2-diagnosis-page section-anchor">
+      <header className="phase2-subpage-header">
         <div>
-          <p className="section-kicker">内容优化助手</p>
-          <h2>发现问题，并明确怎么修改</h2>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Diagnosis</p>
+          <h1>问题诊断</h1>
+          <p>基于观点、证据与来源链路，定位影响内容可信度的问题。</p>
         </div>
-        {totalCount ? (
-          <span role="status" aria-live="polite">
-            {completedCount} / {totalCount} 已完成
-          </span>
-        ) : null}
-      </div>
+        <div className="phase2-subpage-actions">
+          <span className="is-success"><CheckCircle2 aria-hidden="true" />分析已完成 · {totalCount} 个问题</span>
+          <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
+        </div>
+      </header>
 
-      {diagnosisContent}
+      {questions.status === "loading" || questions.status === "idle" ? (
+        <div className="phase2-loading-surface" role={sessionLoading ? undefined : "status"} aria-live={sessionLoading ? undefined : "polite"}>
+          正在整理问题诊断…
+        </div>
+      ) : questions.status === "error" ? (
+        <div className="phase2-loading-surface is-error">
+          <strong>读者问题未生成</strong>
+          <p>{questions.error}</p>
+          {canRetryQuestions ? <button type="button" onClick={onRetryQuestions}>重新运行分析</button> : null}
+        </div>
+      ) : (
+        <>
+          <section className="phase2-diagnosis-summary">
+            <div>
+              <span>发现</span>
+              <strong>{totalCount} 个可信度问题</strong>
+            </div>
+            <div>
+              <span>风险等级</span>
+              <strong className={overallRisk.className}>{overallRisk.label}</strong>
+            </div>
+            <div><Circle className="is-danger" aria-hidden="true" /><span>高风险</span><strong>{highCount}</strong></div>
+            <div><Circle className="is-warning" aria-hidden="true" /><span>注意</span><strong>{mediumCount}</strong></div>
+            <div><Circle className="is-success" aria-hidden="true" /><span>通过</span><strong>{lowCount}</strong></div>
+            <p>Evidence First · 风险判断均可追溯至具体观点、证据与来源。</p>
+          </section>
 
-      {questions.status === "success" ? (
-        <form onSubmit={onSubmitFollowUp} className="follow-up-panel surface-flat mt-4 p-4 sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label htmlFor="follow-up-question" className="flex items-center gap-2 text-sm font-semibold">
-              <MessageSquare aria-hidden="true" className="size-4 text-[var(--geo-primary)]" />
-              测试读者真实提问
-            </label>
-            <span className="text-xs tabular-nums text-[#858c97]">{totalCount} / 10</span>
+          <div className="phase2-diagnosis-toolbar">
+            <h2>发现的问题</h2>
+            <div role="group" aria-label="诊断风险筛选">
+              {([
+                ["all", `全部 ${totalCount}`],
+                ["high", "高风险"],
+                ["medium", "注意"],
+                ["low", "通过"],
+              ] as const).map(([value, label]) => (
+                <button key={value} type="button" className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>{label}</button>
+              ))}
+            </div>
           </div>
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-            <input
-              id="follow-up-question"
-              value={followUpQuestion}
-              onChange={(event) => onFollowUpQuestionChange(event.target.value)}
-              maxLength={200}
-              disabled={!canAskFollowUp}
-              placeholder="例如：文章解释清楚为什么选择 A 而不是 B 吗？"
-              className="field-control h-11 min-w-0 flex-1 bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-[#f0f2f5]"
-            />
-            <button
-              type="submit"
-              disabled={!canSubmitFollowUp}
-              className="dark-button h-11 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              分析问题
-            </button>
+
+          <div ref={latestQuestion ? latestQuestionRef : undefined} className="phase2-diagnosis-list">
+            {visibleItems.map((item) => {
+              const itemIndex = Math.max(questionOrder.indexOf(item.question), 0);
+              const risk = item.data ? RISK_META[item.data.riskLevel] : RISK_META.medium;
+              const reason = item.data?.missingInfo[0]
+                || (item.data?.evidenceStatus === "invalid" ? "现有引用未通过原文校验。" : "当前观点缺少足够 Evidence 支撑。");
+              return (
+                <article key={item.question} className={`phase2-diagnosis-row ${risk.className} ${expandedQuestion === item.question ? "is-expanded" : ""}`}>
+                  <button
+                    type="button"
+                    disabled={item.status !== "success" && item.status !== "error"}
+                    aria-expanded={expandedQuestion === item.question}
+                    onClick={() => onToggleQuestion(item.question)}
+                  >
+                    <span className="phase2-diagnosis-question"><small>问题 {String(itemIndex + 1).padStart(2, "0")}</small><strong>{item.question}</strong></span>
+                    <span><small>影响</small><p>{item.data ? RISK_IMPACT[item.data.riskLevel] : "等待分析结果。"}</p></span>
+                    <span><small>原因</small><p>{reason}</p></span>
+                    <span><small>建议</small><p>{item.data?.recommendation || "完成分析后显示处理建议。"}</p></span>
+                    <b>
+                      {item.status === "error" ? "分析失败" : risk.shortLabel}
+                      <ChevronDown aria-hidden="true" />
+                    </b>
+                  </button>
+                  {expandedQuestion === item.question ? (
+                    <DiagnosticDetailPanel
+                      item={item}
+                      itemIndex={itemIndex}
+                      fromCachedReport={restoredFromCache}
+                      canRetry={canRetryDiagnostic(item.question)}
+                      feedback={feedbackByQuestion[item.question]}
+                      feedbackEnabled={feedbackEnabled}
+                      onRetry={() => onRetryDiagnostic(item.question)}
+                      onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
+                      onOpenEvidence={onOpenEvidence}
+                      onOpenPatch={onOpenPatch}
+                    />
+                  ) : null}
+                </article>
+              );
+            })}
           </div>
-          {followUpError ? <p role="alert" className="mt-2 text-sm text-[var(--geo-status-danger)]">{followUpError}</p> : null}
-          {customQuestionCount ? (
-            <p className="mt-3 text-xs text-[#68707d]">
-              追问覆盖率：{answeredCustomQuestionCount} / {customQuestionCount} 可完全回答
-            </p>
-          ) : null}
-        </form>
-      ) : null}
+
+          <footer className="phase2-diagnosis-pass">
+            <CheckCircle2 aria-hidden="true" />
+            <strong>{completedCount === totalCount ? "诊断已完成" : `${completedCount} / ${totalCount} 已完成`}</strong>
+            <span>文章结构、作者信息与主要术语定义已完成基础核验。</span>
+          </footer>
+        </>
+      )}
     </section>
   );
 }

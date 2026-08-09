@@ -1,7 +1,8 @@
 "use client";
 
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Info } from "lucide-react";
 
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import type { LoadState } from "@/lib/client/report-state";
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
 
@@ -20,15 +21,14 @@ type ReportScoreRailProps = {
 function ScoreSkeleton({ announce }: { announce: boolean }) {
   return (
     <aside
-      className="score-rail min-h-[320px] animate-pulse p-5 motion-reduce:animate-none sm:p-6"
+      className="phase2-score-card animate-pulse motion-reduce:animate-none"
       role={announce ? "status" : undefined}
       aria-live={announce ? "polite" : undefined}
       aria-label="正在生成评分"
     >
-      <div className="h-3 w-24 rounded bg-[var(--geo-surface-inset)]" />
-      <div className="mt-6 h-16 w-32 rounded bg-[var(--geo-surface-inset)]" />
-      <div className="mt-5 h-1 w-full rounded-full bg-[var(--geo-surface-inset)]" />
-      <div className="mt-6 h-20 rounded-md bg-[var(--geo-surface-subtle)]" />
+      <div className="h-4 w-24 rounded bg-[var(--geo-surface-inset)]" />
+      <div className="mt-5 h-16 w-36 rounded bg-[var(--geo-surface-inset)]" />
+      <div className="mt-4 h-4 w-full rounded bg-[var(--geo-surface-subtle)]" />
     </aside>
   );
 }
@@ -45,7 +45,7 @@ export function ReportScoreRail({
 
   if (scoring.status === "error") {
     return (
-      <aside className="score-rail flex min-h-[260px] flex-col items-start justify-center p-5 sm:p-6">
+      <aside className="phase2-score-card is-error">
         <BarChart3 aria-hidden="true" className="size-5 text-[var(--geo-status-danger)]" />
         <h2 className="mt-4 font-semibold">评分未完成</h2>
         <p role="alert" className="mt-2 text-sm leading-6 text-[var(--geo-text-muted)]">
@@ -64,32 +64,20 @@ export function ReportScoreRail({
   const report = scoring.data;
 
   return (
-    <aside className="score-rail report-score-summary min-w-0 p-5 sm:p-6">
-      <span className="section-kicker">可信度评分</span>
-      <div
-        className="score-ring-wrap mt-4"
-        role="progressbar"
-        aria-label="总体可信度评分"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={report.totalScore}
-      >
-        <svg className="score-ring-svg" viewBox="0 0 128 128" aria-hidden="true">
-          <circle className="score-ring-track" cx="64" cy="64" r="52" />
-          <circle
-            className="score-ring-value"
-            cx="64"
-            cy="64"
-            r="52"
-            pathLength="100"
-            strokeDasharray={`${report.totalScore} 100`}
-          />
-        </svg>
-        <div className="score-ring-center">
-          <strong>{report.totalScore}</strong>
-          <span><b>/ 100</b>可信度评分</span>
-        </div>
+    <aside
+      className="phase2-score-card"
+      role="progressbar"
+      aria-label="总体可信度评分"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={report.totalScore}
+    >
+      <span className="phase2-score-label">可信度评分 <Info aria-hidden="true" /></span>
+      <div className="phase2-score-value">
+        <strong><AnimatedNumber value={report.totalScore} /></strong>
+        <span>/100</span>
       </div>
+      <p>基于事实、来源、结构与可验证性的综合评估。</p>
     </aside>
   );
 }

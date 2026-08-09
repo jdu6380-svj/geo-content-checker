@@ -1,10 +1,9 @@
 "use client";
 
-import { ArrowRight, FileSearch } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Scale } from "lucide-react";
 
-import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
-import { ReportActionRail } from "@/components/report-action-rail";
 import { ReportDimensionLedger } from "@/components/report-dimension-ledger";
+import { ReportNavigationPanel } from "@/components/report-navigation-panel";
 import { ReportScoreRail, type ReportScoreBand } from "@/components/report-score-rail";
 import type { DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
@@ -36,25 +35,22 @@ const RISK_PRIORITY = { low: 1, medium: 2, high: 3 } as const;
 const RISK_META = {
   low: {
     label: "低风险",
-    className: "status-success",
-    impact: "当前信息基本可支撑判断，仍建议在发布前核对引用与适用边界。",
+    shortLabel: "低",
+    className: "is-success",
+    impact: "内容已具备较完整的事实与结构基础，发布前建议继续核对引用边界。",
   },
   medium: {
     label: "中风险",
-    className: "status-warning",
-    impact: "部分信息仍需补充或澄清，可能增加读者与 AI 搜索理解内容的判断成本。",
+    shortLabel: "中",
+    className: "is-warning",
+    impact: "整体具备可信基础，建议优先补齐来源与证据关联。",
   },
   high: {
     label: "高风险",
-    className: "status-danger",
-    impact: "关键信息不足可能影响内容可信判断，建议在发布前优先核对并处理。",
+    shortLabel: "高",
+    className: "is-danger",
+    impact: "关键信息不足可能影响可信判断，建议在发布前优先处理。",
   },
-} as const;
-
-const EVIDENCE_LABEL = {
-  valid: "证据有效",
-  missing: "证据缺失",
-  invalid: "证据无效",
 } as const;
 
 export function ReportContextRail({
@@ -67,147 +63,100 @@ export function ReportContextRail({
   announceLoading,
   canRetry,
   onRetryScoring,
-  onFocusQuestion,
   onScrollToSection,
   completedCount,
-  evidenceCount,
   contentAvailable,
   restoredFromCache,
-  onBackToEditor,
 }: ReportContextRailProps) {
   const diagnosticItems = questionOrder.flatMap((question) => {
     const item = diagnostics[question];
-    return item?.status === "success" && item.data ? [item] : [];
+    return item?.status === "success" && item.data ? [item.data] : [];
   });
-  const keyFindings = diagnosticItems
-    .flatMap((item) => item.data ? [{ question: item.question, data: item.data }] : [])
-    .sort((left, right) => RISK_PRIORITY[right.data.riskLevel] - RISK_PRIORITY[left.data.riskLevel])
-    .slice(0, 3);
+  const riskItems = diagnosticItems.filter((item) => (
+    item.riskLevel !== "low" || item.evidenceStatus !== "valid" || item.answerability !== "可以完全回答"
+  ));
   const priorityItem = diagnosticItems.reduce<(typeof diagnosticItems)[number] | null>(
-    (current, item) => {
-      if (!current || !current.data || !item.data) return item;
-      return RISK_PRIORITY[item.data.riskLevel] > RISK_PRIORITY[current.data.riskLevel]
-        ? item
-        : current;
-    },
+    (current, item) => (
+      !current || RISK_PRIORITY[item.riskLevel] > RISK_PRIORITY[current.riskLevel] ? item : current
+    ),
     null,
   );
-  const priorityRisk = priorityItem?.data ? RISK_META[priorityItem.data.riskLevel] : null;
-  const diagnosticsPending = Object.values(diagnostics).some(
-    (item) => item.status === "queued" || item.status === "loading",
-  );
+  const priorityRisk = priorityItem ? RISK_META[priorityItem.riskLevel] : RISK_META.low;
+  const verifiedCount = diagnosticItems.filter((item) => item.evidenceStatus === "valid").length;
+  const pendingCount = diagnosticItems.filter((item) => item.evidenceStatus === "missing").length;
+  const riskCount = diagnosticItems.filter((item) => item.evidenceStatus === "invalid" || item.riskLevel === "high").length;
+  const primaryProblems = riskItems.slice(0, 2).map((item) => item.question);
 
   return (
-    <section id="report-core" className="report-overview-panel min-w-0">
-      <header className="report-header-line">
-        <div className="min-w-0">
-          <p className="section-kicker">审查报告</p>
-          <h1 className="report-page-title">
-            {title || "未命名内容"}
-          </h1>
-          <p className="report-page-subtitle">内容可信度审查 · 结论、判断依据与下一步行动</p>
+    <section id="report-core" className="phase2-report-overview section-anchor">
+      <header className="phase2-report-page-header">
+        <div>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview</p>
+          <h1>内容可信度审查报告</h1>
+          <p className="phase2-report-article">文章：{title || "未命名内容"}</p>
+          <span className="phase2-report-complete-copy">
+            {restoredFromCache ? reportStatus.label : "分析已完成"} · Evidence First
+          </span>
         </div>
-        <span className={`report-status-label ${reportStatus.className}`}>
-          {reportStatus.label}
-        </span>
+        <div className="phase2-report-stat-strip" aria-label="报告状态摘要">
+          <span className="is-success"><CheckCircle2 aria-hidden="true" />{verifiedCount} 项已验证</span>
+          <span className="is-warning"><Circle aria-hidden="true" />{pendingCount} 项待补充</span>
+          <span className="is-danger"><AlertTriangle aria-hidden="true" />{riskCount} 项风险</span>
+        </div>
       </header>
 
-      <div className="report-hero-grid">
-        <ReportScoreRail
-          scoring={scoring}
-          announceLoading={announceLoading}
-          canRetry={canRetry}
-          onRetry={onRetryScoring}
-        />
-
-        <section className="report-priority-risk" aria-labelledby="priority-risk-heading">
-          <p className="section-kicker">审查结论</p>
-
-          {priorityItem?.data && priorityRisk ? (
-            <>
-              <h2 id="priority-risk-heading" className="report-conclusion-title">
-                当前风险：<span className={priorityRisk.className}>{priorityRisk.label.replace("风险", "")}</span>
-              </h2>
-              <p className="report-conclusion-summary">{priorityRisk.impact}</p>
-              {scoreBand ? <p className="report-score-band-note">{scoreBand.label} · {scoreBand.note}</p> : null}
-              <div className="report-conclusion-block report-conclusion-issues">
-                <span>主要问题</span>
-                <ul>
-                  {keyFindings.map(({ question }) => <li key={question}>{question}</li>)}
-                </ul>
-              </div>
-              <div className="report-conclusion-block is-evidence">
-                <span>证据状态</span>
-                <EvidenceStatusBadge status={priorityItem.data.evidenceStatus} />
-              </div>
-            </>
-          ) : diagnosticsPending || questionOrder.length === 0 ? (
-            <div role="status" aria-live="polite" className="mt-5">
-              <div className="h-5 w-28 animate-pulse rounded bg-[var(--geo-surface-inset)] motion-reduce:animate-none" />
-              <div className="mt-4 h-4 w-full animate-pulse rounded bg-[var(--geo-surface-subtle)] motion-reduce:animate-none" />
-              <div className="mt-2 h-4 w-4/5 animate-pulse rounded bg-[var(--geo-surface-subtle)] motion-reduce:animate-none" />
-              <p className="mt-5 text-sm leading-6 text-[#687386]">诊断完成后显示需要优先处理的问题、影响和证据位置。</p>
+      <div className="phase2-report-layout">
+        <div className="phase2-report-main">
+          <section className="phase2-report-hero-card">
+            <ReportScoreRail
+              scoring={scoring}
+              announceLoading={announceLoading}
+              canRetry={canRetry}
+              onRetry={onRetryScoring}
+            />
+            <div className="phase2-report-risk">
+              <span>风险等级</span>
+              <strong className={priorityRisk.className}>{priorityRisk.label}</strong>
             </div>
-          ) : (
-            <p className="mt-5 text-sm leading-6 text-[#687386]">当前没有可展示的已完成诊断。</p>
-          )}
-        </section>
+            <div className="phase2-report-conclusion">
+              <p>结论</p>
+              <strong>{scoreBand?.label || primaryProblems[0] || "当前未发现明显高风险问题"}</strong>
+              <p>{priorityRisk.impact}</p>
+              <span className="phase2-report-evidence-progress">已完成 {completedCount} 项 Evidence 检查</span>
+            </div>
+          </section>
 
-        <ReportActionRail
-          completedCount={completedCount}
-          totalCount={questionOrder.length}
-          evidenceCount={evidenceCount}
-          contentAvailable={contentAvailable}
-          restoredFromCache={restoredFromCache}
-          onScrollToSection={onScrollToSection}
-          onBackToEditor={onBackToEditor}
+          {scoring.status === "success" ? <ReportDimensionLedger report={scoring.data} /> : null}
+
+          <section className="phase2-evidence-first-callout">
+            <div>
+              <span aria-hidden="true"><Scale /></span>
+              <p><strong>Evidence First</strong> · 每项结论均建立在可核验的证据与来源之上。</p>
+              <small>优先查看来源透明度与可验证性中的待补充项。</small>
+            </div>
+            <button type="button" onClick={() => onScrollToSection("evidence-section")}>
+              查看 Evidence 分析 <ArrowRight aria-hidden="true" />
+            </button>
+          </section>
+        </div>
+
+        <ReportNavigationPanel
+          activeView="overview"
+          evidencePendingCount={pendingCount}
+          diagnosisIssueCount={riskItems.length}
+          patchCount={Math.min(riskItems.length, 3)}
+          recheckLabel={contentAvailable ? "待复核" : "暂无正文"}
+          analysisComplete={diagnosticItems.length > 0 && completedCount === diagnosticItems.length}
+          recheckAvailable={contentAvailable}
+          onNavigate={(view) => {
+            if (view === "overview") return;
+            if (view === "evidence") onScrollToSection("evidence-section");
+            if (view === "diagnosis") onScrollToSection("diagnostic-section");
+            if (view === "patch") onScrollToSection("patch-workshop");
+            if (view === "recheck") onScrollToSection("recheck-comparison");
+          }}
         />
       </div>
-
-      <section className="report-key-findings" aria-labelledby="report-key-findings-heading">
-        <header className="report-key-findings-header">
-          <div>
-            <p className="section-kicker">优先级</p>
-            <h2 id="report-key-findings-heading">关键风险（Top 3）</h2>
-          </div>
-          <span>{keyFindings.length ? `基于 ${keyFindings.length} 项最高优先级诊断` : "等待诊断"}</span>
-        </header>
-
-        {keyFindings.length ? (
-          <ol className="report-key-findings-list">
-            {keyFindings.map(({ question, data }, index) => {
-              const risk = RISK_META[data.riskLevel];
-              return (
-                <li key={question}>
-                  <button type="button" onClick={() => onFocusQuestion(question)}>
-                    <span className={`report-finding-index risk-${data.riskLevel}`}>{String(index + 1).padStart(2, "0")}</span>
-                    <span className="report-finding-copy">
-                      <strong>{question}</strong>
-                      <small>影响：{risk.impact}</small>
-                    </span>
-                    <span className="report-finding-copy-meta">
-                      <span className={`report-finding-state ${risk.className}`}>{risk.label.replace("风险", "")}</span>
-                      <span className="report-finding-evidence">证据：{EVIDENCE_LABEL[data.evidenceStatus]}</span>
-                    </span>
-                    <ArrowRight aria-hidden="true" className="report-finding-arrow size-4" />
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <p className="report-key-findings-empty">诊断完成后，这里会列出需要优先处理的风险与证据状态。</p>
-        )}
-        <div className="report-key-findings-footer">
-          <button type="button" onClick={() => onScrollToSection("evidence-section")}>
-            <FileSearch aria-hidden="true" className="size-4" />
-            查看完整判断依据
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </button>
-        </div>
-      </section>
-
-      {scoring.status === "success" ? <ReportDimensionLedger report={scoring.data} /> : null}
     </section>
   );
 }

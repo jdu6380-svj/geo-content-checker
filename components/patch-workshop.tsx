@@ -3,20 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
+  ArrowLeft,
   Check,
-  ClipboardCheck,
   Copy,
   FileCheck2,
   FilePenLine,
-  Link2,
-  ListChecks,
   RefreshCw,
-  RotateCcw,
   TextSelect,
-  UserRoundCheck,
 } from "lucide-react";
 
-import { postGeoBetaEvent, postGeoJson } from "@/lib/client/geo-api";
+import {
+  createGeoAbortError,
+  isGeoAbortError,
+  postGeoBetaEvent,
+  postGeoJson,
+} from "@/lib/client/geo-api";
 import type { DiagnosticsState } from "@/lib/client/report-state";
 import type {
   GeneratePatchesResponse,
@@ -30,7 +31,10 @@ type PatchWorkshopProps = {
   paragraphs: Paragraph[];
   diagnostics: DiagnosticsState;
   runId: string | null;
+  analysisSignal?: AbortSignal;
   onBackToEditor: () => void;
+  onOpenOverview: () => void;
+  onOpenRecheck: () => void;
 };
 
 type PatchState =
@@ -148,44 +152,76 @@ export function PatchWorkshop({
   paragraphs,
   diagnostics,
   runId,
+  analysisSignal,
   onBackToEditor,
+  onOpenOverview,
+  onOpenRecheck,
 }: PatchWorkshopProps) {
   const [activeMode, setActiveMode] = useState<PatchMode>("advice");
   const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(initialPatchStates);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
+  const [appliedActionIds, setAppliedActionIds] = useState<Set<string>>(() => new Set());
   const generateButtonRef = useRef<HTMLButtonElement>(null);
-  const copyButtonRef = useRef<HTMLButtonElement>(null);
   const manualCopyRef = useRef<HTMLTextAreaElement>(null);
-  const restoreActionFocusRef = useRef(false);
+  const mountedRef = useRef(true);
+  const patchRequestControllerRef = useRef<AbortController | null>(null);
+  const patchRequestIdRef = useRef(0);
   const activePatch = patches[activeMode];
   const diagnosticResults = Object.values(diagnostics).flatMap((item) => item.data ? [item.data] : []);
   const canGenerate = paragraphs.length > 0 && diagnosticResults.length > 0;
-  const evidenceGapCount = diagnosticResults.filter(
-    (item) => item.evidenceStatus !== "valid" || item.missingInfo.length > 0,
-  ).length;
-  const validEvidenceCount = diagnosticResults.filter((item) => item.evidenceStatus === "valid").length;
-  const articlePreview = paragraphs.slice(0, 5);
+  const priorityDiagnostic = diagnosticResults.find(
+    (item) => item.riskLevel === "high" || item.evidenceStatus !== "valid",
+  ) ?? diagnosticResults[0];
+  const priorityEvidence = priorityDiagnostic?.evidence[0];
+  const priorityParagraph = priorityEvidence
+    ? paragraphs.find((paragraph) => paragraph.id === priorityEvidence.paragraphId)
+    : paragraphs[0];
+  const priorityParagraphIndex = priorityParagraph
+    ? paragraphs.findIndex((paragraph) => paragraph.id === priorityParagraph.id)
+    : 0;
+  const previewStart = Math.max(0, priorityParagraphIndex - 1);
+  const articlePreview = paragraphs.slice(previewStart, previewStart + 3);
 
   useEffect(() => {
-    if (activePatch.status !== "success" || !restoreActionFocusRef.current) return;
-    restoreActionFocusRef.current = false;
-    copyButtonRef.current?.focus();
-  }, [activePatch.status]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      patchRequestControllerRef.current?.abort();
+      patchRequestControllerRef.current = null;
+    };
+  }, []);
 
   function selectMode(mode: PatchMode) {
     setActiveMode(mode);
     setCopyStatus("idle");
   }
 
-  function setActivePatch(next: PatchState) {
-    setPatches((current) => ({ ...current, [activeMode]: next }));
+  function setPatchForMode(mode: PatchMode, next: PatchState) {
+    setPatches((current) => ({ ...current, [mode]: next }));
   }
 
   async function generatePatches() {
-    if (!canGenerate || activePatch.status === "loading") return;
-    restoreActionFocusRef.current = document.activeElement === generateButtonRef.current;
-    setActivePatch({ status: "loading" });
+    if (!canGenerate || activePatch.status === "loading" || analysisSignal?.aborted) return;
+    const requestMode = activeMode;
+    const requestId = patchRequestIdRef.current + 1;
+    patchRequestIdRef.current = requestId;
+    patchRequestControllerRef.current?.abort();
+    setPatches((current) => {
+      const next = { ...current };
+      (Object.keys(next) as PatchMode[]).forEach((mode) => {
+        if (next[mode].status === "loading") next[mode] = { status: "idle" };
+      });
+      return next;
+    });
+
+    const requestController = new AbortController();
+    patchRequestControllerRef.current = requestController;
+    const onAnalysisAbort = () => requestController.abort();
+    analysisSignal?.addEventListener("abort", onAnalysisAbort, { once: true });
+
+    setPatchForMode(requestMode, { status: "loading" });
     setCopyStatus("idle");
+    setAppliedActionIds(new Set());
     if (runId) void postGeoBetaEvent({ event: "patch_requested", runId });
 
     try {
@@ -193,17 +229,33 @@ export function PatchWorkshop({
         title,
         numbered_paragraphs: paragraphs,
         diagnostics: diagnosticResults,
-        mode: activeMode,
+        mode: requestMode,
+      }, {
+        signal: requestController.signal,
       });
       if (!response.ok) throw new Error(await readError(response));
+      if (requestController.signal.aborted) throw createGeoAbortError();
       const data = (await response.json()) as GeneratePatchesResponse;
-      setActivePatch({ status: "success", data });
-      if (runId) void postGeoBetaEvent({ event: "patch_generated", runId });
+      if (requestController.signal.aborted || !mountedRef.current || requestId !== patchRequestIdRef.current) {
+        throw createGeoAbortError();
+      }
+      setPatchForMode(requestMode, { status: "success", data });
+      if (runId && !requestController.signal.aborted) void postGeoBetaEvent({ event: "patch_generated", runId });
     } catch (requestError) {
-      setActivePatch({
-        status: "error",
-        error: requestError instanceof Error ? requestError.message : "补丁生成失败，请稍后重试。",
-      });
+      if (!mountedRef.current || requestId !== patchRequestIdRef.current) return;
+      if (requestController.signal.aborted || isGeoAbortError(requestError)) {
+        setPatchForMode(requestMode, { status: "idle" });
+      } else {
+        setPatchForMode(requestMode, {
+          status: "error",
+          error: requestError instanceof Error ? requestError.message : "补丁生成失败，请稍后重试。",
+        });
+      }
+    } finally {
+      analysisSignal?.removeEventListener("abort", onAnalysisAbort);
+      if (patchRequestControllerRef.current === requestController) {
+        patchRequestControllerRef.current = null;
+      }
     }
   }
 
@@ -225,110 +277,45 @@ export function PatchWorkshop({
 
   const modeTitle = activeMode === "advice" ? "修改建议" : "内容参考材料";
   const modeDescription = activeMode === "advice"
-    ? "把诊断中的证据缺口和结构问题整理为可执行清单，明确为什么改、改什么。"
-      : "生成基于证据约束的修改参考材料，不替代完整改稿与事实审核。";
+    ? "把诊断中的证据缺口和结构问题整理为可执行清单。"
+    : "生成基于证据约束的修改参考材料。";
+  const visibleActions = activePatch.status === "success" ? activePatch.data.actions.slice(0, 3) : [];
+  const appliedVisibleCount = visibleActions.filter((action) => appliedActionIds.has(action.id)).length;
+
+  function applyPatch(actionId: string) {
+    setAppliedActionIds((current) => {
+      if (current.has(actionId)) return current;
+      const next = new Set(current);
+      next.add(actionId);
+      return next;
+    });
+  }
 
   return (
-    <section id="patch-workshop" className="patch-workshop section-anchor min-w-0" aria-busy={activePatch.status === "loading"}>
-      <div className="flex flex-col gap-4 border-b border-[var(--geo-border)] pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="section-kicker">修改建议</p>
-          <h2 className="mt-1 text-xl font-semibold text-[var(--geo-text)] sm:text-2xl">在原文与建议之间完成判断</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--geo-text-muted)]">
-            问题、依据与处理方向已在报告中明确；这里生成需要人工核对的修改材料。
-          </p>
+    <section id="patch-workshop" className="phase2-patch-page section-anchor" aria-busy={activePatch.status === "loading"}>
+      <header className="phase2-subpage-header">
+        <div>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Patch</p>
+          <h1>优化建议 Patch</h1>
+          <p>基于已识别的可信度问题，逐项审阅可应用的编辑建议。</p>
         </div>
-        <span className="status-badge status-neutral inline-flex w-fit shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs">
-          <UserRoundCheck aria-hidden="true" className="size-3.5" />
-          人工审核后应用
-        </span>
-      </div>
-
-      <div
-        className="mt-4 flex flex-col gap-2 border-y border-[var(--geo-border)] py-3 sm:flex-row sm:items-center sm:gap-4"
-        role="group"
-        aria-label="修改与重新验证流程"
-      >
-        <div className="flex min-w-0 items-center gap-2" aria-current="step">
-          <span className="geo-muted text-xs font-medium">当前</span>
-          <span className="geo-heading text-sm font-semibold">准备修改材料</span>
+        <div className="phase2-subpage-actions">
+          <span>已完成 {activePatch.status === "success" ? Math.min(activePatch.data.actions.length, 3) : Math.min(diagnosticResults.length, 3)} 条修改建议</span>
+          <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
         </div>
-        <ArrowRight aria-hidden="true" className="hidden size-4 shrink-0 text-[var(--geo-text-soft)] sm:block" />
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="geo-muted text-xs font-medium">下一步</span>
-          <span className="geo-body text-sm font-semibold">重新验证</span>
-        </div>
-      </div>
-
-      <div className="patch-mode-switch mt-4 grid overflow-hidden sm:grid-cols-2" aria-label="修改材料类型">
-        <button
-          type="button"
-          aria-pressed={activeMode === "advice"}
-          onClick={() => selectMode("advice")}
-          className={`patch-mode-option ${activeMode === "advice" ? "is-active" : ""}`}
-        >
-          <span className="patch-mode-icon"><ListChecks aria-hidden="true" className="size-4" /></span>
-          <span className="min-w-0 text-left">
-            <span className="block text-sm font-semibold">修改建议</span>
-            <span className="mt-0.5 block text-xs leading-5">关联诊断，明确为什么改、改什么</span>
-          </span>
-          <span className="patch-mode-state">{activeMode === "advice" ? "当前" : "查看"}</span>
-        </button>
-        <button
-          type="button"
-          aria-pressed={activeMode === "content_draft"}
-          onClick={() => selectMode("content_draft")}
-          className={`patch-mode-option ${activeMode === "content_draft" ? "is-active" : ""}`}
-        >
-          <span className="patch-mode-icon"><FileCheck2 aria-hidden="true" className="size-4" /></span>
-          <span className="min-w-0 text-left">
-            <span className="block text-sm font-semibold">内容草稿</span>
-            <span className="mt-0.5 block text-xs leading-5">基于证据约束的修改参考材料</span>
-          </span>
-          <span className="patch-mode-state">{activeMode === "content_draft" ? "当前" : "查看"}</span>
-        </button>
-      </div>
-
-      <div className="patch-mode-guidance mt-4 grid overflow-hidden sm:grid-cols-3">
-        {(activeMode === "advice"
-          ? [
-              { icon: Link2, label: "输入依据", value: `${diagnosticResults.length} 项诊断，其中 ${evidenceGapCount} 项存在证据或信息缺口` },
-              { icon: ListChecks, label: "交付用途", value: "形成逐项可执行清单，并保留与来源问题的关联" },
-              { icon: UserRoundCheck, label: "人工决策门", value: "确认事实来源、适用范围与原意；建议不代表问题已解决" },
-            ]
-          : [
-              { icon: Link2, label: "输入依据", value: `${validEvidenceCount} 项诊断含有效证据，可用于组织参考材料` },
-              { icon: FileCheck2, label: "交付用途", value: "整理 FAQ 与事实卡片参考，不是 AI 自动改稿" },
-              { icon: UserRoundCheck, label: "人工决策门", value: "逐项核对证据、语气与全文衔接；材料不保证结果提升" },
-            ]
-        ).map((item) => {
-          const Icon = item.icon;
-          return (
-            <div key={item.label} className="min-w-0 px-4 py-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--geo-text-body)]">
-                <Icon aria-hidden="true" className="size-3.5 text-[var(--geo-primary)]" />
-                {item.label}
-              </div>
-              <p className="mt-1.5 text-xs leading-5 text-[var(--geo-text-muted)]">{item.value}</p>
-            </div>
-          );
-        })}
-      </div>
+      </header>
 
       {!paragraphs.length ? (
-        <div className="patch-empty-state mt-4">
+        <div className="phase2-loading-surface">
           <div>
             <p className="data-label">修改建议暂不可生成</p>
             <h3>当前缓存报告未保留正文</h3>
             <p>返回编辑器恢复文章并重新运行审查后，Evidra 才能依据本次诊断生成修改建议。</p>
           </div>
-          <button type="button" onClick={onBackToEditor} className="secondary-button h-10 px-4 text-sm font-semibold">
-            返回编辑器
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </button>
+          <button type="button" onClick={onBackToEditor}>返回编辑器</button>
         </div>
       ) : diagnosticResults.length === 0 ? (
-        <div className="patch-empty-state mt-4">
+        <div className="phase2-loading-surface">
           <div>
             <p className="data-label">等待诊断结论</p>
             <h3>完成至少一项诊断后生成修改建议</h3>
@@ -338,47 +325,84 @@ export function PatchWorkshop({
       ) : null}
 
       {canGenerate ? (
-        <div className="patch-editor-preview mt-4">
-          <section className="patch-original-panel" aria-labelledby="patch-original-heading">
+        <div className="phase2-patch-layout">
+          <section className="phase2-patch-original" aria-labelledby="patch-original-heading">
             <header>
               <div>
-                <p className="data-label">原文</p>
-                <h3 id="patch-original-heading">待人工修改的文章内容</h3>
+                <h2 id="patch-original-heading">Original</h2>
+                <p>原始内容</p>
               </div>
-              <span>{paragraphs.length} 个段落</span>
             </header>
-            <div className="patch-original-content">
+            <div className="phase2-patch-original-body">
+              <h3>{title || "未命名内容"}</h3>
+              <span>{priorityParagraph?.id || paragraphs[0]?.id || "原文"} · 关键观点</span>
               {articlePreview.map((paragraph) => (
-                <p key={paragraph.id}>
-                  <span>{paragraph.id}</span>
-                  {paragraph.text}
-                </p>
+                <div key={paragraph.id}>
+                  <p>{paragraph.text}</p>
+                  {paragraph.id === priorityParagraph?.id ? (
+                    <blockquote>
+                      <strong>{priorityEvidence?.quote || priorityDiagnostic?.question || paragraph.text}</strong>
+                      <span>{priorityDiagnostic?.evidenceStatus === "valid" ? "需要补充说明" : "缺少来源说明"}</span>
+                    </blockquote>
+                  ) : null}
+                </div>
               ))}
-              {paragraphs.length > articlePreview.length ? <small>其余 {paragraphs.length - articlePreview.length} 个段落将在返回原文后继续处理。</small> : null}
             </div>
+            <footer>原文保持不变，应用建议前需人工确认。</footer>
           </section>
 
-          <section className="patch-suggestion-panel" aria-labelledby="patch-suggestion-heading">
+          <section className="phase2-patch-suggestions" aria-labelledby="patch-suggestion-heading">
             <header>
               <div>
-                <p className="data-label">修改建议</p>
-                <h3 id="patch-suggestion-heading">基于诊断与判断依据生成</h3>
+                <h2 id="patch-suggestion-heading">Suggested Patch</h2>
+                <p>修改建议</p>
               </div>
-              <span className={activePatch.status === "success" ? "status-success" : "status-neutral"}>
-                {activePatch.status === "success" ? "已生成" : "待生成"}
-              </span>
             </header>
-            <div className="patch-suggestion-content">
+            <p className="phase2-patch-guidance">仅显示必要修改，不改变文章原意。</p>
+            <div className="phase2-patch-suggestion-body">
               {activePatch.status === "success" ? (
-                <div className="patch-suggestion-ready">
-                  <FileCheck2 aria-hidden="true" className="size-5" />
-                  <h4>{activePatch.data.actions.length} 项修改材料已准备</h4>
-                  <p>下方逐项展示来源问题、原文依据、建议修改与人工确认要求。</p>
-                </div>
+                <>
+                  <div className="phase2-patch-card-list">
+                    {visibleActions.map((action, index) => {
+                      const presentation = actionPresentation(action);
+                      const applied = appliedActionIds.has(action.id);
+                      return (
+                        <article
+                          key={action.id}
+                          className={`${index === 2 ? "is-danger" : "is-warning"} ${index === 0 ? "is-primary" : "is-compact"} ${applied ? "is-applied" : ""}`}
+                        >
+                          <span>{applied ? "已应用" : index === 0 ? "待应用" : index === 1 ? "注意" : "高风险"}</span>
+                          <dl>
+                            <div><dt>问题</dt><dd>{presentation.title}</dd></div>
+                            <div><dt>建议</dt><dd>{presentation.body}</dd></div>
+                            {index === 0 ? <div><dt>修改方向</dt><dd>{presentation.purpose}</dd></div> : null}
+                            <div><dt>依据</dt><dd>{presentation.source}</dd></div>
+                          </dl>
+                          <div className="phase2-patch-card-actions">
+                            <button type="button" onClick={() => applyPatch(action.id)} disabled={applied}>
+                              {applied ? <Check aria-hidden="true" /> : null}
+                              {applied ? "已应用" : "应用建议"}
+                            </button>
+                            <button type="button" disabled>忽略</button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  {appliedVisibleCount ? (
+                    <div className="phase3-patch-recheck-bar" role="status" aria-live="polite">
+                      <span><Check aria-hidden="true" />已应用 {appliedVisibleCount} 项建议</span>
+                      <p>人工确认正文修改后，进入重新验证。</p>
+                      <button type="button" onClick={onOpenRecheck}>
+                        进入重新验证
+                        <ArrowRight aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <>
                   <div>
-                    <p className="data-label">当前材料</p>
                     <h4>{activePatch.status === "error" ? `${modeTitle}生成失败` : modeTitle}</h4>
                     {activePatch.status === "error" ? (
                       <p role="alert" aria-live="assertive" className="text-[var(--geo-status-danger)]">{activePatch.error}</p>
@@ -391,7 +415,7 @@ export function PatchWorkshop({
                     type="button"
                     onClick={generatePatches}
                     disabled={activePatch.status === "loading"}
-                    className="primary-button h-11 w-full px-5 text-sm font-bold disabled:translate-y-0 disabled:cursor-wait disabled:opacity-65"
+                    className="phase2-patch-generate"
                   >
                     {activePatch.status === "error" ? (
                       <RefreshCw aria-hidden="true" className="size-4" />
@@ -402,15 +426,26 @@ export function PatchWorkshop({
                   </button>
                 </>
               )}
+              {activePatch.status === "success" ? (
+                <div className="phase2-patch-footer-actions">
+                  <button type="button" onClick={copyMarkdown} disabled={copyStatus === "copying"}>
+                    {copyStatus === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                    {copyStatus === "copied" ? "已复制" : "复制全部 Markdown"}
+                  </button>
+                  <button type="button" onClick={() => selectMode(activeMode === "advice" ? "content_draft" : "advice")}>
+                    <FileCheck2 aria-hidden="true" />{activeMode === "advice" ? "查看内容草稿" : "返回修改建议"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </section>
         </div>
       ) : null}
 
       {activePatch.status === "loading" ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2" role="status" aria-live="polite" aria-label={`正在生成${modeTitle}`}>
-          {Array.from({ length: 4 }, (_, index) => (
-            <div key={index} className="card min-h-[150px] animate-pulse p-5 motion-reduce:animate-none">
+        <div className="phase2-patch-loading" role="status" aria-live="polite" aria-label={`正在生成${modeTitle}`}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="animate-pulse motion-reduce:animate-none">
               <div className="h-4 w-1/2 rounded bg-[var(--geo-surface-inset)]" />
               <div className="mt-5 h-3 w-full rounded bg-[var(--geo-surface-subtle)]" />
               <div className="mt-3 h-3 w-4/5 rounded bg-[var(--geo-surface-subtle)]" />
@@ -419,83 +454,8 @@ export function PatchWorkshop({
         </div>
       ) : null}
 
-      {activePatch.status === "success" ? (
-        <div className="patch-result-shell mt-4 overflow-hidden">
-          <header className="patch-result-header flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="data-label">审核材料</p>
-                <span className="status-badge status-neutral px-2 py-0.5 text-[10px]">
-                  {activePatch.data.source === "model" ? "模型生成" : "安全降级生成"}
-                </span>
-              </div>
-              <h3 className="mt-1.5 text-base font-semibold text-[var(--geo-text)]">
-                {activeMode === "advice" ? "与诊断关联的修改建议" : "基于证据约束的修改参考材料"}
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">
-                {activeMode === "advice"
-                  ? `${activePatch.data.actions.length} 项建议，逐项确认后再决定是否应用。`
-                  : `${activePatch.data.actions.length} 项参考材料，不应直接替换全文。`}
-              </p>
-            </div>
-            <div className="flex flex-col items-stretch gap-2 sm:items-end">
-              <span role="status" aria-live="polite" className="inline-flex min-h-4 items-center justify-end gap-1.5 text-xs">
-                {copyStatus === "copying" ? <span className="text-[var(--geo-text-muted)]">正在复制</span> : null}
-                {copyStatus === "copied" ? (
-                  <>
-                    <Check aria-hidden="true" className="size-3.5 text-[var(--geo-primary)]" />
-                    <span className="font-semibold text-[var(--geo-primary)]">已复制，尚未应用</span>
-                  </>
-                ) : null}
-                {copyStatus === "manual" ? <span className="text-[var(--geo-amber)]">请在下方手动复制</span> : null}
-              </span>
-              <button
-                ref={copyButtonRef}
-                type="button"
-                onClick={copyMarkdown}
-                disabled={copyStatus === "copying"}
-                className="secondary-button h-9 w-full px-4 text-sm font-semibold text-[var(--geo-primary)] disabled:cursor-wait disabled:opacity-65 sm:w-auto"
-              >
-                <Copy aria-hidden="true" className={`size-4 ${copyStatus === "copying" ? "animate-pulse motion-reduce:animate-none" : ""}`} />
-                {copyStatus === "copying" ? "正在复制" : "复制全部 Markdown"}
-              </button>
-            </div>
-          </header>
-
-          <div className="patch-review-gate grid sm:grid-cols-3" aria-label="材料使用前检查">
-            {[
-              ["01", "核对来源", "确认建议对应的诊断与证据。"],
-              ["02", "判断适用", "确认事实、语气和业务边界。"],
-              ["03", "人工应用", "只采纳适合原文的修改内容。"],
-            ].map(([number, label, description]) => (
-              <div key={number} className="flex min-w-0 gap-3 px-4 py-3.5 sm:px-5">
-                <span className="patch-review-number">{number}</span>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-[var(--geo-text-body)]">{label}</p>
-                  <p className="mt-1 text-[11px] leading-5 text-[var(--geo-text-soft)]">{description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {copyStatus === "copied" ? (
-            <div className="flex flex-col gap-3 border-b border-[var(--geo-status-success-border)] bg-[var(--geo-status-success-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-              <div className="flex min-w-0 items-start gap-3">
-                <ClipboardCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--geo-primary)]" />
-                <div>
-                  <p className="text-sm font-semibold text-[var(--geo-primary)]">材料已复制，仍需人工核对并整合到原文</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">复制不代表修改已完成。应用后运行完整复检，结果可能改善、无变化或下降。</p>
-                </div>
-              </div>
-              <button type="button" onClick={onBackToEditor} className="secondary-button h-9 w-full shrink-0 px-4 text-xs font-semibold sm:w-auto">
-                返回原文
-                <ArrowRight aria-hidden="true" className="size-3.5" />
-              </button>
-            </div>
-          ) : null}
-
-          {copyStatus === "manual" ? (
-            <div className="border-b border-[var(--geo-status-warning-border)] bg-[var(--geo-status-warning-soft)] p-4 sm:p-5">
+      {activePatch.status === "success" && copyStatus === "manual" ? (
+            <div className="phase2-patch-manual-copy">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-sm font-bold">Markdown 文本</h3>
                 <button
@@ -516,58 +476,7 @@ export function PatchWorkshop({
                 aria-label="可手动复制的 Markdown 文本"
               />
             </div>
-          ) : null}
-
-          <div className="patch-action-list">
-            {activePatch.data.actions.map((action, index) => {
-              const presentation = actionPresentation(action);
-              return (
-                <article key={action.id} className={`patch-action-row ${presentation.accent}`}>
-                  <header className="patch-action-heading">
-                    <span className="patch-action-index">{String(index + 1).padStart(2, "0")}</span>
-                    <div className="min-w-0">
-                      <span className={`patch-action-type ${presentation.sourceClassName}`}>{presentation.eyebrow}</span>
-                      <h3>{presentation.title}</h3>
-                    </div>
-                  </header>
-                  <div className="patch-action-columns">
-                    <section className="patch-action-source">
-                      <p className="data-label">{presentation.sourceLabel}</p>
-                      <blockquote>{presentation.source}</blockquote>
-                      <div>
-                        <span>修改目的</span>
-                        <p>{presentation.purpose}</p>
-                      </div>
-                    </section>
-                    <section className="patch-action-suggestion">
-                      <p className="data-label">{activeMode === "advice" ? "建议修改" : "参考材料"}</p>
-                      <p className="patch-action-body">{presentation.body}</p>
-                      <div className="patch-action-decision">
-                        <UserRoundCheck aria-hidden="true" className="size-4" />
-                        <span>{presentation.decision}</span>
-                      </div>
-                    </section>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </div>
       ) : null}
-
-      <div className="patch-next-step mt-5 flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="patch-review-number mt-0.5">04</span>
-          <div>
-            <h3 className="text-sm font-semibold text-[var(--geo-text)]">人工应用后，用同一套规则重新验证</h3>
-            <p className="mt-1 text-xs leading-5 text-[var(--geo-text-muted)]">Evidra 会保留修改前基线；复检完成后分别展示改善、无变化、下降与不可比较。</p>
-          </div>
-        </div>
-        <button type="button" onClick={onBackToEditor} className="secondary-button h-10 w-full shrink-0 px-4 text-sm font-semibold sm:w-auto">
-          <RotateCcw aria-hidden="true" className="size-4" />
-          返回原文并准备复检
-        </button>
-      </div>
     </section>
   );
 }

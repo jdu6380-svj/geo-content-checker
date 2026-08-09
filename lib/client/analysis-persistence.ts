@@ -139,6 +139,21 @@ export function saveDraftSession(draft: PersistedArticleDraft): boolean {
   });
 }
 
+/**
+ * Persists the current draft after an intentional cancellation without carrying
+ * a previous analysis marker into the next page load. The stored envelope and
+ * its schema stay unchanged; only the optional analysis field is omitted.
+ */
+export function clearDraftAnalysis(draft: PersistedArticleDraft): boolean {
+  return writeEnvelope({
+    analysisVersion: ANALYSIS_VERSION,
+    analysisContractVersion: ANALYSIS_CONTRACT_VERSION,
+    reportSchemaVersion: REPORT_SCHEMA_VERSION,
+    savedAt: new Date().toISOString(),
+    draft,
+  });
+}
+
 export function markDraftAnalysis(
   draft: PersistedArticleDraft,
   analysisHash: string,

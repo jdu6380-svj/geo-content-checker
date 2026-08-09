@@ -8,6 +8,7 @@ import {
   InvalidAnalysisClientIdError,
   resolveAnalysisIdentity,
 } from "@/lib/server/analysis-identity";
+import { isLightweightDevelopmentMode } from "@/lib/server/development-runtime";
 import type { AnalysisRateLimitMode } from "@/lib/server/analysis-rate-limit";
 import {
   ANALYSIS_OPERATION_LIMITS,
@@ -230,6 +231,10 @@ async function consumeOperation(
   claims: AnalysisTokenClaims,
   operation: AnalysisOperation,
 ): Promise<AnalysisOperationAuthorization> {
+  if (isLightweightDevelopmentMode()) {
+    return consumeInMemory(claims, operation, "memory", false);
+  }
+
   let redis: Redis | null;
   try {
     redis = getRedisClient();
