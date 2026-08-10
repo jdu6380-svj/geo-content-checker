@@ -50,6 +50,7 @@ export type EditorWorkspaceDimension = {
 type EditorWorkspaceProps = {
   draft: EditorDraft;
   contentLength: number;
+  minArticleCharacters: number;
   maxArticleCharacters: number;
   remaining: number;
   fieldErrors: EditorFieldErrors;
@@ -95,6 +96,7 @@ function formatBytes(bytes: number): string {
 export function EditorWorkspace({
   draft,
   contentLength,
+  minArticleCharacters,
   maxArticleCharacters,
   remaining,
   fieldErrors,
@@ -114,8 +116,8 @@ export function EditorWorkspace({
   const contentText = draft.content ?? "";
 
   useEffect(() => {
-    if (recheckContext) setMode("paste");
-  }, [recheckContext]);
+    if (recheckContext || (error && contentText)) setMode("paste");
+  }, [contentText, error, recheckContext]);
 
   async function handleFile(file: File) {
     setUploadError("");
@@ -131,7 +133,20 @@ export function EditorWorkspace({
       const text = await file.text();
       if (!text.trim()) {
         setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setUploadError("文件内容为空，或无法按 UTF-8 文本读取。请改用粘贴正文。");
+        return;
+      }
+      if (text.trim().length < minArticleCharacters) {
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setUploadError(`正文至少需要 ${minArticleCharacters} 字，当前文件未载入。`);
+        return;
+      }
+      if (text.length > maxArticleCharacters) {
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setUploadError(`文件正文超过 ${maxArticleCharacters.toLocaleString()} 字，请删减后重新上传，当前文件未载入。`);
         return;
       }
 
@@ -141,7 +156,7 @@ export function EditorWorkspace({
         format: /\.txt$/i.test(file.name) ? "TXT" : "MD",
       });
       onDraftChange("title", file.name.replace(/\.[^.]+$/, ""));
-      onDraftChange("content", text.slice(0, maxArticleCharacters));
+      onDraftChange("content", text);
     } catch {
       setSelectedFile(null);
       setUploadError("文件读取失败，请确认文件为 UTF-8 文本，或改用粘贴正文。");
@@ -162,7 +177,7 @@ export function EditorWorkspace({
   }
 
   const titleLength = draft.title.length;
-  const inputHasError = Boolean(error || fieldErrors.title || fieldErrors.content || remaining < 0);
+  const inputOverLimit = remaining < 0;
 
   return (
     <section className="editor-workspace phase-one-editor">
@@ -290,11 +305,16 @@ export function EditorWorkspace({
                   {fieldErrors.content ? <small className="phase-field-error">{fieldErrors.content}</small> : null}
                 </div>
 
-                {error ? <p className="phase-editor-error" role="alert">{error}</p> : null}
-                {inputHasError && !error ? <p className="phase-editor-error" role="alert">请补充标题和正文后再开始分析。</p> : null}
+                {inputOverLimit && !error ? (
+                  <p className="phase-editor-error" role="alert">
+                    正文超过 {maxArticleCharacters.toLocaleString()} 字，请删减后重试。
+                  </p>
+                ) : null}
 
               </div>
             )}
+
+            {error ? <p className="phase-editor-error" role="alert">{error}</p> : null}
 
             <section className="phase-recent-list" aria-labelledby="phase-recent-list-title">
               <h2 id="phase-recent-list-title">示例审查内容</h2>

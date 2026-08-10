@@ -1,1 +1,2 @@
+export const MIN_ARTICLE_CHARACTERS = 50;
 export const MAX_ARTICLE_CHARACTERS = 12_000;

@@ -40,7 +40,10 @@ import {
   isReportIssue,
   type ReportComparisonSnapshot,
 } from "@/lib/client/report-comparison";
-import { MAX_ARTICLE_CHARACTERS } from "@/lib/constants/input-limits";
+import {
+  MAX_ARTICLE_CHARACTERS,
+  MIN_ARTICLE_CHARACTERS,
+} from "@/lib/constants/input-limits";
 import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 import type {
   DiagnosticResult,
@@ -327,7 +330,11 @@ export default function Home() {
     questions.status === "loading" || Object.values(diagnostics).some(
       (item) => item.status === "queued" || item.status === "loading",
     );
-  const editorReady = Boolean(draft.title.trim() && contentText.trim() && remaining >= 0);
+  const editorReady = Boolean(
+    draft.title.trim() &&
+    contentText.trim().length >= MIN_ARTICLE_CHARACTERS &&
+    remaining >= 0
+  );
   const workspaceStatus: WorkspaceStatus = !analysisStarted
     ? error || Object.values(fieldErrors).some(Boolean)
       ? "error"
@@ -596,7 +603,7 @@ export default function Home() {
         flushDraftSession();
         return;
       }
-      clearPersistedDraftAnalysis();
+      flushDraftSession();
       abortActiveAnalysis();
       setGeoAnalysisToken(null);
     };
@@ -608,7 +615,7 @@ export default function Home() {
       abortActiveAnalysis();
       setGeoAnalysisToken(null);
     };
-  }, [abortActiveAnalysis, clearPersistedDraftAnalysis, flushDraftSession]);
+  }, [abortActiveAnalysis, flushDraftSession]);
 
   useEffect(() => {
     if (restoredFromCache || !analysisStarted || scoring.status !== "success" || questions.status !== "success") return;
@@ -881,7 +888,11 @@ export default function Home() {
 
     const nextFieldErrors: FieldErrors = {};
     if (!(draft.title ?? "").trim()) nextFieldErrors.title = "请输入文章标题。";
-    if (!contentText.trim()) nextFieldErrors.content = "请粘贴文章正文。";
+    if (!contentText.trim()) {
+      nextFieldErrors.content = "请粘贴文章正文。";
+    } else if (contentText.trim().length < MIN_ARTICLE_CHARACTERS) {
+      nextFieldErrors.content = `正文至少需要 ${MIN_ARTICLE_CHARACTERS} 字，才能进行可信度审查。`;
+    }
 
     if (Object.keys(nextFieldErrors).length) {
       setFieldErrors(nextFieldErrors);
@@ -1233,6 +1244,7 @@ export default function Home() {
             <EditorWorkspace
             draft={draft}
             contentLength={contentLength}
+            minArticleCharacters={MIN_ARTICLE_CHARACTERS}
             maxArticleCharacters={MAX_ARTICLE_CHARACTERS}
             remaining={remaining}
             fieldErrors={fieldErrors}
