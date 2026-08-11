@@ -40,6 +40,7 @@ import {
   isReportIssue,
   type ReportComparisonSnapshot,
 } from "@/lib/client/report-comparison";
+import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
 import {
   MAX_ARTICLE_CHARACTERS,
   MIN_ARTICLE_CHARACTERS,
@@ -292,6 +293,7 @@ export default function Home() {
   const reportViewDwellRef = useRef(new Map<string, number>());
   const [activeSessionRunId, setActiveSessionRunId] = useState<string | null>(null);
   const [recheckBaseline, setRecheckBaseline] = useState<ReportComparisonSnapshot | null>(null);
+  const [patchChecklist, setPatchChecklist] = useState<PatchChecklistItem[]>([]);
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("review");
   const [reportView, setReportView] = useState<ReportWorkspaceView>("overview");
   const [analysisProgressStep, setAnalysisProgressStep] = useState(0);
@@ -426,6 +428,7 @@ export default function Home() {
     setQuestionOrder(cached.report.questionOrder);
     setDiagnostics(cached.report.diagnostics);
     setFeedbackByQuestion({});
+    setPatchChecklist([]);
     setAnalysisStarted(true);
     setRestoredFromCache(true);
     setAnalysisProgressStep(3);
@@ -688,6 +691,7 @@ export default function Home() {
     setFieldErrors({});
     setRestoredFromCache(false);
     setRecheckBaseline(null);
+    setPatchChecklist([]);
   }
 
   function handleLoadSample(sample: (typeof SAMPLES)[number]) {
@@ -853,6 +857,7 @@ export default function Home() {
 
     const articleParagraphs = createNumberedParagraphs(article.content);
 
+    if (!recheckBaseline) setPatchChecklist([]);
     activeAnalysisHashRef.current = analysisHash;
     markDraftAnalysis(article, analysisHash, "running");
     setParagraphs(articleParagraphs);
@@ -948,6 +953,7 @@ export default function Home() {
 
   function startNewAnalysis() {
     setRecheckBaseline(null);
+    setPatchChecklist([]);
     setWorkspaceStage("review");
     setReportView("overview");
     backToEditor();
@@ -1144,6 +1150,12 @@ export default function Home() {
     });
   }
 
+  function addPatchChecklistItem(item: PatchChecklistItem) {
+    setPatchChecklist((current) => (
+      current.some((existing) => existing.id === item.id) ? current : [...current, item]
+    ));
+  }
+
   const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL;
 
   return (
@@ -1201,6 +1213,7 @@ export default function Home() {
             scoreBand={currentScoreBand}
             questionOrder={questionOrder}
             diagnostics={diagnostics}
+            patchChecklist={patchChecklist}
             recheckBaseline={recheckBaseline}
             runId={activeSessionRunId}
             completedCount={completedCount}
@@ -1238,6 +1251,7 @@ export default function Home() {
             }}
             onSubmitFollowUp={submitFollowUp}
             onDiagnosisFeedback={submitDiagnosisFeedback}
+            onAddPatchChecklistItem={addPatchChecklistItem}
             onScrollToSection={scrollToSection}
             />
           ) : (
@@ -1256,6 +1270,7 @@ export default function Home() {
             recheckContext={recheckBaseline ? {
               score: recheckBaseline.totalScore,
               issueCount: recheckBaseline.diagnostics.filter(isReportIssue).length,
+              checklistItems: patchChecklist,
             } : null}
             onSubmit={submit}
             onDraftChange={updateDraft}

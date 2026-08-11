@@ -11,7 +11,12 @@ import {
 
 import { ReportNavigationPanel, type ReportNavigationView } from "@/components/report-navigation-panel";
 import { AnimatedNumber } from "@/components/ui/animated-number";
-import { isReportIssue, type ReportComparisonSnapshot } from "@/lib/client/report-comparison";
+import {
+  getReportIssueStatus,
+  isReportIssue,
+  summarizeReportIssueStatuses,
+  type ReportComparisonSnapshot,
+} from "@/lib/client/report-comparison";
 import type { DiagnosticsState } from "@/lib/client/report-state";
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
 
@@ -40,16 +45,19 @@ export function ReportCompletionSummary({
   });
   const validCount = diagnosticItems.filter((item) => item.evidenceStatus === "valid").length;
   const pendingCount = diagnosticItems.filter((item) => item.evidenceStatus !== "valid").length;
+  const riskSummary = summarizeReportIssueStatuses(diagnosticItems);
   const issueCount = current.diagnostics.filter(isReportIssue).length;
   const baselineIssueCount = baseline.diagnostics.filter(isReportIssue).length;
   const resolvedCount = Math.max(0, baselineIssueCount - issueCount);
-  const highRiskCount = diagnosticItems.filter((item) => item.riskLevel === "high").length;
-  const riskLabel = highRiskCount ? "高风险" : issueCount ? "中风险" : "低风险";
-  const riskClassName = highRiskCount ? "is-danger" : issueCount ? "is-warning" : "is-success";
+  const riskLabel = riskSummary.high ? "高风险" : riskSummary.attention ? "中风险" : "低风险";
+  const riskClassName = riskSummary.high ? "is-danger" : riskSummary.attention ? "is-warning" : "is-success";
   const scoreChange = current.totalScore - baseline.totalScore;
   const scoreChangeLabel = scoreChange > 0 ? "提升" : scoreChange < 0 ? "下降" : "持平";
   const scoreChangeClassName = scoreChange > 0 ? "is-success" : scoreChange < 0 ? "is-danger" : "is-neutral";
-  const highlightedQuestions = diagnosticItems.slice(0, 2).map((item) => item.question);
+  const highlightedQuestions = diagnosticItems
+    .filter((item) => getReportIssueStatus(item) !== "passed")
+    .slice(0, 2)
+    .map((item) => item.question);
 
   return (
     <section id="report-core" className="phase2-complete-report section-anchor">
@@ -67,7 +75,7 @@ export function ReportCompletionSummary({
               <span>可信度评分</span>
               <div><strong><AnimatedNumber value={scoring.totalScore} from={baseline.totalScore} /></strong><small>/100</small></div>
               <p>已基于人工修改后的内容完成重新验证，可信度已重新评估。</p>
-              <span>{validCount} 项已验证 · {pendingCount} 项待跟进 · {highRiskCount} 项高风险</span>
+              <span>{riskSummary.passed} 项已通过 · {riskSummary.attention} 项注意 · {riskSummary.high} 项高风险</span>
               <b>Before {baseline.totalScore} <span>→</span> After {current.totalScore} · {scoreChangeLabel} <em className={scoreChangeClassName}>{scoreChange > 0 ? `+${scoreChange}` : scoreChange}</em></b>
             </section>
             <section>

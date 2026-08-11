@@ -5,6 +5,10 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Scale } from "lucide-r
 import { ReportDimensionLedger } from "@/components/report-dimension-ledger";
 import { ReportNavigationPanel } from "@/components/report-navigation-panel";
 import { ReportScoreRail, type ReportScoreBand } from "@/components/report-score-rail";
+import {
+  getReportIssueStatus,
+  summarizeReportIssueStatuses,
+} from "@/lib/client/report-comparison";
 import type { DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
 
@@ -30,16 +34,16 @@ type ReportContextRailProps = {
   onBackToEditor: () => void;
 };
 
-const RISK_PRIORITY = { low: 1, medium: 2, high: 3 } as const;
+const RISK_PRIORITY = { passed: 1, attention: 2, high: 3 } as const;
 
 const RISK_META = {
-  low: {
+  passed: {
     label: "低风险",
     shortLabel: "低",
     className: "is-success",
     impact: "内容已具备较完整的事实与结构基础，发布前建议继续核对引用边界。",
   },
-  medium: {
+  attention: {
     label: "中风险",
     shortLabel: "中",
     className: "is-warning",
@@ -72,19 +76,18 @@ export function ReportContextRail({
     const item = diagnostics[question];
     return item?.status === "success" && item.data ? [item.data] : [];
   });
-  const riskItems = diagnosticItems.filter((item) => (
-    item.riskLevel !== "low" || item.evidenceStatus !== "valid" || item.answerability !== "可以完全回答"
-  ));
+  const riskItems = diagnosticItems.filter((item) => getReportIssueStatus(item) !== "passed");
+  const riskSummary = summarizeReportIssueStatuses(diagnosticItems);
   const priorityItem = diagnosticItems.reduce<(typeof diagnosticItems)[number] | null>(
     (current, item) => (
-      !current || RISK_PRIORITY[item.riskLevel] > RISK_PRIORITY[current.riskLevel] ? item : current
+      !current || RISK_PRIORITY[getReportIssueStatus(item)] > RISK_PRIORITY[getReportIssueStatus(current)]
+        ? item
+        : current
     ),
     null,
   );
-  const priorityRisk = priorityItem ? RISK_META[priorityItem.riskLevel] : RISK_META.low;
-  const verifiedCount = diagnosticItems.filter((item) => item.evidenceStatus === "valid").length;
+  const priorityRisk = priorityItem ? RISK_META[getReportIssueStatus(priorityItem)] : RISK_META.passed;
   const pendingCount = diagnosticItems.filter((item) => item.evidenceStatus === "missing").length;
-  const riskCount = diagnosticItems.filter((item) => item.evidenceStatus === "invalid" || item.riskLevel === "high").length;
   const primaryProblems = riskItems.slice(0, 2).map((item) => item.question);
 
   return (
@@ -99,9 +102,9 @@ export function ReportContextRail({
           </span>
         </div>
         <div className="phase2-report-stat-strip" aria-label="报告状态摘要">
-          <span className="is-success"><CheckCircle2 aria-hidden="true" />{verifiedCount} 项已验证</span>
-          <span className="is-warning"><Circle aria-hidden="true" />{pendingCount} 项待补充</span>
-          <span className="is-danger"><AlertTriangle aria-hidden="true" />{riskCount} 项风险</span>
+          <span className="is-danger"><AlertTriangle aria-hidden="true" />{riskSummary.high} 项高风险</span>
+          <span className="is-warning"><Circle aria-hidden="true" />{riskSummary.attention} 项注意</span>
+          <span className="is-success"><CheckCircle2 aria-hidden="true" />{riskSummary.passed} 项已通过</span>
         </div>
       </header>
 

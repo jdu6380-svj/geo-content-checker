@@ -13,6 +13,7 @@ import {
 
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import {
+  getReportIssueStatus,
   isReportIssue,
   type ReportComparisonSnapshot,
 } from "@/lib/client/report-comparison";
@@ -109,8 +110,8 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
   ];
   const evidenceValidBefore = baseline.diagnostics.filter((item) => item.evidenceStatus === "valid").length;
   const evidenceValidAfter = current.diagnostics.filter((item) => item.evidenceStatus === "valid").length;
-  const highRiskBefore = baseline.diagnostics.filter((item) => item.riskLevel === "high").length;
-  const highRiskAfter = current.diagnostics.filter((item) => item.riskLevel === "high").length;
+  const highRiskBefore = baseline.diagnostics.filter((item) => getReportIssueStatus(item) === "high").length;
+  const highRiskAfter = current.diagnostics.filter((item) => getReportIssueStatus(item) === "high").length;
   const summaryItems = [
     evidenceValidAfter > evidenceValidBefore
       ? "更多关键观点已获得有效 Evidence 支撑"

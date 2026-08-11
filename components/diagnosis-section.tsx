@@ -5,6 +5,11 @@ import { useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronDown, Circle, ShieldAlert } from "lucide-react";
 
 import { DiagnosticDetailPanel } from "@/components/diagnostic-detail-panel";
+import {
+  getReportIssueStatus,
+  summarizeReportIssueStatuses,
+  type ReportIssueStatus,
+} from "@/lib/client/report-comparison";
 import type { DiagnosticItem, DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import type { PredictQuestionsResponse } from "@/lib/schemas/geo";
 
@@ -40,18 +45,18 @@ type DiagnosisSectionProps = {
   onOpenPatch: () => void;
 };
 
-type DiagnosisFilter = "all" | "high" | "medium" | "low";
+type DiagnosisFilter = "all" | ReportIssueStatus;
 
 const RISK_META = {
   high: { label: "高风险", shortLabel: "高风险 · High", className: "is-danger" },
-  medium: { label: "中风险", shortLabel: "注意 · Medium", className: "is-warning" },
-  low: { label: "低风险", shortLabel: "通过 · Low", className: "is-success" },
+  attention: { label: "中风险", shortLabel: "注意 · Medium", className: "is-warning" },
+  passed: { label: "低风险", shortLabel: "通过 · Low", className: "is-success" },
 } as const;
 
 const RISK_IMPACT = {
   high: "关键依据不足可能直接影响内容可信判断。",
-  medium: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
-  low: "当前信息基本能够支撑判断。",
+  attention: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
+  passed: "当前信息与证据能够支持判断。",
 } as const;
 
 function createDiagnosticItem(question: string, diagnostics: DiagnosticsState): DiagnosticItem {
@@ -87,13 +92,16 @@ export function DiagnosisSection({
 }: DiagnosisSectionProps) {
   const [filter, setFilter] = useState<DiagnosisFilter>("all");
   const diagnosticItems = questionOrder.map((question) => createDiagnosticItem(question, diagnostics));
-  const completedItems = diagnosticItems.filter((item) => item.status === "success" && item.data);
-  const highCount = completedItems.filter((item) => item.data?.riskLevel === "high").length;
-  const mediumCount = completedItems.filter((item) => item.data?.riskLevel === "medium").length;
-  const lowCount = completedItems.filter((item) => item.data?.riskLevel === "low").length;
-  const overallRisk = highCount ? RISK_META.high : mediumCount ? RISK_META.medium : RISK_META.low;
+  const completedResults = diagnosticItems.flatMap((item) => item.status === "success" && item.data ? [item.data] : []);
+  const riskSummary = summarizeReportIssueStatuses(completedResults);
+  const issueCount = riskSummary.high + riskSummary.attention;
+  const overallRisk = riskSummary.high
+    ? RISK_META.high
+    : riskSummary.attention
+      ? RISK_META.attention
+      : RISK_META.passed;
   const visibleItems = diagnosticItems.filter((item) => (
-    filter === "all" || item.data?.riskLevel === filter
+    filter === "all" || (item.data ? getReportIssueStatus(item.data) === filter : false)
   ));
 
   return (
@@ -125,15 +133,15 @@ export function DiagnosisSection({
           <section className="phase2-diagnosis-summary">
             <div>
               <span>发现</span>
-              <strong>{totalCount} 个可信度问题</strong>
+              <strong>{issueCount} 个可信度问题</strong>
             </div>
             <div>
               <span>风险等级</span>
               <strong className={overallRisk.className}>{overallRisk.label}</strong>
             </div>
-            <div><Circle className="is-danger" aria-hidden="true" /><span>高风险</span><strong>{highCount}</strong></div>
-            <div><Circle className="is-warning" aria-hidden="true" /><span>注意</span><strong>{mediumCount}</strong></div>
-            <div><Circle className="is-success" aria-hidden="true" /><span>通过</span><strong>{lowCount}</strong></div>
+            <div><Circle className="is-danger" aria-hidden="true" /><span>高风险</span><strong>{riskSummary.high}</strong></div>
+            <div><Circle className="is-warning" aria-hidden="true" /><span>注意</span><strong>{riskSummary.attention}</strong></div>
+            <div><Circle className="is-success" aria-hidden="true" /><span>通过</span><strong>{riskSummary.passed}</strong></div>
             <p>Evidence First · 风险判断均可追溯至具体观点、证据与来源。</p>
           </section>
 
@@ -142,9 +150,9 @@ export function DiagnosisSection({
             <div role="group" aria-label="诊断风险筛选">
               {([
                 ["all", `全部 ${totalCount}`],
-                ["high", "高风险"],
-                ["medium", "注意"],
-                ["low", "通过"],
+                ["high", `高风险 ${riskSummary.high}`],
+                ["attention", `注意 ${riskSummary.attention}`],
+                ["passed", `通过 ${riskSummary.passed}`],
               ] as const).map(([value, label]) => (
                 <button key={value} type="button" className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>{label}</button>
               ))}
@@ -154,9 +162,12 @@ export function DiagnosisSection({
           <div ref={latestQuestion ? latestQuestionRef : undefined} className="phase2-diagnosis-list">
             {visibleItems.map((item) => {
               const itemIndex = Math.max(questionOrder.indexOf(item.question), 0);
-              const risk = item.data ? RISK_META[item.data.riskLevel] : RISK_META.medium;
-              const reason = item.data?.missingInfo[0]
-                || (item.data?.evidenceStatus === "invalid" ? "现有引用未通过原文校验。" : "当前观点缺少足够 Evidence 支撑。");
+              const status = item.data ? getReportIssueStatus(item.data) : "attention";
+              const risk = RISK_META[status];
+              const reason = status === "passed"
+                ? "原文已提供可核验依据，当前观点能够得到支持。"
+                : item.data?.missingInfo[0]
+                  || (item.data?.evidenceStatus === "invalid" ? "现有引用未通过原文校验。" : "当前观点缺少足够 Evidence 支撑。");
               return (
                 <article key={item.question} className={`phase2-diagnosis-row ${risk.className} ${expandedQuestion === item.question ? "is-expanded" : ""}`}>
                   <button
@@ -166,7 +177,7 @@ export function DiagnosisSection({
                     onClick={() => onToggleQuestion(item.question)}
                   >
                     <span className="phase2-diagnosis-question"><small>问题 {String(itemIndex + 1).padStart(2, "0")}</small><strong>{item.question}</strong></span>
-                    <span><small>影响</small><p>{item.data ? RISK_IMPACT[item.data.riskLevel] : "等待分析结果。"}</p></span>
+                    <span><small>影响</small><p>{item.data ? RISK_IMPACT[status] : "等待分析结果。"}</p></span>
                     <span><small>原因</small><p>{reason}</p></span>
                     <span><small>建议</small><p>{item.data?.recommendation || "完成分析后显示处理建议。"}</p></span>
                     <b>

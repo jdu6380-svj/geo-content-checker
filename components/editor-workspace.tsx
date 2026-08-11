@@ -25,6 +25,7 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { QuickStartGuide, RecentReviewCard } from "@/components/workspace-dashboard-panels";
+import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
 
 type EditorDraft = {
   title: string;
@@ -59,7 +60,11 @@ type EditorWorkspaceProps = {
   contentRef: RefObject<HTMLTextAreaElement | null>;
   samples: EditorWorkspaceSample[];
   dimensions: EditorWorkspaceDimension[];
-  recheckContext: { score: number; issueCount: number } | null;
+  recheckContext: {
+    score: number;
+    issueCount: number;
+    checklistItems: PatchChecklistItem[];
+  } | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDraftChange: (field: keyof EditorDraft, value: string) => void;
   onLoadSample: (index: number) => void;
@@ -86,6 +91,12 @@ const SAMPLE_PRESENTATION = [
 ] as const;
 
 const SUPPORTED_UPLOAD_PATTERN = /\.(md|markdown|txt)$/i;
+
+const CHECKLIST_STATUS_LABEL = {
+  high: "高风险",
+  attention: "注意",
+  passed: "已通过",
+} as const;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -186,6 +197,37 @@ export function EditorWorkspace({
         <h1>{recheckContext ? "重新验证修改后的文章" : "开始一次内容可信度审查"}</h1>
         <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "Evidra 基于 Evidence First 原则，帮助你识别内容风险，提升观点可信度。"}</p>
       </div>
+
+      {recheckContext ? (
+        <section className="phase-recheck-checklist" aria-labelledby="phase-recheck-checklist-title">
+          <header>
+            <div>
+              <span><FileCheck2 aria-hidden="true" /></span>
+              <div>
+                <h2 id="phase-recheck-checklist-title">本次修改建议记录</h2>
+                <p>修改前评分 {recheckContext.score}/100 · {recheckContext.issueCount} 项问题待处理</p>
+              </div>
+            </div>
+            <strong>{recheckContext.checklistItems.length} 项已加入</strong>
+          </header>
+          {recheckContext.checklistItems.length ? (
+            <ol>
+              {recheckContext.checklistItems.map((item) => (
+                <li key={item.id}>
+                  <span className={`is-${item.status}`}>{CHECKLIST_STATUS_LABEL[item.status]}</span>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.recommendation}</p>
+                    <small>修改位置：{item.location}</small>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="phase-recheck-checklist-empty">当前未加入修改建议；请根据问题诊断人工修改正文后再提交。</p>
+          )}
+        </section>
+      ) : null}
 
       <div className="phase-editor-grid">
         <main className="phase-editor-main">

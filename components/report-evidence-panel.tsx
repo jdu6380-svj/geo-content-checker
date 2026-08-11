@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, FileText, Link2, ShieldAlert, ShieldCheck } from "lucide-react";
 
+import { getReportIssueStatus } from "@/lib/client/report-comparison";
 import type { DiagnosticsState } from "@/lib/client/report-state";
 import type { Paragraph } from "@/lib/schemas/geo";
 
@@ -50,11 +51,12 @@ export function ReportEvidencePanel({
   onOpenOverview,
 }: ReportEvidencePanelProps) {
   const [expandedEvidenceOrder, setExpandedEvidenceOrder] = useState<number | null>(null);
+  const [showAllRecords, setShowAllRecords] = useState(false);
   const records = questionOrder.flatMap((question, index) => {
     const item = diagnostics[question];
     return item?.data ? [{ order: index + 1, data: item.data }] : [];
   });
-  const visibleRecords = records.slice(0, 3);
+  const visibleRecords = showAllRecords ? records : records.slice(0, 3);
   const literalEvidenceCount = records.reduce(
     (count, record) => count + new Set(
       record.data.evidence.map((entry) => `${entry.paragraphId}:${entry.quote}`),
@@ -66,7 +68,7 @@ export function ReportEvidencePanel({
   const readingMinutes = Math.max(1, Math.ceil(articleCharacters / 400));
   const articleParagraphs = paragraphs.slice(0, 5);
   const primaryRecord = records[0];
-  const riskRecord = records.find((record) => record.data.riskLevel === "high" || record.data.evidenceStatus === "invalid");
+  const riskRecord = records.find((record) => getReportIssueStatus(record.data) === "high");
   const pending = Object.values(diagnostics).some(
     (item) => item.status === "queued" || item.status === "loading",
   );
@@ -120,8 +122,11 @@ export function ReportEvidencePanel({
 
           <section className="phase2-evidence-panel" aria-labelledby="phase2-evidence-panel-heading">
             <header>
-              <h2 id="phase2-evidence-panel-heading">Evidence Panel</h2>
-              <p>观点、依据与来源的可解释链路</p>
+              <div>
+                <h2 id="phase2-evidence-panel-heading">Evidence Panel</h2>
+                <p>观点、依据与来源的可解释链路</p>
+              </div>
+              <span>当前展示 {visibleRecords.length}/{records.length}</span>
             </header>
             <ol>
               {visibleRecords.map(({ order, data }) => {
@@ -201,6 +206,16 @@ export function ReportEvidencePanel({
                 );
               })}
             </ol>
+            {records.length > 3 ? (
+              <button
+                type="button"
+                className="phase2-evidence-show-all"
+                onClick={() => setShowAllRecords((current) => !current)}
+              >
+                {showAllRecords ? "收起其余证据" : `展开全部 ${records.length} 条证据`}
+                <ChevronDown aria-hidden="true" />
+              </button>
+            ) : null}
             <footer><ShieldCheck aria-hidden="true" /><span><strong>Evidence First</strong> · 所有结论均应建立在可核验的证据与来源之上。</span></footer>
           </section>
         </div>

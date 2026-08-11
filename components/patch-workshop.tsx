@@ -18,8 +18,14 @@ import {
   postGeoBetaEvent,
   postGeoJson,
 } from "@/lib/client/geo-api";
+import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
+import {
+  getReportIssueStatus,
+  type ReportIssueStatus,
+} from "@/lib/client/report-comparison";
 import type { DiagnosticsState } from "@/lib/client/report-state";
 import type {
+  DiagnosticResult,
   GeneratePatchesResponse,
   Paragraph,
   PatchAction,
@@ -32,6 +38,8 @@ type PatchWorkshopProps = {
   diagnostics: DiagnosticsState;
   runId: string | null;
   analysisSignal?: AbortSignal;
+  checklistItems: PatchChecklistItem[];
+  onAddChecklistItem: (item: PatchChecklistItem) => void;
   onBackToEditor: () => void;
   onOpenOverview: () => void;
   onOpenRecheck: () => void;
@@ -42,6 +50,12 @@ type PatchState =
   | { status: "loading" }
   | { status: "success"; data: GeneratePatchesResponse }
   | { status: "error"; error: string };
+
+const PATCH_STATUS_META: Record<ReportIssueStatus, { label: string; className: string }> = {
+  high: { label: "高风险", className: "is-danger" },
+  attention: { label: "注意", className: "is-warning" },
+  passed: { label: "已通过", className: "is-success" },
+};
 
 function initialPatchStates(): Record<PatchMode, PatchState> {
   return {
@@ -147,12 +161,42 @@ function actionPresentation(action: PatchAction) {
   };
 }
 
+function findActionDiagnostic(
+  action: PatchAction,
+  diagnostics: DiagnosticResult[],
+  index: number,
+): DiagnosticResult | undefined {
+  if (action.type === "author_evidence" && action.relatedQuestion) {
+    const related = diagnostics.find((item) => item.question === action.relatedQuestion);
+    if (related) return related;
+  }
+
+  if (action.type === "structure_change") {
+    const related = diagnostics.find((item) => (
+      action.title.includes(item.question) ||
+      item.evidence.some((evidence) => action.targetParagraphIds.includes(evidence.paragraphId))
+    ));
+    if (related) return related;
+  }
+
+  if (action.type === "faq" || action.type === "fact_card") {
+    const related = diagnostics.find((item) => (
+      item.evidence.some((evidence) => evidence.paragraphId === action.evidence.paragraphId)
+    ));
+    if (related) return related;
+  }
+
+  return diagnostics[index] ?? diagnostics[0];
+}
+
 export function PatchWorkshop({
   title,
   paragraphs,
   diagnostics,
   runId,
   analysisSignal,
+  checklistItems,
+  onAddChecklistItem,
   onBackToEditor,
   onOpenOverview,
   onOpenRecheck,
@@ -160,17 +204,17 @@ export function PatchWorkshop({
   const [activeMode, setActiveMode] = useState<PatchMode>("advice");
   const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(initialPatchStates);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
-  const [appliedActionIds, setAppliedActionIds] = useState<Set<string>>(() => new Set());
   const generateButtonRef = useRef<HTMLButtonElement>(null);
   const manualCopyRef = useRef<HTMLTextAreaElement>(null);
   const mountedRef = useRef(true);
   const patchRequestControllerRef = useRef<AbortController | null>(null);
   const patchRequestIdRef = useRef(0);
   const activePatch = patches[activeMode];
+  const checklistItemIds = new Set(checklistItems.map((item) => item.id));
   const diagnosticResults = Object.values(diagnostics).flatMap((item) => item.data ? [item.data] : []);
   const canGenerate = paragraphs.length > 0 && diagnosticResults.length > 0;
   const priorityDiagnostic = diagnosticResults.find(
-    (item) => item.riskLevel === "high" || item.evidenceStatus !== "valid",
+    (item) => getReportIssueStatus(item) !== "passed",
   ) ?? diagnosticResults[0];
   const priorityEvidence = priorityDiagnostic?.evidence[0];
   const priorityParagraph = priorityEvidence
@@ -221,7 +265,6 @@ export function PatchWorkshop({
 
     setPatchForMode(requestMode, { status: "loading" });
     setCopyStatus("idle");
-    setAppliedActionIds(new Set());
     if (runId) void postGeoBetaEvent({ event: "patch_requested", runId });
 
     try {
@@ -280,14 +323,18 @@ export function PatchWorkshop({
     ? "把诊断中的证据缺口和结构问题整理为可执行清单。"
     : "生成基于证据约束的修改参考材料。";
   const visibleActions = activePatch.status === "success" ? activePatch.data.actions.slice(0, 3) : [];
-  const appliedVisibleCount = visibleActions.filter((action) => appliedActionIds.has(action.id)).length;
+  const appliedVisibleCount = visibleActions.filter((action) => checklistItemIds.has(action.id)).length;
 
-  function applyPatch(actionId: string) {
-    setAppliedActionIds((current) => {
-      if (current.has(actionId)) return current;
-      const next = new Set(current);
-      next.add(actionId);
-      return next;
+  function applyPatch(action: PatchAction, index: number) {
+    if (checklistItemIds.has(action.id)) return;
+    const presentation = actionPresentation(action);
+    const diagnostic = findActionDiagnostic(action, diagnosticResults, index);
+    onAddChecklistItem({
+      id: action.id,
+      title: presentation.title,
+      recommendation: presentation.body,
+      location: presentation.source,
+      status: diagnostic ? getReportIssueStatus(diagnostic) : "attention",
     });
   }
 
@@ -300,7 +347,7 @@ export function PatchWorkshop({
           <p>基于已识别的可信度问题，逐项审阅可应用的编辑建议。</p>
         </div>
         <div className="phase2-subpage-actions">
-          <span>已完成 {activePatch.status === "success" ? Math.min(activePatch.data.actions.length, 3) : Math.min(diagnosticResults.length, 3)} 条修改建议</span>
+          <span>已加入 {checklistItems.length} 项 · 当前展示 {activePatch.status === "success" ? Math.min(activePatch.data.actions.length, 3) : Math.min(diagnosticResults.length, 3)} 条修改建议</span>
           <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
         </div>
       </header>
@@ -365,13 +412,16 @@ export function PatchWorkshop({
                   <div className="phase2-patch-card-list">
                     {visibleActions.map((action, index) => {
                       const presentation = actionPresentation(action);
-                      const applied = appliedActionIds.has(action.id);
+                      const diagnostic = findActionDiagnostic(action, diagnosticResults, index);
+                      const status = diagnostic ? getReportIssueStatus(diagnostic) : "attention";
+                      const statusPresentation = PATCH_STATUS_META[status];
+                      const applied = checklistItemIds.has(action.id);
                       return (
                         <article
                           key={action.id}
-                          className={`${index === 2 ? "is-danger" : "is-warning"} ${index === 0 ? "is-primary" : "is-compact"} ${applied ? "is-applied" : ""}`}
+                          className={`${statusPresentation.className} ${index === 0 ? "is-primary" : "is-compact"} ${applied ? "is-applied" : ""}`}
                         >
-                          <span>{applied ? "已加入清单" : index === 0 ? "待确认" : index === 1 ? "注意" : "高风险"}</span>
+                          <span>{applied ? "已加入清单" : statusPresentation.label}</span>
                           <dl>
                             <div><dt>问题</dt><dd>{presentation.title}</dd></div>
                             <div><dt>建议</dt><dd>{presentation.body}</dd></div>
@@ -379,7 +429,7 @@ export function PatchWorkshop({
                             <div><dt>依据</dt><dd>{presentation.source}</dd></div>
                           </dl>
                           <div className="phase2-patch-card-actions">
-                            <button type="button" onClick={() => applyPatch(action.id)} disabled={applied}>
+                            <button type="button" onClick={() => applyPatch(action, index)} disabled={applied}>
                               {applied ? <Check aria-hidden="true" /> : null}
                               {applied ? "已加入" : "加入修改清单"}
                             </button>
@@ -391,7 +441,7 @@ export function PatchWorkshop({
                   </div>
                   {appliedVisibleCount ? (
                     <div className="phase3-patch-recheck-bar" role="status" aria-live="polite">
-                      <span><Check aria-hidden="true" />修改清单已有 {appliedVisibleCount} 项建议</span>
+                      <span><Check aria-hidden="true" />修改清单已有 {checklistItems.length} 项建议</span>
                       <p>请先人工修改正文，再进入重新验证。</p>
                       <button type="button" onClick={onOpenRecheck}>
                         进入重新验证

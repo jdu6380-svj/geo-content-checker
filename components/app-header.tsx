@@ -8,6 +8,7 @@ import {
   CreditCard,
   FileCheck2,
   Hand,
+  Plus,
   RotateCcw,
   Settings,
   ShieldCheck,
@@ -55,6 +56,12 @@ export function AppHeader({
     setLayer((current) => current === nextLayer ? null : nextLayer);
   }
 
+  function confirmNewAnalysis() {
+    if (!window.confirm("新建审查将结束当前报告视图，但会保留浏览器中的文章草稿。确认继续吗？")) return;
+    setLayer(null);
+    onNewAnalysis();
+  }
+
   return (
     <>
       <header className={`app-header ${analysisStarted ? "is-analysis" : "is-editor"}`}>
@@ -73,12 +80,18 @@ export function AppHeader({
           </button>
 
           <div className="phase-header-main">
-            <button type="button" className="phase-header-greeting" onClick={analysisStarted ? onNewAnalysis : onShowEditor}>
+            <div className="phase-header-greeting" role="status" aria-label="Beta 体验模式，当前会话">
               <Hand aria-hidden="true" />
               <span><strong>Beta 体验模式</strong> · 当前会话</span>
-            </button>
+            </div>
 
             <div className="phase-header-actions">
+              {analysisStarted ? (
+                <button type="button" className="phase-header-action" onClick={confirmNewAnalysis}>
+                  <Plus aria-hidden="true" />
+                  <span>新建审查</span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="phase-header-action is-invite"

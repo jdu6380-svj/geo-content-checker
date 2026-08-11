@@ -9,6 +9,7 @@ import { ReportContextRail } from "@/components/report-context-rail";
 import { ReportEvidencePanel } from "@/components/report-evidence-panel";
 import { RecheckComparison } from "@/components/recheck-comparison";
 import type { ReportScoreBand } from "@/components/report-score-rail";
+import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
 import type { DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import {
   createReportComparisonSnapshot,
@@ -44,6 +45,7 @@ type ReportWorkspaceProps = {
   scoreBand: ReportScoreBand | null;
   questionOrder: string[];
   diagnostics: DiagnosticsState;
+  patchChecklist: PatchChecklistItem[];
   recheckBaseline: ReportComparisonSnapshot | null;
   completedCount: number;
   expandedQuestion: string | null;
@@ -72,6 +74,7 @@ type ReportWorkspaceProps = {
   onFollowUpQuestionChange: (value: string) => void;
   onSubmitFollowUp: (event: FormEvent<HTMLFormElement>) => void;
   onDiagnosisFeedback: (question: string, helpful: boolean) => void;
+  onAddPatchChecklistItem: (item: PatchChecklistItem) => void;
   onScrollToSection: (sectionId: string) => void;
 };
 
@@ -88,6 +91,7 @@ export function ReportWorkspace({
   scoreBand,
   questionOrder,
   diagnostics,
+  patchChecklist,
   recheckBaseline,
   completedCount,
   expandedQuestion,
@@ -116,6 +120,7 @@ export function ReportWorkspace({
   onFollowUpQuestionChange,
   onSubmitFollowUp,
   onDiagnosisFeedback,
+  onAddPatchChecklistItem,
   onScrollToSection,
 }: ReportWorkspaceProps) {
   const evidenceCount = Object.values(diagnostics).reduce(
@@ -297,6 +302,8 @@ export function ReportWorkspace({
                   diagnostics={diagnostics}
                   runId={runId}
                   analysisSignal={analysisSignal}
+                  checklistItems={patchChecklist}
+                  onAddChecklistItem={onAddPatchChecklistItem}
                   onBackToEditor={onBackToEditor}
                   onOpenOverview={() => onScrollToSection("report-overview")}
                   onOpenRecheck={onBackToEditor}

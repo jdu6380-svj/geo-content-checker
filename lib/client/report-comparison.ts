@@ -23,12 +23,37 @@ export type ReportComparisonSnapshot = {
   diagnostics: ReportComparisonDiagnostic[];
 };
 
+export type ReportIssueStatus = "high" | "attention" | "passed";
+
+export type ReportIssueSummary = Record<ReportIssueStatus, number>;
+
 export function isReportIssue(item: ReportComparisonDiagnostic): boolean {
   return (
     item.answerability !== "可以完全回答" ||
     item.riskLevel !== "low" ||
     item.evidenceStatus !== "valid"
   );
+}
+
+export function getReportIssueStatus(item: ReportComparisonDiagnostic): ReportIssueStatus {
+  if (
+    item.riskLevel === "high" ||
+    item.answerability === "有风险" ||
+    item.evidenceStatus === "invalid"
+  ) {
+    return "high";
+  }
+
+  return isReportIssue(item) ? "attention" : "passed";
+}
+
+export function summarizeReportIssueStatuses(
+  items: ReportComparisonDiagnostic[],
+): ReportIssueSummary {
+  return items.reduce<ReportIssueSummary>((summary, item) => {
+    summary[getReportIssueStatus(item)] += 1;
+    return summary;
+  }, { high: 0, attention: 0, passed: 0 });
 }
 
 export function createReportComparisonSnapshot(
