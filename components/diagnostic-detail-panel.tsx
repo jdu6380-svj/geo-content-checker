@@ -4,6 +4,10 @@ import { AlertTriangle, ArrowRight, FileSearch, RefreshCw } from "lucide-react";
 
 import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import { DiagnosisFeedback } from "@/components/diagnosis-feedback";
+import {
+  getReportIssueStatus,
+  type ReportIssueStatus,
+} from "@/lib/client/report-comparison";
 import type { DiagnosticItem } from "@/lib/client/report-state";
 
 type DiagnosticDetailPanelProps = {
@@ -25,17 +29,17 @@ const STATUS_STYLE = {
   "有风险": "status-danger",
 } as const;
 
-const RISK_STYLE = {
-  low: { label: "低风险", className: "status-success" },
-  medium: { label: "中风险", className: "status-warning" },
+const RISK_STYLE: Record<ReportIssueStatus, { label: string; className: string }> = {
+  passed: { label: "低风险", className: "status-success" },
+  attention: { label: "中风险", className: "status-warning" },
   high: { label: "高风险", className: "status-danger" },
-} as const;
+};
 
-const RISK_IMPACT = {
-  low: "当前信息基本能够支撑判断，发布前仍应核对引用与适用边界。",
-  medium: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
+const RISK_IMPACT: Record<ReportIssueStatus, string> = {
+  passed: "当前信息基本能够支撑判断，发布前仍应核对引用与适用边界。",
+  attention: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
   high: "关键依据不足可能直接影响内容可信判断，应在发布前优先处理。",
-} as const;
+};
 
 export function DiagnosticDetailPanel({
   item,
@@ -95,7 +99,8 @@ export function DiagnosticDetailPanel({
 
   if (!item.data) return null;
 
-  const risk = RISK_STYLE[item.data.riskLevel];
+  const issueStatus = getReportIssueStatus(item.data);
+  const risk = RISK_STYLE[issueStatus];
   const evidenceEmptyMessage = fromCachedReport
     ? "本地缓存报告未保留可展示的逐字证据，请重新运行体检。"
     : "未找到可逐字验证的原文证据。";
@@ -125,7 +130,7 @@ export function DiagnosticDetailPanel({
       <div className="diagnosis-detail-grid">
         <section className="diagnosis-detail-card is-impact">
           <p className="diagnosis-step-label"><span>01</span>为什么重要</p>
-          <p className="diagnosis-impact-copy">{RISK_IMPACT[item.data.riskLevel]}</p>
+          <p className="diagnosis-impact-copy">{RISK_IMPACT[issueStatus]}</p>
         </section>
 
         <section className="diagnosis-detail-card is-evidence">

@@ -347,7 +347,7 @@ export function PatchWorkshop({
           <p>基于已识别的可信度问题，逐项审阅可应用的编辑建议。</p>
         </div>
         <div className="phase2-subpage-actions">
-          <span>已加入 {checklistItems.length} 项 · 当前展示 {activePatch.status === "success" ? Math.min(activePatch.data.actions.length, 3) : Math.min(diagnosticResults.length, 3)} 条修改建议</span>
+          <span>已加入 {checklistItems.length} 项 · 当前展示 {visibleActions.length} 条修改建议</span>
           <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
         </div>
       </header>

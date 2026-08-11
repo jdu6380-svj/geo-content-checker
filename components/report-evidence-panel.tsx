@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, FileText, Link2, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, CircleAlert, FileText, Link2, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import { getReportIssueStatus } from "@/lib/client/report-comparison";
 import type { DiagnosticsState } from "@/lib/client/report-state";
@@ -49,6 +49,7 @@ export function ReportEvidencePanel({
   questionOrder,
   restoredFromCache,
   onOpenOverview,
+  onOpenDiagnosis,
 }: ReportEvidencePanelProps) {
   const [expandedEvidenceOrder, setExpandedEvidenceOrder] = useState<number | null>(null);
   const [showAllRecords, setShowAllRecords] = useState(false);
@@ -84,6 +85,7 @@ export function ReportEvidencePanel({
         <div className="phase2-subpage-actions">
           <span><ShieldCheck aria-hidden="true" />已识别 {records.length} 个关键观点 · {verifiedCount} 项已验证</span>
           <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
+          <button type="button" onClick={onOpenDiagnosis}>进入问题诊断<ArrowRight aria-hidden="true" /></button>
         </div>
       </header>
 
