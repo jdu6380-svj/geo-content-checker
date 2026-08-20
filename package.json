@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "EVIDRA_DEV_MODEL=false UPSTASH_REDIS_REST_URL= UPSTASH_REDIS_REST_TOKEN= next dev --turbopack",
     "dev:model": "EVIDRA_DEV_MODEL=true next dev --turbopack",
-    "dev:webpack": "EVIDRA_DEV_MODEL=false UPSTASH_REDIS_REST_URL= UPSTASH_REDIS_REST_TOKEN= next dev --webpack",
+    "dev:webpack": "EVIDRA_DEV_MODEL=false UPSTASH_REDIS_REST_URL= UPSTASH_REDIS_REST_TOKEN= next dev",
     "prebuild": "node --env-file-if-exists=.env.local scripts/check-release-config.mjs",
     "build": "next build",
     "start": "next start",
