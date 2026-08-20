@@ -162,6 +162,9 @@ export function DiagnosisSection({
           <div ref={latestQuestion ? latestQuestionRef : undefined} className="phase2-diagnosis-list">
             {visibleItems.map((item) => {
               const itemIndex = Math.max(questionOrder.indexOf(item.question), 0);
+              const triggerId = `diagnostic-trigger-${itemIndex}`;
+              const detailId = `diagnostic-detail-${itemIndex}`;
+              const isExpanded = expandedQuestion === item.question;
               const status = item.data ? getReportIssueStatus(item.data) : "attention";
               const risk = RISK_META[status];
               const reason = status === "passed"
@@ -171,9 +174,11 @@ export function DiagnosisSection({
               return (
                 <article key={item.question} className={`phase2-diagnosis-row ${risk.className} ${expandedQuestion === item.question ? "is-expanded" : ""}`}>
                   <button
+                    id={triggerId}
                     type="button"
                     disabled={item.status !== "success" && item.status !== "error"}
-                    aria-expanded={expandedQuestion === item.question}
+                    aria-expanded={item.status === "success" || item.status === "error" ? isExpanded : false}
+                    aria-controls={detailId}
                     onClick={() => onToggleQuestion(item.question)}
                   >
                     <span className="phase2-diagnosis-question"><small>问题 {String(itemIndex + 1).padStart(2, "0")}</small><strong>{item.question}</strong></span>
@@ -185,20 +190,28 @@ export function DiagnosisSection({
                       <ChevronDown aria-hidden="true" />
                     </b>
                   </button>
-                  {expandedQuestion === item.question ? (
-                    <DiagnosticDetailPanel
-                      item={item}
-                      itemIndex={itemIndex}
-                      fromCachedReport={restoredFromCache}
-                      canRetry={canRetryDiagnostic(item.question)}
-                      feedback={feedbackByQuestion[item.question]}
-                      feedbackEnabled={feedbackEnabled}
-                      onRetry={() => onRetryDiagnostic(item.question)}
-                      onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
-                      onOpenEvidence={onOpenEvidence}
-                      onOpenPatch={onOpenPatch}
-                    />
-                  ) : null}
+                  <div
+                    id={detailId}
+                    role="region"
+                    aria-labelledby={triggerId}
+                    aria-hidden={!isExpanded}
+                    hidden={!isExpanded}
+                  >
+                    {isExpanded ? (
+                      <DiagnosticDetailPanel
+                        item={item}
+                        itemIndex={itemIndex}
+                        fromCachedReport={restoredFromCache}
+                        canRetry={canRetryDiagnostic(item.question)}
+                        feedback={feedbackByQuestion[item.question]}
+                        feedbackEnabled={feedbackEnabled}
+                        onRetry={() => onRetryDiagnostic(item.question)}
+                        onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
+                        onOpenEvidence={onOpenEvidence}
+                        onOpenPatch={onOpenPatch}
+                      />
+                    ) : null}
+                  </div>
                 </article>
               );
             })}

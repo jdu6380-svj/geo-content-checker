@@ -125,10 +125,25 @@ export function EditorWorkspace({
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contentText = draft.content ?? "";
+  const isRecheck = Boolean(recheckContext);
 
   useEffect(() => {
     if (recheckContext || (error && contentText)) setMode("paste");
   }, [contentText, error, recheckContext]);
+
+  useEffect(() => {
+    if (!isRecheck || mode !== "paste") return;
+
+    let secondFrame: number | null = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => titleRef.current?.focus());
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [isRecheck, mode, titleRef]);
 
   async function handleFile(file: File) {
     setUploadError("");
