@@ -44,7 +44,7 @@ npm run blackbox:model
 
 完整分析流程必须返回 `source: "model"`，并在结构化日志或响应头中确认 `rateLimitMode: "redis"`。`dev:model` 缺少 Upstash 凭据时会在开发环境回退到 `memory`，即使模型可用也不算 Redis 验证通过。健康接口只有在全部健康项（也包含反馈入口和 Sentry）均配置完成时才返回 `200 / ok`；因此真实模型和 Redis 验收应以这两个单项检查、模型来源和 Redis 限流模式共同判断。
 
-服务端为所有 API 输出结构化日志，字段仅包含请求 ID、路由、状态码、耗时、结果来源、模型状态和限流模式。日志不会记录文章正文、问题证据、分析 Token、API Key 或内部 Prompt。
+服务端为所有 API 输出结构化日志，并由代码拥有的顶层白名单限制为请求/路由/状态/耗时、结果来源、限流状态、模型与 provider 状态/耗时、预算、Token 数量、可选费用、受限响应形状及校验诊断等运行元数据类别；只记录 Token 数量，不记录授权 Token 或任何内容。日志不会记录文章正文、问题证据、API Key 或内部 Prompt。
 
 生产响应默认包含 CSP、禁止 iframe、MIME 嗅探防护、严格 Referrer Policy、Permissions Policy 与 HSTS。`RATE_LIMIT_SALT` 和 `ANALYSIS_TOKEN_SECRET` 均要求至少 32 字节且不能相同；Redis 正常模式使用共享模型调用上限，配额降级模式每个实例最多调用模型 30 次/小时。导出的 Markdown 会转义正文中的原始 HTML。
 

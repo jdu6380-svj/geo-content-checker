@@ -56,7 +56,7 @@ Evidra 不是通用聊天机器人、完整文章写作工具、自动发布系�
 - Redis 不保存原始 IP、User-Agent、客户端 UUID、正文、Prompt 或 Evidence。
 - 设备限制为 `6 次/分钟`、`10 次/日`，共享 IP 为 `30 次/分钟`、`100 次/日`。
 - 全局模型预算为 `180 次模型调用/小时`。
-- 结构化日志和 Sentry 仅记录路由、请求 ID、状态、耗时、模型状态、Token、费用和限流模式。
+- 结构化日志采用代码拥有的显式顶层白名单，记录受限的 API/模型运行元数据、Token/费用和校验诊断；Sentry 由独立 scrubber 清理错误遥测并与结构化日志分开管理，二者均不收集正文、Prompt、Evidence 或凭据。
 - `GET /api/health` 检查模型、Redis、安全密钥、反馈和 Sentry 配置。
 - 已创建 Draft PR，CI 已通过；Production、Merge 和标签仍锁定。
 - Vercel Git Integration 与东京 `hnd1` Upstash Redis 已建立。当前已有由 `feature/public-beta-hardening` 触发的 Preview Deployment，Build 和 Health 已通过；历史失败的 CLI Production Deployment 保持不变，Production、Merge 和标签仍锁定。

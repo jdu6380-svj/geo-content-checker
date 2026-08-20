@@ -76,6 +76,7 @@ import {
 import { isLightweightDevelopmentMode } from "../lib/server/development-runtime.ts";
 import {
   classifyGeoProviderResponseReadError,
+  GEO_API_REQUEST_FIELDS,
   GEO_FALLBACK_REASONS,
   GEO_MODEL_ERROR_CATEGORIES,
   GEO_PROVIDER_RESPONSE_CONTENT_TYPES,
@@ -92,7 +93,6 @@ import {
   markScoringProviderResponseParseTelemetry,
   markGeoValidationTelemetry,
   normalizeGeoModelFinishReason,
-  sanitizeGeoProviderRequestId,
   sanitizeGeoProviderResponseParseTelemetry,
   sanitizeGeoEvidenceValidationTelemetry,
   sanitizeGeoValidationTelemetry,
@@ -376,6 +376,10 @@ const reportContextRailSource = readFileSync(
   fileURLToPath(new URL("../components/report-context-rail.tsx", import.meta.url)),
   "utf8",
 );
+const reportScoreRailSource = readFileSync(
+  fileURLToPath(new URL("../components/report-score-rail.tsx", import.meta.url)),
+  "utf8",
+);
 const diagnosisSectionSource = readFileSync(
   fileURLToPath(new URL("../components/diagnosis-section.tsx", import.meta.url)),
   "utf8",
@@ -407,6 +411,9 @@ assert.ok(reportContextRailSource.includes("if (hasRecheckBaseline) onScrollToSe
 assert.ok(reportContextRailSource.includes("else onBackToEditor();"), "desktop recheck must establish a missing baseline");
 assert.ok(reportContextRailSource.includes('hasIncompleteDiagnostics ? "部分诊断未完成" : scoreBand?.label'), "partial report conclusion must precede score band");
 assert.ok(reportContextRailSource.includes('label: "待确认"'), "empty partial report risk must be pending");
+assert.ok(reportScoreRailSource.includes('<strong><span className="phase-motion-number">{report.totalScore}</span></strong>'), "completed report score must render the final total synchronously");
+assert.match(reportScoreRailSource, /aria-valuenow=\{report\.totalScore\}/, "completed report score accessibility value must use the final total");
+assert.doesNotMatch(reportScoreRailSource, /AnimatedNumber/, "completed report score must not animate from an intermediate value");
 assert.ok(diagnosisSectionSource.includes('const issueSummary ='), "diagnosis summary must branch for unconfirmed results");
 assert.ok(diagnosisSectionSource.includes('`${unconfirmedCount || totalCount} 个问题待确认`'), "empty partial diagnosis must be pending");
 assert.ok(diagnosisSectionSource.includes("已确认可信度问题"), "mixed partial diagnosis must separate confirmed and unconfirmed issues");
@@ -689,10 +696,6 @@ assert.equal(
   geoFallbackReasonForModelError("PRIVATE_RESPONSE_BODY"),
   "unexpected_format",
 );
-assert.equal(sanitizeGeoProviderRequestId("req_abc-123:xyz"), "req_abc-123:xyz");
-assert.equal(sanitizeGeoProviderRequestId(" req_abc-123 "), "req_abc-123");
-assert.equal(sanitizeGeoProviderRequestId("req_abc\nsecret"), undefined);
-assert.equal(sanitizeGeoProviderRequestId("x".repeat(129)), undefined);
 const providerResponseBodySentinel =
   '{"choices":[{"message":{"content":"PRIVATE_PROVIDER_RESPONSE_BODY"}}]';
 const providerResponseHeaderSentinel =
@@ -849,6 +852,18 @@ function telemetryEvents(event: string): Record<string, unknown>[] {
     .filter((value) => value.event === event);
 }
 
+function assertGeoRequestEventUsesAllowlist(event: Record<string, unknown> | undefined): void {
+  assert.ok(event);
+  for (const key of Object.keys(event)) {
+    assert.ok(
+      (GEO_API_REQUEST_FIELDS as readonly string[]).includes(key),
+      `unexpected geo_api_request field: ${key}`,
+    );
+  }
+}
+
+assert.equal(GEO_API_REQUEST_FIELDS.length, 78);
+
 function assertSafeStageEvents(
   events: Record<string, unknown>[],
   requestId: string | null,
@@ -919,7 +934,7 @@ try {
         completionTokens: 42,
         reasoningTokens: 21,
         modelOutputTokenLimit: 3_000,
-      });
+      } as never);
       return Response.json({ ok: true });
     },
   );
@@ -945,8 +960,10 @@ try {
     successResponse.headers.get("X-Request-ID"),
   );
   const successRequestEvent = telemetryEvents("geo_api_request")[0];
+  assertGeoRequestEventUsesAllowlist(successRequestEvent);
   assert.equal(successRequestEvent?.providerHttpStatus, 502);
-  assert.equal(successRequestEvent?.providerRequestId, "req_safe_123");
+  assert.equal(Object.hasOwn(successRequestEvent ?? {}, "providerRequestId"), false);
+  assert.doesNotMatch(JSON.stringify(successRequestEvent), /req_safe_123/);
   assert.equal(successRequestEvent?.modelErrorCategory, "provider_http");
   assert.equal(successRequestEvent?.finishReason, "length");
   assert.equal(successRequestEvent?.messagePresent, true);
@@ -1001,6 +1018,7 @@ try {
     }) as never,
   );
   const outputBudgetNearLimitEvent = telemetryEvents("geo_api_request")[0];
+  assertGeoRequestEventUsesAllowlist(outputBudgetNearLimitEvent);
   assert.equal(outputBudgetNearLimitEvent?.completionTokens, 3_000);
   assert.equal(outputBudgetNearLimitEvent?.reasoningTokens, 3_000);
   assert.equal(outputBudgetNearLimitEvent?.reasoningRatio, 1);
@@ -1104,6 +1122,7 @@ try {
     async () => {
       markGeoValidationTelemetry({
         stage: "schema_validation",
+        profile: "scoring",
         issueCount: 1,
         failureClassification: "required_field_missing",
         fieldPaths: [["dimensions"]],
@@ -1343,6 +1362,7 @@ try {
       }
       markGeoValidationTelemetry({
         stage: "json_parse",
+        profile: "questions",
         issueCount: 1,
         failureClassification: "json_parse_failed",
         fieldPaths: [[]],
@@ -3297,6 +3317,7 @@ try {
 
 const sanitizedValidationTelemetry = sanitizeGeoValidationTelemetry({
   stage: "json_parse",
+  profile: "diagnostic",
   issueCount: 1,
   failureClassification: "json_parse_failed",
   fieldPaths: [
@@ -3417,6 +3438,7 @@ assert.deepEqual(
 );
 const invalidJsonErrorCategoryTelemetry = sanitizeGeoValidationTelemetry({
   stage: "json_parse",
+  profile: "diagnostic",
   issueCount: 1,
   failureClassification: "json_parse_failed",
   ...fencedParseTelemetry,
@@ -3446,6 +3468,7 @@ assert.deepEqual(sanitizedValidationTelemetry, {
 });
 const sanitizedSchemaValidationTelemetry = sanitizeGeoValidationTelemetry({
   stage: "schema_validation",
+  profile: "diagnostic",
   issueCount: 1,
   failureClassification: "schema_validation_failed",
   fieldPaths: [["evidence"]],
@@ -3467,6 +3490,7 @@ assert.deepEqual(sanitizedSchemaValidationTelemetry, {
 const sanitizedScoringSchemaValidationTelemetry =
   sanitizeGeoValidationTelemetry({
     stage: "schema_validation",
+    profile: "scoring",
     issueCount: 1,
     failureClassification: "required_field_missing",
     fieldPaths: [["dimensions"]],
@@ -3495,6 +3519,7 @@ assert.equal(
 );
 const invalidSchemaValidationTelemetry = sanitizeGeoValidationTelemetry({
   stage: "schema_validation",
+  profile: "diagnostic",
   issueCount: 1,
   failureClassification: "schema_validation_failed",
   validationReceivedType: b1SensitiveSentinels[0] as "unknown",
@@ -3532,12 +3557,160 @@ for (const field of [
 assert.doesNotThrow(() =>
   markGeoValidationTelemetry({
       stage: "schema_validation",
+      profile: "diagnostic",
       issueCount: 1,
       failureClassification: "schema_validation_failed",
     fieldPaths: [[b1SensitiveSentinels[0]]],
     actionTypes: [b1SensitiveSentinels[4]],
   }),
 );
+
+const validationProfileCases = [
+  {
+    profile: "scoring" as const,
+    route: "/api/evaluate-scoring",
+    valid: [
+      [],
+      ["totalScore"],
+      ["dimensions"],
+      ["dimensions", "questionCoverage"],
+      ["dimensions", "questionCoverage", "score"],
+    ],
+    invalid: [
+      ["B1_SENTINEL_ARTICLE_CONTENT"],
+      ["dimensions", "B1_SENTINEL_PROMPT", "score"],
+    ],
+  },
+  {
+    profile: "questions" as const,
+    route: "/api/predict-questions",
+    valid: [[], ["questions"], ["questions", 0]],
+    invalid: [["questions", 0, "B1_SENTINEL_MODEL_PAYLOAD"]],
+  },
+  {
+    profile: "diagnostic" as const,
+    route: "/api/qa-diagnostic",
+    valid: [
+      [],
+      ["question"],
+      ["recommendation"],
+      ["evidence"],
+      ["evidence", 0],
+      ["evidence", 0, "quote"],
+      ["missingInfo", 0],
+    ],
+    invalid: [["evidence", 0, "B1_SENTINEL_EVIDENCE_QUOTE"]],
+  },
+  {
+    profile: "patch_advice" as const,
+    route: "/api/generate-patches",
+    valid: [
+      [],
+      ["actions"],
+      ["actions", 0],
+      ["actions", 0, "type"],
+      ["actions", 0, "relatedQuestion"],
+      ["actions", 0, "targetParagraphIds"],
+      ["actions", 0, "targetParagraphIds", 1],
+      ["actions", 7, "targetParagraphIds", 4],
+    ],
+    invalid: [["actions", 0, "B1_SENTINEL_FULL_RESPONSE"]],
+  },
+  {
+    profile: "patch_content" as const,
+    route: "/api/generate-patches",
+    valid: [
+      [],
+      ["actions"],
+      ["actions", 0],
+      ["actions", 0, "type"],
+      ["actions", 0, "answer"],
+      ["actions", 0, "value"],
+      ["actions", 0, "evidence"],
+      ["actions", 0, "evidence", "quote"],
+      ["actions", 9, "evidence", "paragraphId"],
+    ],
+    invalid: [[
+      "actions",
+      0,
+      "evidence",
+      "quote",
+      "B1_SENTINEL_ARTICLE_CONTENT",
+    ]],
+  },
+] as const;
+
+const profileConsoleInfo = console.info;
+console.info = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === "string") requestStageLogs.push(value);
+  }
+};
+try {
+for (const testCase of validationProfileCases) {
+  requestStageLogs.length = 0;
+  const profileHandler = withGeoRequestLogging(testCase.route, async () => {
+    markGeoValidationTelemetry({
+      stage: "schema_validation",
+      profile: testCase.profile,
+      issueCount: 1,
+      fieldPaths: [...testCase.valid, ...testCase.invalid],
+    });
+    markGeoRequestOutcome({ source: "fallback", modelStatus: "invalid-output" });
+    return Response.json({ ok: true });
+  });
+  await profileHandler(
+    new Request(`http://localhost${testCase.route}`, { method: "POST" }) as never,
+  );
+  const event = telemetryEvents("geo_api_request")[0];
+  assertGeoRequestEventUsesAllowlist(event);
+  assert.deepEqual(
+    event?.validationFieldPaths,
+    testCase.valid.map((path) =>
+      path.length === 0
+        ? "$"
+        : path.reduce(
+            (result, segment) =>
+              typeof segment === "number"
+                ? `${result}[${segment}]`
+                : `${result}.${segment}`,
+            "$",
+          ),
+    ),
+  );
+  const serializedEvent = JSON.stringify(event);
+  for (const sentinel of b1SensitiveSentinels) {
+    assert.doesNotMatch(serializedEvent, new RegExp(sentinel));
+  }
+}
+} finally {
+  console.info = profileConsoleInfo;
+}
+
+const expectedGeoRequestFields = [
+  "event", "requestId", "route", "method", "status", "durationMs", "source", "modelStatus", "rateLimitMode",
+  "modelLatencyMs", "modelBudgetLimit", "modelBudgetRemaining", "modelBudgetRetryAfter", "providerRequestStartAt", "providerHttpStatus", "modelErrorCategory", "fallbackReason", "firstByteAt", "firstTokenAt", "responseCompletedAt", "abortedAt", "streamDurationMs", "providerFirstByteDurationMs", "responseBodyReadDurationMs", "reasoningDurationMs", "completionDurationMs", "responseBodyPresent", "responseBodyLength", "responseContentType", "responseJsonParseErrorCategory", "responseParseFailureStage", "messagePresent", "contentFieldPresent", "contentType", "contentBlank", "reasoningContentPresent", "reasoningContentType", "contentPresent", "contentLength", "finishReason", "promptTokens", "completionTokens", "reasoningTokens", "reasoningRatio", "budgetNearLimit", "totalTokens", "estimatedCostUsd", "evidenceStatus", "evidenceCount", "paragraphIdMatchCount", "validEvidenceCount", "invalidEvidenceCount", "validationStage", "validationIssueCount", "validationFailureClassification", "validationFieldPaths", "validationActionTypes", "validationReceivedType", "validationExpectedType", "validationIssueCode", "expectedType", "receivedType", "requiredFieldMissing", "schemaFailureCategory", "responseLength", "trimmedLength", "firstCharType", "lastCharType", "startsWithCodeFence", "endsWithCodeFence", "parserErrorName", "parserErrorPosition", "jsonErrorCategory", "parserErrorCategory", "lastCharacterCategory", "containsMultipleTopLevelValues", "hasLeadingNonWhitespaceText", "hasTrailingNonWhitespaceText",
+];
+assert.deepEqual([...GEO_API_REQUEST_FIELDS], expectedGeoRequestFields);
+
+requestStageLogs.length = 0;
+const mandatoryOnlyHandler = withGeoRequestLogging("/api/test", async () => Response.json({ ok: true }));
+const mandatoryConsoleInfo = console.info;
+console.info = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === "string") requestStageLogs.push(value);
+  }
+};
+try {
+  await mandatoryOnlyHandler(new Request("http://localhost/api/test", { method: "POST" }) as never);
+} finally {
+  console.info = mandatoryConsoleInfo;
+}
+const mandatoryOnlyEvent = telemetryEvents("geo_api_request")[0];
+assert.deepEqual(Object.keys(mandatoryOnlyEvent ?? {}).sort(), [
+  "event", "requestId", "route", "method", "status", "durationMs", "source", "modelStatus", "rateLimitMode",
+].sort());
+
 const serializedValidationTelemetry = JSON.stringify(sanitizedValidationTelemetry);
 for (const sentinel of b1SensitiveSentinels) {
   assert.doesNotMatch(serializedValidationTelemetry, new RegExp(sentinel));
@@ -3559,7 +3732,6 @@ const b1RuntimeLog = parseB1RuntimeLogMessage(
     modelLatencyMs: 987,
     providerRequestStartAt: 1_720_000_000_000,
     providerHttpStatus: 200,
-    providerRequestId: "req_runtime_123",
     modelErrorCategory: "provider_invalid_output",
     fallbackReason: "missing_content",
     firstByteAt: 1_720_000_000_900,
@@ -3592,7 +3764,6 @@ assert.deepEqual(b1RuntimeLog, {
   modelLatencyMs: 987,
   providerRequestStartAt: 1_720_000_000_000,
   providerHttpStatus: 200,
-  providerRequestId: "req_runtime_123",
   modelErrorCategory: "provider_invalid_output",
   fallbackReason: "missing_content",
   firstByteAt: 1_720_000_000_900,
@@ -4126,7 +4297,6 @@ assert.deepEqual(delayedRuntimeCollection.collectorState, {
       "parserErrorPosition",
       "promptTokens",
       "providerHttpStatus",
-      "providerRequestId",
       "providerRequestStartAt",
       "reasoningTokens",
       "requestId",
@@ -6042,6 +6212,7 @@ const scrubbed = scrubSentryEvent({
     authorization: "private",
     cookie: "private",
     environmentValue: "private",
+    providerRequestId: "req_provider_private",
   },
   breadcrumbs: [{ category: "navigation", message: "private", data: { body: "private" } }],
 });
@@ -6061,6 +6232,7 @@ assert.deepEqual(scrubbed.extra, {
   latency: 123,
   errorCategory: "application",
 });
+assert.doesNotMatch(JSON.stringify(scrubbed), /req_provider_private/);
 assert.deepEqual(scrubbed.breadcrumbs, []);
 
 const controlledErrorEvent = scrubSentryEvent({

@@ -425,7 +425,6 @@ export interface B1RuntimeLogRecord {
   modelLatencyMs: number | null;
   providerRequestStartAt?: number | null;
   providerHttpStatus?: number | null;
-  providerRequestId?: string | null;
   modelErrorCategory?: B1ModelErrorCategory | null;
   fallbackReason?: B1FallbackReason;
   firstByteAt?: number | null;
@@ -661,14 +660,6 @@ function normalizeModelErrorCategory(value: unknown): B1ModelErrorCategory | nul
 
 function normalizeFallbackReason(value: unknown): B1FallbackReason | null {
   return isOneOf(value, B1_FALLBACK_REASONS) ? value : null;
-}
-
-function normalizeProviderRequestId(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(normalized)
-    ? normalized
-    : null;
 }
 
 function normalizeTokenCount(value: unknown): number | null {
@@ -1900,10 +1891,6 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     value.providerHttpStatus === undefined
       ? null
       : normalizeHttpStatus(value.providerHttpStatus);
-  const providerRequestId =
-    value.providerRequestId === undefined
-      ? null
-      : normalizeProviderRequestId(value.providerRequestId);
   const modelErrorCategory =
     value.modelErrorCategory === undefined
       ? null
@@ -2015,7 +2002,6 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     (value.modelLatencyMs !== undefined && modelLatencyMs === null) ||
     (value.providerRequestStartAt !== undefined && providerRequestStartAt === null) ||
     (value.providerHttpStatus !== undefined && providerHttpStatus === null) ||
-    (value.providerRequestId !== undefined && providerRequestId === null) ||
     (value.modelErrorCategory !== undefined && modelErrorCategory === null) ||
     (value.fallbackReason !== undefined && fallbackReason === null) ||
     (value.firstByteAt !== undefined && firstByteAt === null) ||
@@ -2093,7 +2079,6 @@ function parseB1RuntimeLogValue(value: unknown): B1RuntimeLogRecord | null {
     modelLatencyMs,
     providerRequestStartAt,
     providerHttpStatus,
-    providerRequestId,
     modelErrorCategory,
     ...(fallbackReason === null ? {} : { fallbackReason }),
     firstByteAt,

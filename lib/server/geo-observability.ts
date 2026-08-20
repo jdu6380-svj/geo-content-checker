@@ -194,6 +194,97 @@ export const GEO_VALIDATION_STAGES = [
 
 export type GeoValidationStage = (typeof GEO_VALIDATION_STAGES)[number];
 
+export type GeoValidationProfile =
+  | "scoring"
+  | "questions"
+  | "diagnostic"
+  | "patch_advice"
+  | "patch_content";
+
+/** Code-owned contract for every top-level key emitted by geo_api_request. */
+export const GEO_API_REQUEST_FIELDS = [
+  "event",
+  "requestId",
+  "route",
+  "method",
+  "status",
+  "durationMs",
+  "source",
+  "modelStatus",
+  "rateLimitMode",
+  "modelLatencyMs",
+  "modelBudgetLimit",
+  "modelBudgetRemaining",
+  "modelBudgetRetryAfter",
+  "providerRequestStartAt",
+  "providerHttpStatus",
+  "modelErrorCategory",
+  "fallbackReason",
+  "firstByteAt",
+  "firstTokenAt",
+  "responseCompletedAt",
+  "abortedAt",
+  "streamDurationMs",
+  "providerFirstByteDurationMs",
+  "responseBodyReadDurationMs",
+  "reasoningDurationMs",
+  "completionDurationMs",
+  "responseBodyPresent",
+  "responseBodyLength",
+  "responseContentType",
+  "responseJsonParseErrorCategory",
+  "responseParseFailureStage",
+  "messagePresent",
+  "contentFieldPresent",
+  "contentType",
+  "contentBlank",
+  "reasoningContentPresent",
+  "reasoningContentType",
+  "contentPresent",
+  "contentLength",
+  "finishReason",
+  "promptTokens",
+  "completionTokens",
+  "reasoningTokens",
+  "reasoningRatio",
+  "budgetNearLimit",
+  "totalTokens",
+  "estimatedCostUsd",
+  "evidenceStatus",
+  "evidenceCount",
+  "paragraphIdMatchCount",
+  "validEvidenceCount",
+  "invalidEvidenceCount",
+  "validationStage",
+  "validationIssueCount",
+  "validationFailureClassification",
+  "validationFieldPaths",
+  "validationActionTypes",
+  "validationReceivedType",
+  "validationExpectedType",
+  "validationIssueCode",
+  "expectedType",
+  "receivedType",
+  "requiredFieldMissing",
+  "schemaFailureCategory",
+  "responseLength",
+  "trimmedLength",
+  "firstCharType",
+  "lastCharType",
+  "startsWithCodeFence",
+  "endsWithCodeFence",
+  "parserErrorName",
+  "parserErrorPosition",
+  "jsonErrorCategory",
+  "parserErrorCategory",
+  "lastCharacterCategory",
+  "containsMultipleTopLevelValues",
+  "hasLeadingNonWhitespaceText",
+  "hasTrailingNonWhitespaceText",
+] as const;
+
+export type GeoApiRequestField = (typeof GEO_API_REQUEST_FIELDS)[number];
+
 export const GEO_VALIDATION_FAILURE_CLASSIFICATIONS = [
   "json_parse_failed",
   "token_cap_truncation",
@@ -243,6 +334,7 @@ export interface GeoValidationTelemetryInput
   extends Partial<JsonParseFailureTelemetry>,
     Partial<SchemaValidationFailureTelemetry> {
   stage: GeoValidationStage;
+  profile: GeoValidationProfile;
   issueCount: number;
   failureClassification?: GeoValidationFailureClassification;
   fieldPaths?: readonly (readonly (string | number)[])[];
@@ -295,7 +387,6 @@ interface GeoRequestContext {
   modelBudgetRetryAfter?: number;
   providerRequestStartAt?: number;
   providerHttpStatus?: number;
-  providerRequestId?: string;
   modelErrorCategory?: GeoModelErrorCategory;
   fallbackReason?: GeoFallbackReason;
   firstByteAt?: number;
@@ -595,14 +686,6 @@ export function sanitizeGeoProviderResponseParseTelemetry(
   }
 }
 
-export function sanitizeGeoProviderRequestId(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim();
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(normalized)
-    ? normalized
-    : undefined;
-}
-
 export function geoFallbackReasonForModelError(
   value: unknown,
 ): GeoFallbackReason {
@@ -746,24 +829,96 @@ export function markDiagnosisSlowRequestTelemetry(
   }
 }
 
-function sanitizeValidationPath(value: unknown): string | null {
-  if (!Array.isArray(value)) return null;
+function isSafeValidationIndex(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isValidationPathAllowed(
+  profile: GeoValidationProfile,
+  path: readonly unknown[],
+): boolean {
+  if (path.length === 0) return true;
+  const [first, second, third] = path;
+
+  switch (profile) {
+    case "scoring":
+      return (
+        (path.length === 1 && first === "totalScore") ||
+        (path.length === 1 && first === "dimensions") ||
+        (path.length === 2 && first === "dimensions" &&
+          ["questionCoverage", "factCompleteness", "structureClarity", "freshness"].includes(
+            second as string,
+          )) ||
+        (path.length === 3 && first === "dimensions" &&
+          ["questionCoverage", "factCompleteness", "structureClarity", "freshness"].includes(
+            second as string,
+          ) &&
+          ["score", "max", "reason"].includes(third as string))
+      );
+    case "questions":
+      return (
+        (path.length === 1 && first === "questions") ||
+        (path.length === 2 && first === "questions" && isSafeValidationIndex(second))
+      );
+    case "diagnostic":
+      return (
+        (path.length === 1 &&
+          [
+            "question",
+            "answerability",
+            "riskLevel",
+            "evidence",
+            "missingInfo",
+            "recommendation",
+          ].includes(first as string)) ||
+        (path.length === 2 && first === "evidence" && isSafeValidationIndex(second)) ||
+        (path.length === 2 && first === "missingInfo" && isSafeValidationIndex(second)) ||
+        (path.length === 3 && first === "evidence" && isSafeValidationIndex(second) &&
+          ["paragraphId", "quote"].includes(third as string))
+      );
+    case "patch_advice":
+      return (
+        (path.length === 1 && first === "actions") ||
+        (path.length === 2 && first === "actions" && isSafeValidationIndex(second)) ||
+        (path.length === 3 && first === "actions" && isSafeValidationIndex(second) &&
+          third === "type") ||
+        (path.length === 3 && first === "actions" && isSafeValidationIndex(second) &&
+          ["field", "reason", "relatedQuestion", "title", "instruction", "targetParagraphIds"].includes(
+            third as string,
+          )) ||
+        (path.length === 4 && first === "actions" && isSafeValidationIndex(second) &&
+          third === "targetParagraphIds" && isSafeValidationIndex(path[3]))
+      );
+    case "patch_content":
+      return (
+        (path.length === 1 && first === "actions") ||
+        (path.length === 2 && first === "actions" && isSafeValidationIndex(second)) ||
+        (path.length === 3 && first === "actions" && isSafeValidationIndex(second) &&
+          ["type", "question", "answer", "label", "value", "evidence"].includes(
+            third as string,
+          )) ||
+        (path.length === 4 && first === "actions" && isSafeValidationIndex(second) &&
+          third === "evidence" && ["paragraphId", "quote"].includes(path[3] as string))
+      );
+  }
+}
+
+function sanitizeValidationPath(
+  profile: GeoValidationProfile,
+  value: unknown,
+): string | null {
+  if (!Array.isArray(value) || !isValidationPathAllowed(profile, value)) return null;
   if (value.length === 0) return "$";
 
   let path = "$";
   for (const segment of value) {
-    if (typeof segment === "number" && Number.isSafeInteger(segment) && segment >= 0) {
+    if (isSafeValidationIndex(segment)) {
       path += `[${segment}]`;
-      continue;
-    }
-    if (
-      typeof segment === "string" &&
-      /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(segment)
-    ) {
+    } else if (typeof segment === "string") {
       path += `.${segment}`;
-      continue;
+    } else {
+      return null;
     }
-    return null;
   }
   return path.length <= 240 ? path : null;
 }
@@ -776,6 +931,13 @@ export function sanitizeGeoValidationTelemetry(
     const value = input as Record<string, unknown>;
     if (
       !GEO_VALIDATION_STAGES.includes(value.stage as GeoValidationStage) ||
+      ![
+        "scoring",
+        "questions",
+        "diagnostic",
+        "patch_advice",
+        "patch_content",
+      ].includes(value.profile as GeoValidationProfile) ||
       typeof value.issueCount !== "number" ||
       !Number.isSafeInteger(value.issueCount) ||
       value.issueCount < 1
@@ -786,7 +948,7 @@ export function sanitizeGeoValidationTelemetry(
     const validationFieldPaths: string[] = [];
     if (Array.isArray(value.fieldPaths)) {
       for (const candidate of value.fieldPaths) {
-        const path = sanitizeValidationPath(candidate);
+        const path = sanitizeValidationPath(value.profile as GeoValidationProfile, candidate);
         if (path && !validationFieldPaths.includes(path)) validationFieldPaths.push(path);
         if (validationFieldPaths.length === 20) break;
       }
@@ -1065,9 +1227,6 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
     ...(context.providerHttpStatus === undefined
       ? {}
       : { providerHttpStatus: context.providerHttpStatus }),
-    ...(context.providerRequestId === undefined
-      ? {}
-      : { providerRequestId: context.providerRequestId }),
     ...(context.modelErrorCategory === undefined
       ? {}
       : { modelErrorCategory: context.modelErrorCategory }),
@@ -1244,7 +1403,13 @@ function writeRequestLog(context: GeoRequestContext, request: NextRequest, respo
               }),
         }),
   };
-  const serialized = JSON.stringify(event);
+  const serialized = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(event).filter(([key]) =>
+        (GEO_API_REQUEST_FIELDS as readonly string[]).includes(key),
+      ),
+    ),
+  );
 
   if (response.status >= 500) {
     console.error(serialized);
@@ -1284,7 +1449,6 @@ export function markGeoRequestOutcome(params: {
   modelBudgetRetryAfter?: number;
   providerRequestStartAt?: number;
   providerHttpStatus?: number;
-  providerRequestId?: string;
   modelErrorCategory?: GeoModelErrorCategory;
   firstByteAt?: number;
   firstTokenAt?: number;
@@ -1331,8 +1495,6 @@ export function markGeoRequestOutcome(params: {
   }
   const providerHttpStatus = normalizeProviderHttpStatus(params.providerHttpStatus);
   if (providerHttpStatus !== undefined) context.providerHttpStatus = providerHttpStatus;
-  const providerRequestId = sanitizeGeoProviderRequestId(params.providerRequestId);
-  if (providerRequestId !== undefined) context.providerRequestId = providerRequestId;
   if (
     params.modelErrorCategory !== undefined &&
     GEO_MODEL_ERROR_CATEGORIES.includes(params.modelErrorCategory)

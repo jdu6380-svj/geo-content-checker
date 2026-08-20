@@ -330,6 +330,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       } catch (error) {
         markGeoValidationTelemetry({
           stage: "json_parse",
+          profile: mode === "advice" ? "patch_advice" : "patch_content",
           issueCount: 1,
           failureClassification: finishReason === "length"
             ? "token_cap_truncation"
@@ -346,6 +347,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       if (!parsed.success) {
         markGeoValidationTelemetry({
           stage: "schema_validation",
+          profile: mode === "advice" ? "patch_advice" : "patch_content",
           issueCount: parsed.error.issues.length,
           failureClassification: "schema_validation_failed",
           fieldPaths: parsed.error.issues.map((issue) => issue.path),
@@ -390,6 +392,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         );
         markGeoValidationTelemetry({
           stage: mode === "advice" ? "reference_validation" : "evidence_validation",
+          profile: mode === "advice" ? "patch_advice" : "patch_content",
           issueCount: Math.max(1, issuePaths.length),
           failureClassification: hasQuoteMismatch
             ? "quote_mismatch"

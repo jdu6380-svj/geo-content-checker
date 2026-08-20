@@ -2,7 +2,6 @@
 
 import { BarChart3, Info } from "lucide-react";
 
-import { AnimatedNumber } from "@/components/ui/animated-number";
 import type { LoadState } from "@/lib/client/report-state";
 import type { EvaluateScoringResponse } from "@/lib/schemas/geo";
 
@@ -74,7 +73,7 @@ export function ReportScoreRail({
     >
       <span className="phase2-score-label">可信度评分 <Info aria-hidden="true" /></span>
       <div className="phase2-score-value">
-        <strong><AnimatedNumber value={report.totalScore} /></strong>
+        <strong><span className="phase-motion-number">{report.totalScore}</span></strong>
         <span>/100</span>
       </div>
       <p>基于事实、来源、结构与可验证性的综合评估。</p>

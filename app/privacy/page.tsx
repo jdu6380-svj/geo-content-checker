@@ -46,8 +46,8 @@ export default function PrivacyPage() {
           title: "错误监控与日志",
           content: (
             <>
-              <p>Sentry 和结构化日志仅用于记录路由、请求 ID、状态、耗时、模型状态、Token 数量和限流模式。</p>
-              <p>发送前会移除请求体、Cookie、查询参数、User-Agent、客户端 ID、授权 Token、正文、证据和 Prompt。</p>
+              <p>结构化日志用于诊断 API 请求与模型运行状态，仅记录代码白名单允许的路由、请求 ID、状态、耗时、来源、限流/预算状态、Token 数量、费用和受限响应形状及校验诊断。Sentry 仅用于错误监控、发布关联和受控异常的最小上下文，两者字段并不相同。</p>
+              <p>结构化日志不会写入请求/响应正文、文章或问题原文、Prompt、Evidence 引文、模型内容/推理、凭据、授权 Token、Cookie、查询参数、User-Agent、客户端标识或 provider request identifier；Sentry 发送前由独立 scrubber 清理消息、请求数据、Cookie、查询参数、User-Agent、客户端标识、授权信息、正文和 Prompt。</p>
             </>
           ),
         },

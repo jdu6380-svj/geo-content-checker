@@ -188,6 +188,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       } catch (error) {
         markGeoValidationTelemetry({
           stage: "json_parse",
+          profile: "diagnostic",
           issueCount: 1,
           failureClassification: "json_parse_failed",
           fieldPaths: [[]],
@@ -204,6 +205,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
         );
         markGeoValidationTelemetry({
           stage: "schema_validation",
+          profile: "diagnostic",
           issueCount: parsedResult.error.issues.length,
           failureClassification: requiredFieldMissing
             ? "required_field_missing"
@@ -223,6 +225,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
       if (validated.telemetry.invalidEvidenceCount > 0) {
         markGeoValidationTelemetry({
           stage: "evidence_validation",
+          profile: "diagnostic",
           issueCount: validated.telemetry.invalidEvidenceCount,
           failureClassification: "quote_mismatch",
         });

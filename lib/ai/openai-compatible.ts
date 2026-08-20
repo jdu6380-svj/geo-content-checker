@@ -5,7 +5,6 @@ import {
   markGeoRequestStage,
   markScoringProviderResponseParseTelemetry,
   sanitizeModelProviderTelemetry,
-  sanitizeGeoProviderRequestId,
   type GeoModelErrorCategory,
   type GeoModelFinishReason,
   type ModelProviderTelemetry,
@@ -44,7 +43,6 @@ export interface ModelCallResult {
 export class ModelCallError extends Error {
   readonly status?: number;
   readonly retryAfter?: string;
-  readonly providerRequestId?: string;
   readonly errorCategory?: GeoModelErrorCategory;
 
   constructor(
@@ -52,7 +50,6 @@ export class ModelCallError extends Error {
     options?: ErrorOptions & {
       status?: number;
       retryAfter?: string;
-      providerRequestId?: string;
       errorCategory?: GeoModelErrorCategory;
     },
   ) {
@@ -60,7 +57,6 @@ export class ModelCallError extends Error {
     this.name = "ModelCallError";
     this.status = options?.status;
     this.retryAfter = options?.retryAfter;
-    this.providerRequestId = options?.providerRequestId;
     this.errorCategory = options?.errorCategory;
   }
 }
@@ -135,11 +131,9 @@ export async function callOpenAICompatibleModel({
       cache: "no-store",
     });
     firstByteAt = Date.now();
-    const providerRequestId = providerResponseRequestId(response.headers);
     markGeoRequestOutcome({
       firstByteAt,
       providerHttpStatus: response.status,
-      ...(providerRequestId === undefined ? {} : { providerRequestId }),
     });
     markDiagnosisSlowRequestTelemetry({
       providerFirstByteDurationMs: firstByteAt - providerRequestStartAt,
@@ -156,7 +150,6 @@ export async function callOpenAICompatibleModel({
       throw new ModelCallError(`Model request failed with status ${response.status}`, {
         status: response.status,
         retryAfter: response.headers.get("retry-after") ?? undefined,
-        providerRequestId,
         errorCategory: "provider_http",
       });
     }
@@ -193,7 +186,6 @@ export async function callOpenAICompatibleModel({
       throw new ModelCallError("Model response parsing failed", {
         cause: error instanceof Error ? error : undefined,
         status: response.status,
-        providerRequestId,
         errorCategory,
       });
     }
@@ -221,7 +213,6 @@ export async function callOpenAICompatibleModel({
       });
       throw new ModelCallError("Model returned empty content", {
         status: response.status,
-        providerRequestId,
         errorCategory: "provider_invalid_output",
       });
     }
@@ -271,20 +262,6 @@ export async function callOpenAICompatibleModel({
   } finally {
     clearTimeout(timeout);
   }
-}
-
-const PROVIDER_REQUEST_ID_HEADERS = [
-  "x-request-id",
-  "x-openai-request-id",
-  "request-id",
-] as const;
-
-function providerResponseRequestId(headers: Headers): string | undefined {
-  for (const name of PROVIDER_REQUEST_ID_HEADERS) {
-    const requestId = sanitizeGeoProviderRequestId(headers.get(name));
-    if (requestId !== undefined) return requestId;
-  }
-  return undefined;
 }
 
 function normalizeTokenCount(value: unknown): number | undefined {

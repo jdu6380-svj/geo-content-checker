@@ -124,6 +124,7 @@ async function evaluateWithModel(params: {
   } catch (error) {
     markGeoValidationTelemetry({
       stage: "json_parse",
+      profile: "scoring",
       issueCount: 1,
       fieldPaths: [[]],
     });
@@ -136,6 +137,7 @@ async function evaluateWithModel(params: {
     );
     markGeoValidationTelemetry({
       stage: "schema_validation",
+      profile: "scoring",
       issueCount: parsedResult.error.issues.length,
       failureClassification: schemaFailure.requiredFieldMissing
         ? "required_field_missing"
