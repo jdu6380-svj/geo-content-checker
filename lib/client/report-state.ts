@@ -18,6 +18,27 @@ export interface DiagnosticItem {
 
 export type DiagnosticsState = Record<string, DiagnosticItem>;
 
+export type DiagnosticCompletion = {
+  diagnosticsSettled: boolean;
+  diagnosticsSucceeded: boolean;
+};
+
+export function deriveDiagnosticCompletion(
+  questionOrder: readonly string[],
+  diagnostics: DiagnosticsState,
+): DiagnosticCompletion {
+  const hasQuestions = questionOrder.length > 0;
+  const diagnosticsSettled = hasQuestions && questionOrder.every((question) => {
+    const status = diagnostics[question]?.status;
+    return status === "success" || status === "error";
+  });
+  const diagnosticsSucceeded = diagnosticsSettled && questionOrder.every(
+    (question) => diagnostics[question]?.status === "success",
+  );
+
+  return { diagnosticsSettled, diagnosticsSucceeded };
+}
+
 export type LoadState<T> =
   | { status: "idle" }
   | { status: "loading" }
@@ -63,7 +84,8 @@ function isCacheEnvelope(value: unknown): value is CacheEnvelope {
     (envelope.report?.questionSource === "model" || envelope.report?.questionSource === "fallback") &&
     Array.isArray(envelope.report?.questionOrder) &&
     Boolean(envelope.report?.scoring) &&
-    hasCompatibleDiagnostics(envelope.report?.diagnostics)
+    hasCompatibleDiagnostics(envelope.report?.diagnostics) &&
+    hasCacheableDiagnostics(envelope.report.questionOrder, envelope.report.diagnostics)
   );
 }
 
@@ -79,6 +101,16 @@ function hasCompatibleDiagnostics(value: unknown): value is DiagnosticsState {
       data.evidenceStatus === "invalid"
     );
   });
+}
+
+function hasCacheableDiagnostics(
+  questionOrder: readonly string[],
+  diagnostics: DiagnosticsState,
+): boolean {
+  const { diagnosticsSucceeded } = deriveDiagnosticCompletion(questionOrder, diagnostics);
+  return diagnosticsSucceeded &&
+    Object.values(diagnostics).every((item) => item.status === "success" && Boolean(item.data)) &&
+    questionOrder.every((question) => Boolean(diagnostics[question]?.data));
 }
 
 function clearCache(): void {
@@ -150,6 +182,8 @@ function summarizeDiagnostics(diagnostics: DiagnosticsState): DiagnosticsState {
 }
 
 export function saveCachedReport(report: CachedReport, analysisHash: string): void {
+  if (!hasCacheableDiagnostics(report.questionOrder, report.diagnostics)) return;
+
   const cacheSafeReport: CachedReport = {
     ...report,
     scoring: { ...report.scoring, numbered_paragraphs: [] },

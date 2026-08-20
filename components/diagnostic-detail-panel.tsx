@@ -15,6 +15,7 @@ type DiagnosticDetailPanelProps = {
   itemIndex?: number;
   fromCachedReport: boolean;
   canRetry: boolean;
+  canOpenPatch: boolean;
   feedback?: boolean;
   feedbackEnabled: boolean;
   onRetry: () => void;
@@ -46,6 +47,7 @@ export function DiagnosticDetailPanel({
   itemIndex = 0,
   fromCachedReport,
   canRetry,
+  canOpenPatch,
   feedback,
   feedbackEnabled,
   onRetry,
@@ -187,8 +189,13 @@ export function DiagnosticDetailPanel({
       </div>
       <div className="diagnosis-detail-actions">
         <button type="button" onClick={onOpenEvidence} className="diagnosis-secondary-action">查看判断依据</button>
-        <button type="button" onClick={onOpenPatch} className="diagnosis-primary-action">
-          进入修改建议
+        <button
+          type="button"
+          onClick={onOpenPatch}
+          disabled={!canOpenPatch}
+          className="diagnosis-primary-action"
+        >
+          {canOpenPatch ? "进入修改建议" : "全部诊断成功后生成修改建议"}
           <ArrowRight aria-hidden="true" className="size-4" />
         </button>
       </div>

@@ -31,6 +31,9 @@ type ReportContextRailProps = {
   evidenceCount: number;
   contentAvailable: boolean;
   restoredFromCache: boolean;
+  analysisSettled: boolean;
+  analysisSucceeded: boolean;
+  hasRecheckBaseline: boolean;
   onBackToEditor: () => void;
 };
 
@@ -57,6 +60,13 @@ const RISK_META = {
   },
 } as const;
 
+const PENDING_RISK = {
+  label: "待确认",
+  shortLabel: "待确认",
+  className: "is-warning",
+  impact: "部分问题尚未完成诊断，当前风险等级待确认。",
+} as const;
+
 export function ReportContextRail({
   title,
   reportStatus,
@@ -71,12 +81,17 @@ export function ReportContextRail({
   completedCount,
   contentAvailable,
   restoredFromCache,
+  analysisSettled,
+  analysisSucceeded,
+  hasRecheckBaseline,
+  onBackToEditor,
 }: ReportContextRailProps) {
   const diagnosticItems = questionOrder.flatMap((question) => {
     const item = diagnostics[question];
     return item?.status === "success" && item.data ? [item.data] : [];
   });
   const riskItems = diagnosticItems.filter((item) => getReportIssueStatus(item) !== "passed");
+  const failedCount = questionOrder.filter((question) => diagnostics[question]?.status === "error").length;
   const riskSummary = summarizeReportIssueStatuses(diagnosticItems);
   const priorityItem = diagnosticItems.reduce<(typeof diagnosticItems)[number] | null>(
     (current, item) => (
@@ -86,7 +101,16 @@ export function ReportContextRail({
     ),
     null,
   );
-  const priorityRisk = priorityItem ? RISK_META[getReportIssueStatus(priorityItem)] : RISK_META.passed;
+  const hasIncompleteDiagnostics = analysisSettled && !analysisSucceeded;
+  const priorityRisk = hasIncompleteDiagnostics
+    ? priorityItem && getReportIssueStatus(priorityItem) === "high"
+      ? RISK_META.high
+      : priorityItem && getReportIssueStatus(priorityItem) === "attention"
+        ? RISK_META.attention
+        : PENDING_RISK
+    : priorityItem
+      ? RISK_META[getReportIssueStatus(priorityItem)]
+      : PENDING_RISK;
   const pendingCount = diagnosticItems.filter((item) => item.evidenceStatus === "missing").length;
   const primaryProblems = riskItems.slice(0, 2).map((item) => item.question);
 
@@ -98,13 +122,20 @@ export function ReportContextRail({
           <h1>内容可信度审查报告</h1>
           <p className="phase2-report-article">文章：{title || "未命名内容"}</p>
           <span className="phase2-report-complete-copy">
-            {restoredFromCache ? reportStatus.label : "分析已完成"} · Evidence First
+            {restoredFromCache
+              ? reportStatus.label
+              : analysisSucceeded
+                ? "分析已完成"
+                : analysisSettled
+                  ? "分析部分完成"
+                  : "分析进行中"} · Evidence First
           </span>
         </div>
         <div className="phase2-report-stat-strip" aria-label="报告状态摘要">
           <span className="is-danger"><AlertTriangle aria-hidden="true" />{riskSummary.high} 项高风险</span>
           <span className="is-warning"><Circle aria-hidden="true" />{riskSummary.attention} 项注意</span>
           <span className="is-success"><CheckCircle2 aria-hidden="true" />{riskSummary.passed} 项已通过</span>
+          {failedCount ? <span className="is-warning"><AlertTriangle aria-hidden="true" />{failedCount} 项分析失败</span> : null}
         </div>
       </header>
 
@@ -123,8 +154,8 @@ export function ReportContextRail({
             </div>
             <div className="phase2-report-conclusion">
               <p>结论</p>
-              <strong>{scoreBand?.label || primaryProblems[0] || "当前未发现明显高风险问题"}</strong>
-              <p>{priorityRisk.impact}</p>
+              <strong>{hasIncompleteDiagnostics ? "部分诊断未完成" : scoreBand?.label || primaryProblems[0] || "当前未发现明显高风险问题"}</strong>
+              <p>{hasIncompleteDiagnostics ? "部分问题未能完成诊断；重试成功后才能生成修改建议。" : priorityRisk.impact}</p>
               <span className="phase2-report-evidence-progress">已完成 {completedCount} 项 Evidence 检查</span>
             </div>
           </section>
@@ -146,17 +177,22 @@ export function ReportContextRail({
         <ReportNavigationPanel
           activeView="overview"
           evidencePendingCount={pendingCount}
-          diagnosisIssueCount={riskItems.length}
+          diagnosisIssueCount={riskItems.length + failedCount}
           patchCount={Math.min(riskItems.length, 3)}
           recheckLabel={contentAvailable ? "待复核" : "暂无正文"}
-          analysisComplete={diagnosticItems.length > 0 && completedCount === diagnosticItems.length}
-          recheckAvailable={contentAvailable}
+          analysisComplete={analysisSucceeded}
+          analysisSettled={analysisSettled}
+          patchAvailable={analysisSucceeded}
+          recheckAvailable={analysisSucceeded && contentAvailable}
           onNavigate={(view) => {
             if (view === "overview") return;
             if (view === "evidence") onScrollToSection("evidence-section");
             if (view === "diagnosis") onScrollToSection("diagnostic-section");
             if (view === "patch") onScrollToSection("patch-workshop");
-            if (view === "recheck") onScrollToSection("recheck-comparison");
+            if (view === "recheck") {
+              if (hasRecheckBaseline) onScrollToSection("recheck-comparison");
+              else onBackToEditor();
+            }
           }}
         />
       </div>

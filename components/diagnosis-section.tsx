@@ -18,6 +18,8 @@ type DiagnosisSectionProps = {
   sessionLoading: boolean;
   questionOrder: string[];
   diagnostics: DiagnosticsState;
+  diagnosticsSettled: boolean;
+  diagnosticsSucceeded: boolean;
   completedCount: number;
   totalCount: number;
   expandedQuestion: string | null;
@@ -53,6 +55,11 @@ const RISK_META = {
   passed: { label: "低风险", shortLabel: "通过 · Low", className: "is-success" },
 } as const;
 
+const PENDING_RISK = {
+  label: "待确认",
+  className: "is-warning",
+} as const;
+
 const RISK_IMPACT = {
   high: "关键依据不足可能直接影响内容可信判断。",
   attention: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
@@ -72,6 +79,8 @@ export function DiagnosisSection({
   sessionLoading,
   questionOrder,
   diagnostics,
+  diagnosticsSettled,
+  diagnosticsSucceeded,
   completedCount,
   totalCount,
   expandedQuestion,
@@ -92,14 +101,23 @@ export function DiagnosisSection({
 }: DiagnosisSectionProps) {
   const [filter, setFilter] = useState<DiagnosisFilter>("all");
   const diagnosticItems = questionOrder.map((question) => createDiagnosticItem(question, diagnostics));
+  const failedCount = diagnosticItems.filter((item) => item.status === "error").length;
   const completedResults = diagnosticItems.flatMap((item) => item.status === "success" && item.data ? [item.data] : []);
   const riskSummary = summarizeReportIssueStatuses(completedResults);
   const issueCount = riskSummary.high + riskSummary.attention;
-  const overallRisk = riskSummary.high
+  const hasUnconfirmedDiagnostics = !diagnosticsSucceeded && totalCount > 0;
+  const unconfirmedCount = Math.max(failedCount, totalCount - completedResults.length);
+  const knownRisk = riskSummary.high
     ? RISK_META.high
     : riskSummary.attention
       ? RISK_META.attention
-      : RISK_META.passed;
+      : null;
+  const overallRisk = hasUnconfirmedDiagnostics ? knownRisk ?? PENDING_RISK : knownRisk ?? RISK_META.passed;
+  const issueSummary = hasUnconfirmedDiagnostics
+    ? completedResults.length === 0
+      ? `${unconfirmedCount || totalCount} 个问题待确认`
+      : `${issueCount} 个已确认可信度问题 · ${unconfirmedCount} 个问题待确认`
+    : `${issueCount} 个可信度问题`;
   const visibleItems = diagnosticItems.filter((item) => (
     filter === "all" || (item.data ? getReportIssueStatus(item.data) === filter : false)
   ));
@@ -113,7 +131,14 @@ export function DiagnosisSection({
           <p>基于观点、证据与来源链路，定位影响内容可信度的问题。</p>
         </div>
         <div className="phase2-subpage-actions">
-          <span className="is-success"><CheckCircle2 aria-hidden="true" />分析已完成 · {totalCount} 个问题</span>
+          <span className={diagnosticsSucceeded ? "is-success" : diagnosticsSettled ? "is-warning" : "is-info"}>
+            {diagnosticsSucceeded ? <CheckCircle2 aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />}
+            {diagnosticsSucceeded
+              ? `分析已完成 · ${totalCount} 个问题`
+              : diagnosticsSettled
+                ? `分析部分完成 · ${completedCount}/${totalCount} 个问题，${failedCount} 项失败`
+                : "分析进行中"}
+          </span>
           <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
         </div>
       </header>
@@ -133,7 +158,7 @@ export function DiagnosisSection({
           <section className="phase2-diagnosis-summary">
             <div>
               <span>发现</span>
-              <strong>{issueCount} 个可信度问题</strong>
+              <strong>{issueSummary}</strong>
             </div>
             <div>
               <span>风险等级</span>
@@ -205,6 +230,7 @@ export function DiagnosisSection({
                         canRetry={canRetryDiagnostic(item.question)}
                         feedback={feedbackByQuestion[item.question]}
                         feedbackEnabled={feedbackEnabled}
+                        canOpenPatch={diagnosticsSucceeded}
                         onRetry={() => onRetryDiagnostic(item.question)}
                         onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
                         onOpenEvidence={onOpenEvidence}
@@ -218,9 +244,9 @@ export function DiagnosisSection({
           </div>
 
           <footer className="phase2-diagnosis-pass">
-            <CheckCircle2 aria-hidden="true" />
-            <strong>{completedCount === totalCount ? "诊断已完成" : `${completedCount} / ${totalCount} 已完成`}</strong>
-            <span>文章结构、作者信息与主要术语定义已完成基础核验。</span>
+            {diagnosticsSucceeded ? <CheckCircle2 aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />}
+            <strong>{diagnosticsSucceeded ? "诊断已完成" : `${completedCount} / ${totalCount} 已完成 · ${failedCount} 项失败`}</strong>
+            <span>{diagnosticsSucceeded ? "文章结构、作者信息与主要术语定义已完成基础核验。" : "已完成结果会保留；重试失败问题后才能生成修改建议。"}</span>
           </footer>
         </>
       )}

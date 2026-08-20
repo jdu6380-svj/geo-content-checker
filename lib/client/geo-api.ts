@@ -171,6 +171,74 @@ export function isGeoAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+export class GeoRequestDeadlineError extends Error {
+  constructor(message = "The request exceeded its client deadline.") {
+    super(message);
+    this.name = "GeoRequestDeadlineError";
+  }
+}
+
+export function isGeoRequestDeadlineError(error: unknown): boolean {
+  return error instanceof Error && error.name === "GeoRequestDeadlineError";
+}
+
+export function withGeoRequestDeadline<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  options: { signal?: AbortSignal; deadlineMs: number },
+): Promise<T> {
+  const { signal, deadlineMs } = options;
+  if (signal?.aborted) return Promise.reject(createGeoAbortError());
+
+  const controller = new AbortController();
+  const boundedDeadlineMs = Math.max(1, Math.floor(deadlineMs));
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", handleExternalAbort);
+    };
+
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const handleExternalAbort = () => {
+      controller.abort();
+      settle(() => reject(createGeoAbortError()));
+    };
+
+    signal?.addEventListener("abort", handleExternalAbort, { once: true });
+    if (signal?.aborted) {
+      handleExternalAbort();
+      return;
+    }
+
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      settle(() => reject(new GeoRequestDeadlineError()));
+    }, boundedDeadlineMs);
+
+    let operationPromise: Promise<T>;
+    try {
+      operationPromise = operation(controller.signal);
+    } catch (error) {
+      settle(() => reject(error));
+      return;
+    }
+
+    void operationPromise.then(
+      (value) => settle(() => resolve(value)),
+      (error: unknown) => settle(() => reject(error)),
+    );
+  });
+}
+
 export function createGeoConcurrencyPool(concurrency: number): GeoConcurrencyPool {
   const limit = Math.max(1, Math.floor(concurrency));
   const queue: Array<() => void> = [];

@@ -12,12 +12,13 @@ type AnalysisProgressWorkspaceProps = {
   scoring: LoadState<EvaluateScoringResponse>;
   questions: LoadState<PredictQuestionsResponse>;
   diagnostics: DiagnosticsState;
-  questionOrder: string[];
+  diagnosticsSettled: boolean;
+  diagnosticsPending: boolean;
   restoredFromCache: boolean;
   activeStep: number;
   animationKey: number;
   progressComplete: boolean;
-  onBackToEditor: () => void;
+  onReturnToEditor: () => void;
   onRestartAnalysis: () => void;
 };
 
@@ -108,21 +109,27 @@ export function AnalysisProgressWorkspace({
   scoring,
   questions,
   diagnostics,
-  questionOrder,
+  diagnosticsSettled,
+  diagnosticsPending,
   restoredFromCache,
   activeStep,
   animationKey,
   progressComplete,
-  onBackToEditor,
+  onReturnToEditor,
   onRestartAnalysis,
 }: AnalysisProgressWorkspaceProps) {
-  const diagnosticsPending = Object.values(diagnostics).some((item) => item.status === "queued" || item.status === "loading");
   const diagnosticsFailed = Object.values(diagnostics).some((item) => item.status === "error");
-  const diagnosticsSettled = questionOrder.length > 0 && !diagnosticsPending;
   const dataReady = sessionStatus === "success" && scoring.status === "success" &&
     questions.status === "success" && diagnosticsSettled;
   const hasAnalysisError = sessionStatus === "error" || scoring.status === "error" ||
     questions.status === "error" || diagnosticsFailed;
+  const analysisBusy = !restoredFromCache && (
+    sessionStatus === "loading" ||
+    scoring.status === "loading" ||
+    questions.status === "loading" ||
+    diagnosticsPending ||
+    (!hasAnalysisError && (!progressComplete || !dataReady))
+  );
   const activeIndex = Math.min(Math.max(Math.trunc(activeStep), 0), FLOW_STEPS.length - 1);
   const currentStep = FLOW_STEPS[activeIndex];
   const progress = useContinuousProgress(activeIndex, animationKey);
@@ -141,7 +148,7 @@ export function AnalysisProgressWorkspace({
   });
 
   return (
-    <section className="phase-analysis-workspace" aria-label="内容分析进度" aria-busy={!restoredFromCache && (!progressComplete || !dataReady)}>
+    <section className="phase-analysis-workspace" aria-label="内容分析进度" aria-busy={analysisBusy}>
       <div className="phase-analysis-grid">
         <main className="phase-analysis-main">
           <header className="phase-analysis-heading">
@@ -182,13 +189,14 @@ export function AnalysisProgressWorkspace({
               </ol>
             </div>
 
-            <p className="phase-analysis-note"><ShieldCheck aria-hidden="true" />分析过程可能需要 1-2 分钟，请勿关闭页面。</p>
+            <p className="phase-analysis-note"><ShieldCheck aria-hidden="true" />分析过程可能需要数分钟，请勿关闭页面。</p>
 
-            {sessionStatus === "error" ? (
+            {hasAnalysisError ? (
               <div className="phase-analysis-error" role="alert">
-                <strong>分析会话未能建立</strong>
+                <strong>{sessionStatus === "error" ? "分析会话未能建立" : "部分分析需要处理"}</strong>
+                <p>{sessionStatus === "error" ? "分析会话未能建立，请重试。" : "部分分析未完成，请重试失败步骤。"}</p>
                 <button type="button" onClick={onRestartAnalysis}>重新运行分析</button>
-                <button type="button" onClick={onBackToEditor}>返回编辑</button>
+                <button type="button" onClick={onReturnToEditor}>返回编辑</button>
               </div>
             ) : null}
           </section>

@@ -39,9 +39,13 @@ import {
 } from "../lib/client/analysis-persistence.ts";
 import {
   createGeoConcurrencyPool,
+  createGeoAbortError,
   isGeoAbortError,
+  isGeoRequestDeadlineError,
+  withGeoRequestDeadline,
 } from "../lib/client/geo-api.ts";
 import {
+  deriveDiagnosticCompletion,
   readCachedReport,
   saveCachedReport,
 } from "../lib/client/report-state.ts";
@@ -224,6 +228,130 @@ assert.equal(await subsequentGeoTask, "subsequent");
 assert.equal(cancelledGeoTaskExecuted, false);
 assert.deepEqual(geoConcurrencyTrace, ["active:start", "active:end", "subsequent"]);
 
+const queuedDiagnostic = {
+  question: "q1",
+  status: "queued" as const,
+  errorCount: 0,
+};
+const successfulDiagnostic = {
+  question: "q1",
+  status: "success" as const,
+  errorCount: 0,
+};
+const failedDiagnostic = {
+  question: "q1",
+  status: "error" as const,
+  errorCount: 0,
+};
+assert.deepEqual(deriveDiagnosticCompletion([], {}), {
+  diagnosticsSettled: false,
+  diagnosticsSucceeded: false,
+});
+assert.deepEqual(deriveDiagnosticCompletion(["q1"], {}), {
+  diagnosticsSettled: false,
+  diagnosticsSucceeded: false,
+});
+assert.deepEqual(deriveDiagnosticCompletion(["q1"], { q1: queuedDiagnostic }), {
+  diagnosticsSettled: false,
+  diagnosticsSucceeded: false,
+});
+assert.deepEqual(deriveDiagnosticCompletion(["q1"], { q1: failedDiagnostic }), {
+  diagnosticsSettled: true,
+  diagnosticsSucceeded: false,
+});
+assert.deepEqual(deriveDiagnosticCompletion(["q1"], { q1: successfulDiagnostic }), {
+  diagnosticsSettled: true,
+  diagnosticsSucceeded: true,
+});
+assert.deepEqual(deriveDiagnosticCompletion(["q1"], {
+  q1: successfulDiagnostic,
+  unrelated: { ...failedDiagnostic, question: "unrelated" },
+}), {
+  diagnosticsSettled: true,
+  diagnosticsSucceeded: true,
+});
+
+let deadlineSignal: AbortSignal | undefined;
+const deadlineOperation = withGeoRequestDeadline(
+  async (requestSignal) => {
+    deadlineSignal = requestSignal;
+    return new Promise<string>(() => undefined);
+  },
+  { deadlineMs: 15 },
+);
+await assert.rejects(deadlineOperation, isGeoRequestDeadlineError);
+assert.equal(deadlineSignal?.aborted, true);
+
+let successfulSignal: AbortSignal | undefined;
+assert.equal(
+  await withGeoRequestDeadline(
+    async (requestSignal) => {
+      successfulSignal = requestSignal;
+      return "ok";
+    },
+    { deadlineMs: 40 },
+  ),
+  "ok",
+);
+await new Promise((resolve) => setTimeout(resolve, 50));
+assert.equal(successfulSignal?.aborted, false);
+
+const userAbortController = new AbortController();
+const userAbortOperation = withGeoRequestDeadline(
+  (requestSignal) => new Promise<string>((_resolve, reject) => {
+    requestSignal.addEventListener("abort", () => reject(createGeoAbortError()), { once: true });
+  }),
+  { signal: userAbortController.signal, deadlineMs: 100 },
+);
+userAbortController.abort();
+await assert.rejects(userAbortOperation, (error: unknown) => (
+  isGeoAbortError(error) && !isGeoRequestDeadlineError(error)
+));
+
+const deadlineQueue = createGeoConcurrencyPool(1);
+let releaseDeadlineQueue: (() => void) | undefined;
+const activeDeadlineQueueTask = deadlineQueue.schedule(
+  () => new Promise<void>((resolve) => { releaseDeadlineQueue = resolve; }),
+);
+await new Promise((resolve) => setTimeout(resolve, 0));
+let queuedDeadlineStarted = false;
+const queuedDeadlineTask = deadlineQueue.schedule(() => withGeoRequestDeadline(
+  async () => {
+    queuedDeadlineStarted = true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return "queued";
+  },
+  { deadlineMs: 25 },
+));
+await new Promise((resolve) => setTimeout(resolve, 40));
+assert.equal(queuedDeadlineStarted, false);
+if (!releaseDeadlineQueue) throw new Error("deadline queue active task did not start");
+releaseDeadlineQueue();
+assert.equal(await activeDeadlineQueueTask, undefined);
+assert.equal(await queuedDeadlineTask, "queued");
+
+const deadlineReleasePool = createGeoConcurrencyPool(1);
+let lateOperationSettled = false;
+const deadlineActiveTask = deadlineReleasePool.schedule(() => withGeoRequestDeadline(
+  () => new Promise<string>((_resolve, reject) => {
+    setTimeout(() => {
+      lateOperationSettled = true;
+      reject(new Error("late operation failure"));
+    }, 35);
+  }),
+  { deadlineMs: 10 },
+));
+let postDeadlineTaskStarted = false;
+const postDeadlineTask = deadlineReleasePool.schedule(async () => {
+  postDeadlineTaskStarted = true;
+  return "after-deadline";
+});
+await assert.rejects(deadlineActiveTask, isGeoRequestDeadlineError);
+assert.equal(await postDeadlineTask, "after-deadline");
+assert.equal(postDeadlineTaskStarted, true);
+await new Promise((resolve) => setTimeout(resolve, 45));
+assert.equal(lateOperationSettled, true);
+
 assert.equal(isLightweightDevelopmentMode({ NODE_ENV: "development" }), true);
 assert.equal(
   isLightweightDevelopmentMode({ NODE_ENV: "development", EVIDRA_DEV_MODEL: "true" }),
@@ -232,6 +360,61 @@ assert.equal(
 assert.equal(isLightweightDevelopmentMode({ NODE_ENV: "production" }), false);
 
 assert.equal(MAX_ARTICLE_CHARACTERS, 12_000);
+const pageSource = readFileSync(
+  fileURLToPath(new URL("../app/page.tsx", import.meta.url)),
+  "utf8",
+);
+const analysisProgressSource = readFileSync(
+  fileURLToPath(new URL("../components/analysis-progress-workspace.tsx", import.meta.url)),
+  "utf8",
+);
+const reportWorkspaceSource = readFileSync(
+  fileURLToPath(new URL("../components/report-workspace.tsx", import.meta.url)),
+  "utf8",
+);
+const reportContextRailSource = readFileSync(
+  fileURLToPath(new URL("../components/report-context-rail.tsx", import.meta.url)),
+  "utf8",
+);
+const diagnosisSectionSource = readFileSync(
+  fileURLToPath(new URL("../components/diagnosis-section.tsx", import.meta.url)),
+  "utf8",
+);
+assert.match(pageSource, /ANALYSIS_SESSION_DEADLINE_MS = 15_000/);
+assert.match(pageSource, /SCORING_DEADLINE_MS = 45_000/);
+assert.match(pageSource, /QUESTIONS_DEADLINE_MS = 45_000/);
+assert.match(pageSource, /DIAGNOSTIC_DEADLINE_MS = 60_000/);
+assert.equal(
+  (pageSource.match(/withGeoRequestDeadline\(async \(requestSignal\)/g) ?? []).length,
+  4,
+);
+assert.match(pageSource, /if \(isGeoRequestDeadlineError\(error\)\) return deadlineMessage/);
+assert.match(pageSource, /!workflowSucceeded\) return/);
+assert.ok(analysisProgressSource.includes("const analysisBusy ="), "analysis progress busy state must be derived");
+assert.ok(analysisProgressSource.includes("{hasAnalysisError ?"), "analysis errors must expose recovery actions");
+assert.ok(analysisProgressSource.includes("diagnosticsPending: boolean"), "analysis progress must receive shared pending state");
+assert.ok(analysisProgressSource.includes("onReturnToEditor: () => void"), "analysis errors must use the ordinary editor recovery callback");
+assert.ok(analysisProgressSource.includes("数分钟，请勿关闭页面"), "analysis progress copy must avoid a fixed upper bound");
+assert.ok(reportWorkspaceSource.includes("const analysisBusy ="), "report workspace busy state must be derived");
+assert.ok(reportWorkspaceSource.includes("aria-busy={analysisBusy || Boolean(loadingMessage)}"), "report workspace must clear busy on terminal errors");
+assert.ok(reportWorkspaceSource.includes("onReturnToEditor: () => void"), "report workspace must separate error recovery from recheck");
+assert.ok(reportWorkspaceSource.includes("onReturnToEditor={onReturnToEditor}"), "report error states must use ordinary editor recovery");
+assert.ok(reportWorkspaceSource.includes("const recheckAvailable = flowComplete && contentAvailable"), "mobile recheck must use succeeded workflow gate");
+assert.ok(reportWorkspaceSource.includes('if (recheckBaseline) onScrollToSection("recheck-comparison");'), "mobile recheck must navigate existing baselines");
+assert.ok(reportWorkspaceSource.includes("else onBackToEditor();"), "mobile recheck must establish a missing baseline");
+assert.ok(reportContextRailSource.includes("hasRecheckBaseline: boolean"), "desktop recheck must know baseline state");
+assert.ok(reportContextRailSource.includes("if (hasRecheckBaseline) onScrollToSection(\"recheck-comparison\");"), "desktop recheck must navigate existing baselines");
+assert.ok(reportContextRailSource.includes("else onBackToEditor();"), "desktop recheck must establish a missing baseline");
+assert.ok(reportContextRailSource.includes('hasIncompleteDiagnostics ? "部分诊断未完成" : scoreBand?.label'), "partial report conclusion must precede score band");
+assert.ok(reportContextRailSource.includes('label: "待确认"'), "empty partial report risk must be pending");
+assert.ok(diagnosisSectionSource.includes('const issueSummary ='), "diagnosis summary must branch for unconfirmed results");
+assert.ok(diagnosisSectionSource.includes('`${unconfirmedCount || totalCount} 个问题待确认`'), "empty partial diagnosis must be pending");
+assert.ok(diagnosisSectionSource.includes("已确认可信度问题"), "mixed partial diagnosis must separate confirmed and unconfirmed issues");
+assert.ok(diagnosisSectionSource.includes("const unconfirmedCount ="), "mixed partial diagnosis must count failed or pending items");
+assert.ok(diagnosisSectionSource.includes('label: "待确认"'), "empty partial diagnosis risk must be pending");
+assert.ok(pageSource.includes("workflowSucceeded\n              ? openEditorForRecheck"), "header editor action must only enter recheck after success");
+assert.ok(pageSource.includes("returnToEditorAfterError()"), "header editor action must use ordinary recovery for incomplete runs");
+
 const scoringRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/evaluate-scoring/route.ts", import.meta.url)),
   "utf8",
@@ -2252,6 +2435,40 @@ delete (incompatibleCache.report.diagnostics[validDiagnostic.question].data as {
   .evidenceStatus;
 localStorageValues.set(reportCacheKey, JSON.stringify(incompatibleCache));
 assert.equal(readCachedReport(), null);
+
+const partialCache = structuredClone(cachedReport);
+partialCache.report.diagnostics[validDiagnostic.question].status = "error";
+partialCache.report.diagnostics[validDiagnostic.question].data = undefined;
+localStorageValues.set(reportCacheKey, JSON.stringify(partialCache));
+assert.equal(readCachedReport(), null);
+
+const missingDataCache = structuredClone(cachedReport);
+missingDataCache.report.diagnostics[validDiagnostic.question].data = undefined;
+localStorageValues.set(reportCacheKey, JSON.stringify(missingDataCache));
+assert.equal(readCachedReport(), null);
+
+const extraErrorCache = structuredClone(cachedReport);
+extraErrorCache.report.diagnostics["stale-question"] = {
+  question: "stale-question",
+  status: "error",
+  errorCount: 0,
+};
+localStorageValues.set(reportCacheKey, JSON.stringify(extraErrorCache));
+assert.equal(readCachedReport(), null);
+
+localStorageValues.clear();
+saveCachedReport({
+  ...cachedReport.report,
+  diagnostics: {
+    ...cachedReport.report.diagnostics,
+    [validDiagnostic.question]: {
+      ...cachedReport.report.diagnostics[validDiagnostic.question],
+      status: "error",
+      data: undefined,
+    },
+  },
+}, normalizedHash);
+assert.equal(localStorageValues.size, 0);
 
 assert.equal(betaEventSchema.safeParse({ event: "visit" }).success, true);
 assert.equal(betaEventSchema.safeParse({ event: "editor_started" }).success, true);

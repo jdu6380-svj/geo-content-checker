@@ -18,6 +18,8 @@ type ReportNavigationPanelProps = {
   patchCount: number;
   recheckLabel: string;
   analysisComplete: boolean;
+  analysisSettled?: boolean;
+  patchAvailable?: boolean;
   recheckAvailable: boolean;
   showStatus?: boolean;
   title?: string;
@@ -39,6 +41,8 @@ export function ReportNavigationPanel({
   patchCount,
   recheckLabel,
   analysisComplete,
+  analysisSettled = analysisComplete,
+  patchAvailable = analysisComplete,
   recheckAvailable,
   showStatus = true,
   title = "报告导航",
@@ -57,7 +61,8 @@ export function ReportNavigationPanel({
       <h2>{title}</h2>
       <nav>
         {NAVIGATION_ITEMS.map(({ id, label, icon: Icon }, index) => {
-          const disabled = id === "recheck" && !recheckAvailable;
+          const disabled = (id === "patch" && !patchAvailable) ||
+            (id === "recheck" && !recheckAvailable);
           const active = activeView === id;
           return (
             <button
@@ -79,9 +84,9 @@ export function ReportNavigationPanel({
         })}
       </nav>
       {showStatus ? (
-        <div className={`phase2-report-navigation-status ${analysisComplete ? "is-complete" : ""}`}>
+        <div className={`phase2-report-navigation-status ${analysisComplete ? "is-complete" : analysisSettled ? "is-partial" : ""}`}>
           <CheckCircle2 aria-hidden="true" />
-          <span>{analysisComplete ? "分析已完成" : "分析进行中"}</span>
+          <span>{analysisComplete ? "分析已完成" : analysisSettled ? "分析部分完成" : "分析进行中"}</span>
         </div>
       ) : null}
     </aside>

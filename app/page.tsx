@@ -21,15 +21,18 @@ import {
 import {
   createGeoAbortError,
   isGeoAbortError,
+  isGeoRequestDeadlineError,
   postGeoBetaEvent,
   postGeoJson,
   scheduleGeoDiagnostic,
   setGeoAnalysisToken,
+  withGeoRequestDeadline,
   type AnalysisSessionClientData,
 } from "@/lib/client/geo-api";
 import {
   readCachedReport,
   saveCachedReport,
+  deriveDiagnosticCompletion,
   type CacheEnvelope,
   type DiagnosticItem,
   type DiagnosticsState,
@@ -78,6 +81,10 @@ const ANALYSIS_PROGRESS_TRANSITIONS = [
   { delay: 3_400, step: 3 },
 ] as const;
 const ANALYSIS_PROGRESS_COMPLETE_DELAY_MS = 5_000;
+const ANALYSIS_SESSION_DEADLINE_MS = 15_000;
+const SCORING_DEADLINE_MS = 45_000;
+const QUESTIONS_DEADLINE_MS = 45_000;
+const DIAGNOSTIC_DEADLINE_MS = 60_000;
 
 const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
   {
@@ -223,6 +230,11 @@ async function responseError(response: Response, fallback: string): Promise<stri
   }
 }
 
+function requestErrorMessage(error: unknown, fallback: string, deadlineMessage: string): string {
+  if (isGeoRequestDeadlineError(error)) return deadlineMessage;
+  return error instanceof Error ? error.message : fallback;
+}
+
 async function requestDiagnostic(
   title: string,
   paragraphs: Paragraph[],
@@ -230,20 +242,32 @@ async function requestDiagnostic(
   signal: AbortSignal,
 ): Promise<DiagnosticResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await postGeoJson("/api/qa-diagnostic", {
-      title,
-      numbered_paragraphs: paragraphs,
-      question,
-    }, { signal });
+    const result = await withGeoRequestDeadline(async (requestSignal) => {
+      const response = await postGeoJson("/api/qa-diagnostic", {
+        title,
+        numbered_paragraphs: paragraphs,
+        question,
+      }, { signal: requestSignal });
 
-    if (response.status === 429 && attempt === 0) {
-      await wait(retryDelay(response) + Math.round(Math.random() * 250), signal);
+      if (response.status === 429 && attempt === 0) {
+        const delayMs = retryDelay(response);
+        await responseError(response, "");
+        return { kind: "retry" as const, delayMs };
+      }
+      if (!response.ok) {
+        throw new Error(await responseError(response, "该问题分析失败。"));
+      }
+      return {
+        kind: "success" as const,
+        data: (await response.json()) as DiagnosticResult,
+      };
+    }, { signal, deadlineMs: DIAGNOSTIC_DEADLINE_MS });
+
+    if (result.kind === "retry") {
+      await wait(result.delayMs + Math.round(Math.random() * 250), signal);
       continue;
     }
-    if (!response.ok) {
-      throw new Error(await responseError(response, "该问题分析失败。"));
-    }
-    return (await response.json()) as DiagnosticResult;
+    return result.data;
   }
 
   throw new Error("模型服务繁忙，请稍后重试。");
@@ -311,21 +335,21 @@ export default function Home() {
   const canAskFollowUp = paragraphs.length > 0 && questionOrder.length < 10;
   const canSubmitFollowUp = canAskFollowUp && Boolean(followUpQuestion.trim());
   const analysisPresentationComplete = restoredFromCache || analysisProgressComplete;
-  const reportReady = !restoredFromCache &&
+  const { diagnosticsSettled, diagnosticsSucceeded } = deriveDiagnosticCompletion(
+    questionOrder,
+    diagnostics,
+  );
+  const reportAvailable = restoredFromCache || (
     analysisStarted &&
     analysisPresentationComplete &&
+    session.status === "success" &&
     scoring.status === "success" &&
     questions.status === "success" &&
-    questionOrder.length > 0 &&
-    questionOrder.every((question) => {
-      const status = diagnostics[question]?.status;
-      return status === "success" || status === "error";
-    });
-  const diagnosticsComplete = questionOrder.length > 0 && questionOrder.every(
-    (question) => diagnostics[question]?.status === "success",
+    diagnosticsSettled
   );
-  const workspaceFlowComplete = analysisStarted && analysisPresentationComplete &&
-    scoring.status === "success" && questions.status === "success" && diagnosticsComplete;
+  const reportReady = !restoredFromCache && reportAvailable;
+  const workflowSucceeded = reportAvailable && diagnosticsSucceeded;
+  const workspaceFlowComplete = workflowSucceeded;
   const workspaceHasError = session.status === "error" || scoring.status === "error" ||
     questions.status === "error" || Object.values(diagnostics).some((item) => item.status === "error");
   const workspaceIsAnalyzing = !analysisPresentationComplete || session.status === "loading" || scoring.status === "loading" ||
@@ -352,7 +376,7 @@ export default function Home() {
           : workspaceIsAnalyzing
             ? "analyzing"
             : "warning";
-  const canOpenAdvice = analysisStarted && (workspaceFlowComplete || restoredFromCache);
+  const canOpenAdvice = analysisStarted && workflowSucceeded;
   const canOpenRecheck = canOpenAdvice && Boolean(contentText.trim());
 
   const abortActiveAnalysis = useCallback(() => {
@@ -442,31 +466,25 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (restoredFromCache || !analysisStarted) return;
-    if (scoring.status !== "success" || questions.status !== "success") return;
-    if (!questionOrder.length) return;
-    const allSettled = questionOrder.every((question) => {
-      const status = diagnostics[question]?.status;
-      return status === "success" || status === "error";
-    });
+    if (restoredFromCache || !workflowSucceeded) return;
     const runId = activeSessionRunId;
-    if (!allSettled || !runId || reportedRunIdsRef.current.has(runId)) return;
+    if (!runId || reportedRunIdsRef.current.has(runId)) return;
 
     reportedRunIdsRef.current.add(runId);
     void postGeoBetaEvent({ event: "analysis_completed", runId });
-  }, [activeSessionRunId, analysisStarted, diagnostics, questionOrder, questions.status, restoredFromCache, scoring.status]);
+  }, [activeSessionRunId, restoredFromCache, workflowSucceeded]);
 
   useEffect(() => {
-    if (!workspaceFlowComplete || analysisCompletionHandledRef.current) return;
+    if (!reportAvailable || analysisCompletionHandledRef.current) return;
     analysisCompletionHandledRef.current = true;
-    setWorkspaceStage(recheckBaseline ? "recheck" : "report");
-    setReportView(recheckBaseline ? "recheck" : "overview");
+    setWorkspaceStage(recheckBaseline && workflowSucceeded ? "recheck" : "report");
+    setReportView(recheckBaseline && workflowSucceeded ? "recheck" : "overview");
 
     window.requestAnimationFrame(() => {
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
     });
-  }, [recheckBaseline, workspaceFlowComplete]);
+  }, [recheckBaseline, reportAvailable, workflowSucceeded]);
 
   useEffect(() => {
     const runId = activeSessionRunId;
@@ -622,15 +640,15 @@ export default function Home() {
 
   useEffect(() => {
     if (restoredFromCache || !analysisStarted || scoring.status !== "success" || questions.status !== "success") return;
-    if (!questionOrder.length) return;
-    const allSettled = questionOrder.every((question) => {
-      const status = diagnostics[question]?.status;
-      return status === "success" || status === "error";
-    });
-    if (!allSettled) return;
+    if (!diagnosticsSettled) return;
 
     const analysisHash = activeAnalysisHashRef.current;
     if (!analysisHash) return;
+
+    if (!diagnosticsSucceeded) {
+      markDraftAnalysis(draft, analysisHash, "failed");
+      return;
+    }
 
     markDraftAnalysis(draft, analysisHash, "success");
     saveCachedReport({
@@ -641,7 +659,7 @@ export default function Home() {
       questionOrder,
       diagnostics,
     }, analysisHash);
-  }, [analysisStarted, diagnostics, draft, questionOrder, questions, restoredFromCache, scoring]);
+  }, [analysisStarted, diagnostics, diagnosticsSettled, diagnosticsSucceeded, draft, questionOrder, questions, restoredFromCache, scoring]);
 
   function updateDraft(field: keyof ArticleDraft, value: string) {
     if (!editorStartedReportedRef.current) {
@@ -707,9 +725,11 @@ export default function Home() {
     signal: AbortSignal,
   ) {
     try {
-      const response = await postGeoJson("/api/evaluate-scoring", article, { signal });
-      if (!response.ok) throw new Error(await responseError(response, "评分暂时失败。"));
-      const data = (await response.json()) as EvaluateScoringResponse;
+      const data = await withGeoRequestDeadline(async (requestSignal) => {
+        const response = await postGeoJson("/api/evaluate-scoring", article, { signal: requestSignal });
+        if (!response.ok) throw new Error(await responseError(response, "评分暂时失败。"));
+        return (await response.json()) as EvaluateScoringResponse;
+      }, { signal, deadlineMs: SCORING_DEADLINE_MS });
       if (activeRunRef.current === runId) setScoring({ status: "success", data });
     } catch (requestError) {
       if (isGeoAbortError(requestError)) return;
@@ -718,7 +738,7 @@ export default function Home() {
       if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
       setScoring({
         status: "error",
-        error: requestError instanceof Error ? requestError.message : "评分暂时失败。",
+        error: requestErrorMessage(requestError, "评分暂时失败。", "评分分析超时，请稍后重试。"),
       });
     }
   }
@@ -752,7 +772,7 @@ export default function Home() {
           ...current[question],
           question,
           status: "error",
-          error: requestError instanceof Error ? requestError.message : "该问题分析失败。",
+          error: requestErrorMessage(requestError, "该问题分析失败。", "该问题分析超时，请稍后重试。"),
         },
       }));
     }
@@ -765,12 +785,14 @@ export default function Home() {
     signal: AbortSignal,
   ) {
     try {
-      const response = await postGeoJson("/api/predict-questions", {
-        title: article.title,
-        numbered_paragraphs: articleParagraphs,
-      }, { signal });
-      if (!response.ok) throw new Error(await responseError(response, "问题预测暂时失败。"));
-      const data = (await response.json()) as PredictQuestionsResponse;
+      const data = await withGeoRequestDeadline(async (requestSignal) => {
+        const response = await postGeoJson("/api/predict-questions", {
+          title: article.title,
+          numbered_paragraphs: articleParagraphs,
+        }, { signal: requestSignal });
+        if (!response.ok) throw new Error(await responseError(response, "问题预测暂时失败。"));
+        return (await response.json()) as PredictQuestionsResponse;
+      }, { signal, deadlineMs: QUESTIONS_DEADLINE_MS });
       if (activeRunRef.current !== runId) return;
 
       setQuestions({ status: "success", data });
@@ -791,7 +813,7 @@ export default function Home() {
       if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
       setQuestions({
         status: "error",
-        error: requestError instanceof Error ? requestError.message : "问题预测暂时失败。",
+        error: requestErrorMessage(requestError, "问题预测暂时失败。", "问题预测超时，请稍后重试。"),
       });
     }
   }
@@ -803,16 +825,17 @@ export default function Home() {
     signal: AbortSignal,
   ) {
     try {
-      const response = await postGeoJson(
-        "/api/analysis-session",
-        {},
-        { includeAnalysisToken: false, signal },
-      );
-      if (!response.ok) {
-        throw new Error(await responseError(response, "暂时无法开始体检。"));
-      }
-
-      const session = (await response.json()) as AnalysisSessionClientData;
+      const session = await withGeoRequestDeadline(async (requestSignal) => {
+        const response = await postGeoJson(
+          "/api/analysis-session",
+          {},
+          { includeAnalysisToken: false, signal: requestSignal },
+        );
+        if (!response.ok) {
+          throw new Error(await responseError(response, "暂时无法开始体检。"));
+        }
+        return (await response.json()) as AnalysisSessionClientData;
+      }, { signal, deadlineMs: ANALYSIS_SESSION_DEADLINE_MS });
       if (!session.token || typeof session.token !== "string") {
         throw new Error("分析会话无效，请重新提交。");
       }
@@ -830,7 +853,7 @@ export default function Home() {
       if (activeRunRef.current !== runId) return;
       const analysisHash = activeAnalysisHashRef.current;
       if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
-      const message = requestError instanceof Error ? requestError.message : "暂时无法开始体检。";
+      const message = requestErrorMessage(requestError, "暂时无法开始体检。", "建立分析会话超时，请稍后重试。");
       setSession({ status: "error", error: message });
       setScoring({ status: "idle" });
       setQuestions({ status: "idle" });
@@ -936,10 +959,7 @@ export default function Home() {
   }
 
   function openEditorForRecheck() {
-    const allDiagnosticsComplete = questionOrder.length > 0 && questionOrder.every(
-      (question) => diagnostics[question]?.status === "success",
-    );
-    if (scoring.status === "success" && allDiagnosticsComplete) {
+    if (scoring.status === "success" && diagnosticsSucceeded) {
       setRecheckBaseline((current) => current ?? createReportComparisonSnapshot(
         scoring.data,
         questionOrder,
@@ -947,6 +967,13 @@ export default function Home() {
       ));
     }
     setWorkspaceStage("recheck");
+    backToEditor();
+    focusEditor();
+  }
+
+  function returnToEditorAfterError() {
+    setWorkspaceStage(recheckBaseline ? "recheck" : "review");
+    if (!recheckBaseline) setReportView("overview");
     backToEditor();
     focusEditor();
   }
@@ -961,12 +988,10 @@ export default function Home() {
   }
 
   function scrollToSection(sectionId: string) {
-    if (!workspaceFlowComplete && !restoredFromCache && (
-      sectionId === "patch-workshop" ||
-      sectionId === "diagnostic-section" ||
-      sectionId === "evidence-section" ||
-      sectionId === "recheck-comparison"
-    )) return;
+    const settledOnlySection = sectionId === "diagnostic-section" || sectionId === "evidence-section";
+    const succeededOnlySection = sectionId === "patch-workshop" || sectionId === "recheck-comparison";
+    if (settledOnlySection && !reportAvailable) return;
+    if (succeededOnlySection && !workflowSucceeded) return;
 
     if (sectionId === "patch-workshop") {
       setWorkspaceStage("advice");
@@ -1042,7 +1067,7 @@ export default function Home() {
           ...state[question],
           question,
           status: "error",
-          error: scheduleError instanceof Error ? scheduleError.message : "该问题分析失败。",
+          error: requestErrorMessage(scheduleError, "该问题分析失败。", "该问题分析超时，请稍后重试。"),
         },
       }));
     });
@@ -1075,7 +1100,7 @@ export default function Home() {
 
   function openRecheckStage() {
     if (!canOpenRecheck) return;
-    if (recheckBaseline && workspaceFlowComplete) {
+    if (recheckBaseline && workflowSucceeded) {
       scrollToSection("recheck-comparison");
       return;
     }
@@ -1129,7 +1154,7 @@ export default function Home() {
           ...state[question],
           question,
           status: "error",
-          error: scheduleError instanceof Error ? scheduleError.message : "该问题分析失败。",
+          error: requestErrorMessage(scheduleError, "该问题分析失败。", "该问题分析超时，请稍后重试。"),
         },
       }));
     });
@@ -1162,7 +1187,13 @@ export default function Home() {
     <main className="app-shell">
       <AppHeader
         analysisStarted={analysisStarted}
-        onShowEditor={() => (analysisStarted ? openEditorForRecheck() : focusEditor())}
+        onShowEditor={() => (
+          analysisStarted
+            ? workflowSucceeded
+              ? openEditorForRecheck()
+              : returnToEditorAfterError()
+            : focusEditor()
+        )}
         onNewAnalysis={startNewAnalysis}
         feedbackUrl={feedbackUrl}
         onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
@@ -1213,6 +1244,8 @@ export default function Home() {
             scoreBand={currentScoreBand}
             questionOrder={questionOrder}
             diagnostics={diagnostics}
+            diagnosticsSettled={diagnosticsSettled}
+            diagnosticsSucceeded={diagnosticsSucceeded}
             patchChecklist={patchChecklist}
             recheckBaseline={recheckBaseline}
             runId={activeSessionRunId}
@@ -1238,6 +1271,7 @@ export default function Home() {
               return Boolean(item && item.errorCount < 2 && paragraphs.length > 0);
             }}
             onBackToEditor={openEditorForRecheck}
+            onReturnToEditor={returnToEditorAfterError}
             onRestartAnalysis={() => void startAnalysis(draft, true)}
             onRetryScoring={retryScoring}
             onRetryQuestions={retryQuestions}
