@@ -75,13 +75,13 @@ const ANALYSIS_LIMITS = {
   deviceMinute: 6,
   deviceDay: 10,
   ipMinute: 30,
-  ipDay: 300,
+  ipDay: 100,
 } as const;
 
 const WARMUP_LIMITS = {
   deviceWindow: 1,
   ipMinute: 30,
-  ipDay: 300,
+  ipDay: 100,
 } as const;
 
 const ATOMIC_RATE_LIMIT_SCRIPT = `

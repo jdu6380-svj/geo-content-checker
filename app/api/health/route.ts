@@ -4,6 +4,7 @@ import { withGeoRequestLogging } from "@/lib/server/geo-observability";
 import {
   areDistinctSecuritySecrets,
   isHttpsUrl,
+  isStrongSecuritySecret,
 } from "@/lib/server/security-config";
 
 export const runtime = "nodejs";
@@ -15,6 +16,8 @@ interface HealthResponse {
     modelConfigured: boolean;
     redisConfigured: boolean;
     securityConfigured: boolean;
+    feedbackConfigured: boolean;
+    sentryConfigured: boolean;
   };
   timestamp: string;
 }
@@ -24,6 +27,8 @@ function isConfigured(name: string): boolean {
 }
 
 async function handleGet(_request: NextRequest): Promise<Response> {
+  const betaEventSecret = process.env.BETA_EVENT_HMAC_SECRET?.trim();
+  const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || "";
   const checks = {
     modelConfigured:
       isHttpsUrl(process.env.OPENAI_BASE_URL) &&
@@ -35,7 +40,14 @@ async function handleGet(_request: NextRequest): Promise<Response> {
     securityConfigured: areDistinctSecuritySecrets(
       process.env.RATE_LIMIT_SALT,
       process.env.ANALYSIS_TOKEN_SECRET,
-    ),
+    ) &&
+      isStrongSecuritySecret(betaEventSecret) &&
+      betaEventSecret !== process.env.RATE_LIMIT_SALT?.trim() &&
+      betaEventSecret !== process.env.ANALYSIS_TOKEN_SECRET?.trim(),
+    feedbackConfigured:
+      isHttpsUrl(process.env.NEXT_PUBLIC_FEEDBACK_URL) &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail),
+    sentryConfigured: isHttpsUrl(process.env.NEXT_PUBLIC_SENTRY_DSN),
   };
   const ready = Object.values(checks).every(Boolean);
   const body: HealthResponse = {

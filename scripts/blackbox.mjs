@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import http from "node:http";
+import https from "node:https";
 import { gzipSync } from "node:zlib";
 
+import {
+  automationBypassHeaders,
+  isVercelDeploymentProtectionRedirect,
+  resolveAutomationBypassSecret,
+  withAutomationBypassRequestInit,
+} from "./preview-automation.mjs";
+
 const baseUrl = (process.env.GEO_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+const automationBypassSecret = resolveAutomationBypassSecret(baseUrl);
 const expectedSourceArgument = process.argv.find((value) => value.startsWith("--expect-source="));
 const expectedSource = expectedSourceArgument?.split("=", 2)[1] || "either";
+const skipDeclaredLengthCheck = process.argv.includes("--skip-declared-length-check");
 if (!["either", "model", "fallback"].includes(expectedSource)) {
   throw new Error("--expect-source must be either, model, or fallback");
 }
@@ -13,10 +24,63 @@ const clientId = randomUUID();
 const alternateClientId = randomUUID();
 const warmupClientId = randomUUID();
 const markdownClientId = randomUUID();
+const oversizedClientId = randomUUID();
 const paragraphs = [
   {
     id: "Para-1",
     text: "本文说明内容体检的方法、适用范围和限制条件，所有结论仍需人工核对。",
+  },
+];
+const patchDiagnostics = [
+  {
+    question: "文章说明了哪些适用范围和限制条件？",
+    answerability: "信息不足",
+    riskLevel: "medium",
+    evidence: [{ paragraphId: "Para-1", quote: paragraphs[0].text }],
+    evidenceStatus: "valid",
+    missingInfo: ["发布日期"],
+    recommendation: "补充发布日期和适用边界。",
+    source: "fallback",
+  },
+  {
+    question: "文章给出了哪些具体步骤？",
+    answerability: "可以完全回答",
+    riskLevel: "low",
+    evidence: [{ paragraphId: "Para-1", quote: paragraphs[0].text }],
+    evidenceStatus: "valid",
+    missingInfo: [],
+    recommendation: "保留当前步骤说明。",
+    source: "fallback",
+  },
+  {
+    question: "这些建议适用于哪些读者？",
+    answerability: "信息不足",
+    riskLevel: "medium",
+    evidence: [{ paragraphId: "Para-1", quote: paragraphs[0].text }],
+    evidenceStatus: "valid",
+    missingInfo: ["适用对象"],
+    recommendation: "补充明确的适用对象。",
+    source: "fallback",
+  },
+  {
+    question: "关键结论有哪些事实依据？",
+    answerability: "信息不足",
+    riskLevel: "medium",
+    evidence: [{ paragraphId: "Para-1", quote: paragraphs[0].text }],
+    evidenceStatus: "valid",
+    missingInfo: ["事实来源"],
+    recommendation: "补充可核验的事实来源。",
+    source: "fallback",
+  },
+  {
+    question: "文章是否说明了风险和时效？",
+    answerability: "信息不足",
+    riskLevel: "medium",
+    evidence: [{ paragraphId: "Para-1", quote: paragraphs[0].text }],
+    evidenceStatus: "valid",
+    missingInfo: ["风险与时效"],
+    recommendation: "补充风险边界和有效时间。",
+    source: "fallback",
   },
 ];
 const article = {
@@ -27,6 +91,7 @@ const article = {
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 let passed = 0;
+let skipped = 0;
 
 function responseSummary(result) {
   return JSON.stringify({
@@ -52,11 +117,23 @@ function headers(params = {}) {
   return result;
 }
 
-async function request(path, init) {
+async function request(path, init = {}) {
+  const requestInit = withAutomationBypassRequestInit(init, automationBypassSecret);
   const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
+    ...requestInit,
+    redirect: "manual",
     signal: AbortSignal.timeout(30_000),
   });
+  if (
+    isVercelDeploymentProtectionRedirect(
+      response.status,
+      response.headers.get("location"),
+    )
+  ) {
+    throw new Error(
+      "Vercel Deployment Protection blocked the request. Configure VERCEL_AUTOMATION_BYPASS_SECRET in the Preview test runner.",
+    );
+  }
   assert.match(
     response.headers.get("x-request-id") || "",
     requestIdPattern,
@@ -72,10 +149,62 @@ async function request(path, init) {
   return { response, body };
 }
 
+async function requestWithDeclaredLength(path, declaredLength, body) {
+  const target = new URL(`${baseUrl}${path}`);
+  const transport = target.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const outgoing = transport.request(
+      target,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": String(declaredLength),
+          "X-GEO-Client-ID": oversizedClientId,
+          "X-Forwarded-For": testIp,
+          Connection: "close",
+          ...automationBypassHeaders(automationBypassSecret),
+        },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          let parsed = null;
+          try {
+            parsed = text ? JSON.parse(text) : null;
+          } catch {
+            parsed = text;
+          }
+          assert.match(
+            String(response.headers["x-request-id"] || ""),
+            requestIdPattern,
+            `missing or invalid request id for ${path}`,
+          );
+          resolve({
+            response: { status: response.statusCode, headers: response.headers },
+            body: parsed,
+          });
+        });
+      },
+    );
+    outgoing.setTimeout(10_000, () => outgoing.destroy(new Error("raw request timed out")));
+    outgoing.on("error", reject);
+    outgoing.end(body);
+  });
+}
+
 async function check(name, test) {
   await test();
   passed += 1;
   console.log(`PASS ${name}`);
+}
+
+function skip(name, reason) {
+  skipped += 1;
+  console.log(`SKIP ${name}: ${reason}`);
 }
 
 async function expectStatus(name, path, init, status, errorCode) {
@@ -87,15 +216,20 @@ async function expectStatus(name, path, init, status, errorCode) {
 }
 
 console.log(`GEO black-box target: ${baseUrl} (expected source: ${expectedSource})`);
+console.log(
+  `Vercel Preview automation bypass: ${automationBypassSecret ? "enabled" : "disabled"}`,
+);
 
 await check("reports sanitized service readiness", async () => {
   const result = await request("/api/health", { method: "GET" });
   assert.ok([200, 503].includes(result.response.status), responseSummary(result));
   assert.ok(result.body?.status === "ok" || result.body?.status === "degraded");
   assert.deepEqual(Object.keys(result.body?.checks || {}).sort(), [
+    "feedbackConfigured",
     "modelConfigured",
     "redisConfigured",
     "securityConfigured",
+    "sentryConfigured",
   ]);
   assert.ok(Object.values(result.body.checks).every((value) => typeof value === "boolean"));
   assert.equal(Number.isNaN(Date.parse(result.body?.timestamp)), false);
@@ -106,6 +240,47 @@ await check("reports sanitized service readiness", async () => {
   assert.equal(result.response.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
   assert.match(result.response.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
 });
+
+await expectStatus(
+  "rejects 12,001 article characters",
+  "/api/evaluate-scoring",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ ...article, content: "中".repeat(12_001) }),
+  },
+  400,
+  "INVALID_REQUEST",
+);
+
+await expectStatus(
+  "rejects oversized uncompressed body",
+  "/api/evaluate-scoring",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ ...article, content: "A".repeat(140 * 1024) }),
+  },
+  413,
+  "PAYLOAD_TOO_LARGE",
+);
+
+if (skipDeclaredLengthCheck) {
+  skip(
+    "rejects oversized declared Content-Length",
+    "deployment edge buffers incomplete request bodies; covered by security:unit and blackbox:fallback",
+  );
+} else {
+  await check("rejects oversized declared Content-Length", async () => {
+    const result = await requestWithDeclaredLength(
+      "/api/evaluate-scoring",
+      129 * 1024,
+      JSON.stringify(article),
+    );
+    assert.equal(result.response.status, 413, responseSummary(result));
+    assert.equal(result.body?.error, "PAYLOAD_TOO_LARGE");
+  });
+}
 
 await expectStatus(
   "rejects damaged gzip",
@@ -156,6 +331,7 @@ await expectStatus(
 );
 
 let token = "";
+let sessionRunId = "";
 await check("creates signed analysis session", async () => {
   const result = await request("/api/analysis-session", {
     method: "POST",
@@ -163,8 +339,187 @@ await check("creates signed analysis session", async () => {
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(typeof result.body?.token, "string");
+  assert.equal(typeof result.body?.runId, "string");
   assert.equal(result.body?.operations?.diagnose, 10);
   token = result.body.token;
+  sessionRunId = result.body.runId;
+});
+
+await expectStatus(
+  "rejects unknown beta event",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "article_uploaded" }),
+  },
+  400,
+  "INVALID_EVENT",
+);
+
+await check("records visit idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "visit" }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
+});
+
+await check("records editor start idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "editor_started" }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
+});
+
+await expectStatus(
+  "requires token for analysis started event",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "analysis_started", runId: sessionRunId }),
+  },
+  401,
+  "ANALYSIS_SESSION_REQUIRED",
+);
+
+await check("records analysis started idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({ event: "analysis_started", runId: sessionRunId }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
+});
+
+await expectStatus(
+  "requires token for completed analysis event",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ event: "analysis_completed", runId: sessionRunId }),
+  },
+  401,
+  "ANALYSIS_SESSION_REQUIRED",
+);
+
+await expectStatus(
+  "rejects mismatched completed analysis run",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({ event: "analysis_completed", runId: randomUUID() }),
+  },
+  403,
+  "RUN_ID_MISMATCH",
+);
+
+await check("records completed analysis idempotently", async () => {
+  const init = {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({ event: "analysis_completed", runId: sessionRunId }),
+  };
+  const first = await request("/api/beta-event", init);
+  const second = await request("/api/beta-event", init);
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(second.response.status, 200, responseSummary(second));
+  assert.equal(second.body?.duplicate, true);
+});
+
+for (const event of ["report_viewed", "patch_requested", "patch_generated", "patch_copied"]) {
+  await check(`records ${event} idempotently`, async () => {
+    const init = {
+      method: "POST",
+      headers: headers({ token }),
+      body: JSON.stringify({ event, runId: sessionRunId }),
+    };
+    const first = await request("/api/beta-event", init);
+    const second = await request("/api/beta-event", init);
+    assert.equal(first.response.status, 202, responseSummary(first));
+    assert.equal(first.body?.duplicate, false);
+    assert.equal(second.response.status, 200, responseSummary(second));
+    assert.equal(second.body?.duplicate, true);
+  });
+}
+
+await expectStatus(
+  "rejects diagnostic feedback with private content",
+  "/api/beta-event",
+  {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 0,
+      helpful: true,
+      question: "private question",
+    }),
+  },
+  400,
+  "INVALID_EVENT",
+);
+
+await check("accepts one feedback per diagnosis", async () => {
+  const first = await request("/api/beta-event", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 0,
+      helpful: true,
+    }),
+  });
+  const duplicate = await request("/api/beta-event", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 0,
+      helpful: false,
+    }),
+  });
+  const secondDiagnosis = await request("/api/beta-event", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      event: "diagnosis_feedback",
+      runId: sessionRunId,
+      diagnosticIndex: 1,
+      helpful: false,
+    }),
+  });
+  assert.equal(first.response.status, 202, responseSummary(first));
+  assert.equal(first.body?.duplicate, false);
+  assert.equal(duplicate.response.status, 200, responseSummary(duplicate));
+  assert.equal(duplicate.body?.duplicate, true);
+  assert.equal(secondDiagnosis.response.status, 202, responseSummary(secondDiagnosis));
+  assert.equal(secondDiagnosis.body?.duplicate, false);
 });
 
 await expectStatus(
@@ -230,16 +585,32 @@ await check("consumes one diagnostic allowance", async () => {
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(result.response.headers.get("x-geo-operation-remaining"), "9");
   assertExpectedSource(result.body?.source);
+  assert.ok(["valid", "missing", "invalid"].includes(result.body?.evidenceStatus));
+  assert.ok(Array.isArray(result.body?.evidence));
+  if (result.body.evidenceStatus === "valid") assert.ok(result.body.evidence.length > 0);
+  if (result.body.evidenceStatus === "missing") assert.equal(result.body.evidence.length, 0);
+  for (const item of result.body.evidence) {
+    const paragraph = paragraphs.find((value) => value.id === item.paragraphId);
+    assert.equal(paragraph?.text.includes(item.quote), true);
+  }
 });
 
 await check("allows patch generation once", async () => {
   const result = await request("/api/generate-patches", {
     method: "POST",
     headers: headers({ token }),
-    body: JSON.stringify({ title: article.title, numbered_paragraphs: paragraphs }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "advice",
+    }),
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(result.response.headers.get("x-geo-operation-remaining"), "0");
+  assert.equal(result.body?.mode, "advice");
+  assert.ok(result.body?.actions?.length >= 1);
+  assert.ok(result.body.actions.every((action) => typeof action.id === "string" && typeof action.createdAt === "string"));
   assertExpectedSource(result.body?.source);
 });
 
@@ -249,7 +620,46 @@ await expectStatus(
   {
     method: "POST",
     headers: headers({ token }),
-    body: JSON.stringify({ title: article.title, numbered_paragraphs: paragraphs }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "advice",
+    }),
+  },
+  429,
+  "OPERATION_LIMIT_REACHED",
+);
+
+await check("allows one content draft separately", async () => {
+  const result = await request("/api/generate-patches", {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "content_draft",
+    }),
+  });
+  assert.equal(result.response.status, 200, responseSummary(result));
+  assert.equal(result.body?.mode, "content_draft");
+  assert.ok(result.body?.actions?.length >= 1);
+  assertExpectedSource(result.body?.source);
+});
+
+await expectStatus(
+  "blocks second content draft",
+  "/api/generate-patches",
+  {
+    method: "POST",
+    headers: headers({ token }),
+    body: JSON.stringify({
+      title: article.title,
+      numbered_paragraphs: paragraphs,
+      diagnostics: patchDiagnostics,
+      mode: "content_draft",
+    }),
   },
   429,
   "OPERATION_LIMIT_REACHED",
@@ -260,7 +670,11 @@ await check("limits warmup to once per device window", async () => {
   const first = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
   const second = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
   assert.equal(first.response.status, 200, responseSummary(first));
+  assert.equal(first.body?.status, "deprecated");
+  assert.equal(first.response.headers.get("deprecation"), "true");
+  assert.equal(first.response.headers.get("x-geo-warmup-status"), "deprecated");
   assert.equal(second.response.status, 429, responseSummary(second));
+  assert.equal(second.response.headers.get("deprecation"), "true");
   assert.equal(second.body?.error, "RATE_LIMITED");
 });
 
@@ -281,11 +695,19 @@ await check("escapes raw HTML in Markdown patches", async () => {
   const result = await request("/api/generate-patches", {
     method: "POST",
     headers: headers({ clientId: markdownClientId, token: session.body.token }),
-    body: JSON.stringify({ title: "Markdown 安全测试", numbered_paragraphs: maliciousParagraphs }),
+    body: JSON.stringify({
+      title: "Markdown 安全测试",
+      numbered_paragraphs: maliciousParagraphs,
+      diagnostics: [{
+        ...patchDiagnostics[0],
+        evidence: [{ paragraphId: "Para-1", quote: maliciousParagraphs[0].text }],
+      }],
+      mode: "content_draft",
+    }),
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(typeof result.body?.markdown, "string");
   assert.doesNotMatch(result.body.markdown, /<\/?script\b/i);
 });
 
-console.log(`PASS ${passed} black-box checks`);
+console.log(`PASS ${passed} black-box checks${skipped ? `; SKIP ${skipped}` : ""}`);

@@ -1,24 +1,53 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
-import { DatePicker } from "@/components/date-picker";
-import { DiagnosticAccordion } from "@/components/diagnostic-accordion";
-import { PatchWorkshop } from "@/components/patch-workshop";
+import { AppHeader } from "@/components/app-header";
+import { EditorWorkspace } from "@/components/editor-workspace";
+import { ReportWorkspace, type ReportWorkspaceView } from "@/components/report-workspace";
+import { WorkspaceSidebar } from "@/components/workspace-sidebar";
+import {
+  WorkspaceCommandBar,
+  type WorkspaceStage,
+  type WorkspaceStatus,
+} from "@/components/workspace-command-bar";
+import {
+  clearDraftAnalysis,
+  createAnalysisHash,
+  markDraftAnalysis,
+  readDraftSession,
+  saveDraftSession,
+} from "@/lib/client/analysis-persistence";
+import {
+  createGeoAbortError,
+  isGeoAbortError,
+  isGeoRequestDeadlineError,
+  postGeoBetaEvent,
+  postGeoJson,
+  scheduleGeoDiagnostic,
+  setGeoAnalysisToken,
+  withGeoRequestDeadline,
+  type AnalysisSessionClientData,
+} from "@/lib/client/geo-api";
 import {
   readCachedReport,
   saveCachedReport,
+  deriveDiagnosticCompletion,
+  type CacheEnvelope,
   type DiagnosticItem,
   type DiagnosticsState,
   type LoadState,
 } from "@/lib/client/report-state";
 import {
-  postGeoJson,
-  scheduleGeoDiagnostic,
-  setGeoAnalysisToken,
-  warmGeoApi,
-  type AnalysisSessionClientData,
-} from "@/lib/client/geo-api";
+  createReportComparisonSnapshot,
+  isReportIssue,
+  type ReportComparisonSnapshot,
+} from "@/lib/client/report-comparison";
+import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
+import {
+  MAX_ARTICLE_CHARACTERS,
+  MIN_ARTICLE_CHARACTERS,
+} from "@/lib/constants/input-limits";
 import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 import type {
   DiagnosticResult,
@@ -34,12 +63,28 @@ type ArticleDraft = {
 };
 
 type FieldErrors = Partial<Record<"title" | "content", string>>;
+type SamplePresentationMeta = {
+  status: string;
+  description: string;
+  badgeClassName: string;
+};
 type SessionState =
   | { status: "idle" | "loading" | "success" }
   | { status: "error"; error: string };
 
 const EMPTY_DRAFT: ArticleDraft = { title: "", content: "", publishedAt: "" };
 const DAILY_USAGE_KEY = "geo:daily-usage:v2";
+const DRAFT_SAVE_DEBOUNCE_MS = 500;
+const ANALYSIS_PROGRESS_TRANSITIONS = [
+  { delay: 1_100, step: 1 },
+  { delay: 2_200, step: 2 },
+  { delay: 3_400, step: 3 },
+] as const;
+const ANALYSIS_PROGRESS_COMPLETE_DELAY_MS = 5_000;
+const ANALYSIS_SESSION_DEADLINE_MS = 15_000;
+const SCORING_DEADLINE_MS = 45_000;
+const QUESTIONS_DEADLINE_MS = 45_000;
+const DIAGNOSTIC_DEADLINE_MS = 60_000;
 
 const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
   {
@@ -69,17 +114,56 @@ const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
 ];
 
 const DIMENSION_META = [
-  { key: "questionCoverage", label: "问题覆盖度", bar: "bg-[#0b6b63]" },
-  { key: "factCompleteness", label: "事实完整度", bar: "bg-[#3d607d]" },
-  { key: "structureClarity", label: "结构清晰度", bar: "bg-[#a66a13]" },
-  { key: "freshness", label: "时效性", bar: "bg-[#c95742]" },
+  { key: "questionCoverage", label: "问题覆盖度", bar: "score-bar-question" },
+  { key: "factCompleteness", label: "事实完整度", bar: "score-bar-fact" },
+  { key: "structureClarity", label: "结构清晰度", bar: "score-bar-structure" },
+  { key: "freshness", label: "时效性", bar: "score-bar-freshness" },
 ] as const;
 
-const SAMPLE_STYLES = [
-  { border: "border-l-[#0b6b63]", badge: "bg-[#e4f2ef] text-[#0b6b63]" },
-  { border: "border-l-[#a66a13]", badge: "bg-[#fff4d8] text-[#87540d]" },
-  { border: "border-l-[#c95742]", badge: "bg-[#fff0ed] text-[#a43e2b]" },
-] as const;
+const SAMPLE_META: Record<number, SamplePresentationMeta> = {
+  0: {
+    status: "完整示例",
+    description: "信息边界清楚，适合了解完整输入",
+    badgeClassName: "status-success",
+  },
+  1: {
+    status: "证据缺口",
+    description: "关键判断缺少可核对依据",
+    badgeClassName: "status-warning",
+  },
+  2: {
+    status: "表达风险",
+    description: "强承诺、时效与结构均需复核",
+    badgeClassName: "status-danger",
+  },
+};
+
+const EDITOR_SAMPLES = SAMPLES.map((sample, index) => ({
+  id: sample.label,
+  title: sample.title,
+  status: (SAMPLE_META[index] ?? SAMPLE_META[0]).status,
+  description: (SAMPLE_META[index] ?? SAMPLE_META[0]).description,
+  badgeClassName: (SAMPLE_META[index] ?? SAMPLE_META[0]).badgeClassName,
+}));
+
+const EDITOR_DIMENSIONS = DIMENSION_META.map(({ label }, index) => ({
+  label,
+  indicatorClassName:
+    index === 0
+      ? "score-bar-question"
+      : index === 1
+        ? "score-bar-fact"
+        : index === 2
+          ? "score-bar-structure"
+          : "score-bar-freshness",
+}));
+
+function scoreBand(score: number): { label: string; note: string } {
+  if (score >= 85) return { label: "准备充分", note: "核心问题、证据和结构较完整" };
+  if (score >= 70) return { label: "基础良好", note: "已经可读，仍有局部信息缺口" };
+  if (score >= 50) return { label: "需要补强", note: "关键事实与回答边界仍不完整" };
+  return { label: "风险较高", note: "建议先补足证据再发布" };
+}
 
 function getDailyUsage(): number {
   if (typeof window === "undefined") return 0;
@@ -107,8 +191,22 @@ function recordUsage(): void {
   }
 }
 
-function wait(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(createGeoAbortError());
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, milliseconds);
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", handleAbort);
+      reject(createGeoAbortError());
+    };
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
 }
 
 function retryDelay(response: Response): number {
@@ -132,26 +230,44 @@ async function responseError(response: Response, fallback: string): Promise<stri
   }
 }
 
+function requestErrorMessage(error: unknown, fallback: string, deadlineMessage: string): string {
+  if (isGeoRequestDeadlineError(error)) return deadlineMessage;
+  return error instanceof Error ? error.message : fallback;
+}
+
 async function requestDiagnostic(
   title: string,
   paragraphs: Paragraph[],
   question: string,
+  signal: AbortSignal,
 ): Promise<DiagnosticResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await postGeoJson("/api/qa-diagnostic", {
-      title,
-      numbered_paragraphs: paragraphs,
-      question,
-    });
+    const result = await withGeoRequestDeadline(async (requestSignal) => {
+      const response = await postGeoJson("/api/qa-diagnostic", {
+        title,
+        numbered_paragraphs: paragraphs,
+        question,
+      }, { signal: requestSignal });
 
-    if (response.status === 429 && attempt === 0) {
-      await wait(retryDelay(response) + Math.round(Math.random() * 250));
+      if (response.status === 429 && attempt === 0) {
+        const delayMs = retryDelay(response);
+        await responseError(response, "");
+        return { kind: "retry" as const, delayMs };
+      }
+      if (!response.ok) {
+        throw new Error(await responseError(response, "该问题分析失败。"));
+      }
+      return {
+        kind: "success" as const,
+        data: (await response.json()) as DiagnosticResult,
+      };
+    }, { signal, deadlineMs: DIAGNOSTIC_DEADLINE_MS });
+
+    if (result.kind === "retry") {
+      await wait(result.delayMs + Math.round(Math.random() * 250), signal);
       continue;
     }
-    if (!response.ok) {
-      throw new Error(await responseError(response, "该问题分析失败。"));
-    }
-    return (await response.json()) as DiagnosticResult;
+    return result.data;
   }
 
   throw new Error("模型服务繁忙，请稍后重试。");
@@ -163,30 +279,6 @@ function initialDiagnostics(questions: string[]): DiagnosticsState {
       question,
       { question, status: "queued", errorCount: 0 } satisfies DiagnosticItem,
     ]),
-  );
-}
-
-function ScoreSkeleton() {
-  return (
-    <div className="grid gap-5 lg:grid-cols-[260px_1fr]" aria-label="正在生成评分">
-      <div className="card min-h-[210px] animate-pulse p-6 motion-reduce:animate-none">
-        <div className="h-3 w-24 rounded bg-[#e5e8ed]" />
-        <div className="mt-6 h-16 w-32 rounded bg-[#edf0f2]" />
-        <div className="mt-5 h-3 w-full rounded bg-[#edf0f2]" />
-      </div>
-      <div className="card min-h-[210px] animate-pulse p-6 motion-reduce:animate-none">
-        <div className="h-3 w-20 rounded bg-[#e5e8ed]" />
-        <div className="mt-6 grid gap-6 sm:grid-cols-2">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div key={index}>
-              <div className="h-3 w-24 rounded bg-[#e5e8ed]" />
-              <div className="mt-3 h-2 w-full rounded bg-[#edf0f2]" />
-              <div className="mt-3 h-3 w-4/5 rounded bg-[#edf0f2]" />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -204,23 +296,254 @@ export default function Home() {
   const [followUpError, setFollowUpError] = useState("");
   const [latestQuestion, setLatestQuestion] = useState<string | null>(null);
   const [restoredFromCache, setRestoredFromCache] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [feedbackByQuestion, setFeedbackByQuestion] = useState<Record<string, boolean | undefined>>({});
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const latestQuestionRef = useRef<HTMLDivElement>(null);
   const activeRunRef = useRef(0);
+  const analysisControllerRef = useRef<AbortController | null>(null);
+  const activeAnalysisHashRef = useRef<string | null>(null);
+  const draftRef = useRef<ArticleDraft>(draft);
+  const draftSaveTimerRef = useRef<number | null>(null);
+  const analysisProgressTimersRef = useRef<number[]>([]);
+  const analysisCompletionHandledRef = useRef(false);
+  const storageReadyRef = useRef(false);
+  const reportedRunIdsRef = useRef(new Set<string>());
+  const editorStartedReportedRef = useRef(false);
+  const reportViewedRunIdsRef = useRef(new Set<string>());
+  const reportViewDwellRef = useRef(new Map<string, number>());
+  const [activeSessionRunId, setActiveSessionRunId] = useState<string | null>(null);
+  const [recheckBaseline, setRecheckBaseline] = useState<ReportComparisonSnapshot | null>(null);
+  const [patchChecklist, setPatchChecklist] = useState<PatchChecklistItem[]>([]);
+  const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("review");
+  const [reportView, setReportView] = useState<ReportWorkspaceView>("overview");
+  const [analysisProgressStep, setAnalysisProgressStep] = useState(0);
+  const [analysisProgressComplete, setAnalysisProgressComplete] = useState(false);
 
-  const remaining = useMemo(() => 12_000 - draft.content.length, [draft.content]);
+  const contentText = draft?.content ?? "";
+  const contentLength = contentText.length;
+  const remaining = MAX_ARTICLE_CHARACTERS - contentLength;
   const completedCount = questionOrder.filter((question) => diagnostics[question]?.status === "success").length;
   const customQuestions = questionOrder.slice(5);
   const answeredCustomQuestions = customQuestions.filter(
     (question) => diagnostics[question]?.data?.answerability === "可以完全回答",
   ).length;
+  const currentScoreBand = scoring.status === "success" ? scoreBand(scoring.data.totalScore) : null;
+  const canAskFollowUp = paragraphs.length > 0 && questionOrder.length < 10;
+  const canSubmitFollowUp = canAskFollowUp && Boolean(followUpQuestion.trim());
+  const analysisPresentationComplete = restoredFromCache || analysisProgressComplete;
+  const { diagnosticsSettled, diagnosticsSucceeded } = deriveDiagnosticCompletion(
+    questionOrder,
+    diagnostics,
+  );
+  const reportAvailable = restoredFromCache || (
+    analysisStarted &&
+    analysisPresentationComplete &&
+    session.status === "success" &&
+    scoring.status === "success" &&
+    questions.status === "success" &&
+    diagnosticsSettled
+  );
+  const reportReady = !restoredFromCache && reportAvailable;
+  const workflowSucceeded = reportAvailable && diagnosticsSucceeded;
+  const workspaceFlowComplete = workflowSucceeded;
+  const workspaceHasError = session.status === "error" || scoring.status === "error" ||
+    questions.status === "error" || Object.values(diagnostics).some((item) => item.status === "error");
+  const workspaceIsAnalyzing = !analysisPresentationComplete || session.status === "loading" || scoring.status === "loading" ||
+    questions.status === "loading" || Object.values(diagnostics).some(
+      (item) => item.status === "queued" || item.status === "loading",
+    );
+  const editorReady = Boolean(
+    draft.title.trim() &&
+    contentText.trim().length >= MIN_ARTICLE_CHARACTERS &&
+    remaining >= 0
+  );
+  const workspaceStatus: WorkspaceStatus = !analysisStarted
+    ? error || Object.values(fieldErrors).some(Boolean)
+      ? "error"
+      : editorReady
+        ? "ready"
+        : "empty"
+    : workspaceHasError
+      ? "error"
+      : restoredFromCache
+        ? "warning"
+        : workspaceFlowComplete
+          ? "completed"
+          : workspaceIsAnalyzing
+            ? "analyzing"
+            : "warning";
+  const canOpenAdvice = analysisStarted && workflowSucceeded;
+  const canOpenRecheck = canOpenAdvice && Boolean(contentText.trim());
+
+  const abortActiveAnalysis = useCallback(() => {
+    analysisControllerRef.current?.abort();
+    analysisControllerRef.current = null;
+  }, []);
+
+  const clearAnalysisProgressTimers = useCallback(() => {
+    analysisProgressTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    analysisProgressTimersRef.current = [];
+  }, []);
+
+  const beginAnalysisProgress = useCallback(() => {
+    clearAnalysisProgressTimers();
+    analysisCompletionHandledRef.current = false;
+    setAnalysisProgressStep(0);
+    setAnalysisProgressComplete(false);
+
+    const transitionTimers = ANALYSIS_PROGRESS_TRANSITIONS.map(({ delay, step }) =>
+      window.setTimeout(() => setAnalysisProgressStep(step), delay)
+    );
+    const completionTimer = window.setTimeout(() => {
+      setAnalysisProgressComplete(true);
+      analysisProgressTimersRef.current = [];
+    }, ANALYSIS_PROGRESS_COMPLETE_DELAY_MS);
+
+    analysisProgressTimersRef.current = [...transitionTimers, completionTimer];
+  }, [clearAnalysisProgressTimers]);
+
+  useEffect(() => clearAnalysisProgressTimers, [clearAnalysisProgressTimers]);
+
+  const flushDraftSession = useCallback((nextDraft?: ArticleDraft) => {
+    if (nextDraft) draftRef.current = nextDraft;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    if (!storageReadyRef.current) return;
+    saveDraftSession(draftRef.current);
+  }, []);
+
+  const clearPersistedDraftAnalysis = useCallback((nextDraft?: ArticleDraft) => {
+    if (nextDraft) draftRef.current = nextDraft;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    if (!storageReadyRef.current) return;
+    clearDraftAnalysis(draftRef.current);
+  }, []);
+
+  const restoreCachedAnalysis = useCallback((cached: CacheEnvelope, restoredDraft: ArticleDraft) => {
+    abortActiveAnalysis();
+    clearAnalysisProgressTimers();
+    analysisCompletionHandledRef.current = true;
+    activeAnalysisHashRef.current = cached.analysisHash;
+    setActiveSessionRunId(null);
+    setGeoAnalysisToken(null);
+    if (restoredDraft.content) {
+      markDraftAnalysis(restoredDraft, cached.analysisHash, "success");
+    }
+    draftRef.current = restoredDraft;
+    setDraft(restoredDraft);
+    setParagraphs([]);
+    setScoring({ status: "success", data: cached.report.scoring });
+    setQuestions({
+      status: "success",
+      data: {
+        questions: cached.report.questionOrder,
+        source: cached.report.questionSource,
+      },
+    });
+    setQuestionOrder(cached.report.questionOrder);
+    setDiagnostics(cached.report.diagnostics);
+    setFeedbackByQuestion({});
+    setPatchChecklist([]);
+    setAnalysisStarted(true);
+    setRestoredFromCache(true);
+    setAnalysisProgressStep(3);
+    setAnalysisProgressComplete(true);
+    setWorkspaceStage("report");
+    setReportView("overview");
+  }, [abortActiveAnalysis, clearAnalysisProgressTimers]);
 
   useEffect(() => {
-    void warmGeoApi();
+    void postGeoBetaEvent({ event: "visit" });
   }, []);
+
+  useEffect(() => {
+    if (restoredFromCache || !workflowSucceeded) return;
+    const runId = activeSessionRunId;
+    if (!runId || reportedRunIdsRef.current.has(runId)) return;
+
+    reportedRunIdsRef.current.add(runId);
+    void postGeoBetaEvent({ event: "analysis_completed", runId });
+  }, [activeSessionRunId, restoredFromCache, workflowSucceeded]);
+
+  useEffect(() => {
+    if (!reportAvailable || analysisCompletionHandledRef.current) return;
+    analysisCompletionHandledRef.current = true;
+    setWorkspaceStage(recheckBaseline && workflowSucceeded ? "recheck" : "report");
+    setReportView(recheckBaseline && workflowSucceeded ? "recheck" : "overview");
+
+    window.requestAnimationFrame(() => {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    });
+  }, [recheckBaseline, reportAvailable, workflowSucceeded]);
+
+  useEffect(() => {
+    const runId = activeSessionRunId;
+    if (!reportReady || !runId || reportViewedRunIdsRef.current.has(runId)) return;
+
+    const target = document.getElementById("report-core");
+    if (!target || typeof IntersectionObserver === "undefined") return;
+
+    let visibleEnough = false;
+    let reported = false;
+    let lastTick = performance.now();
+    let elapsed = reportViewDwellRef.current.get(runId) ?? 0;
+    let intervalId: number | null = null;
+
+    const finish = () => {
+      if (reported) return;
+      reported = true;
+      reportViewedRunIdsRef.current.add(runId);
+      reportViewDwellRef.current.set(runId, elapsed);
+      if (intervalId !== null) window.clearInterval(intervalId);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void postGeoBetaEvent({ event: "report_viewed", runId });
+    };
+
+    const tick = () => {
+      const now = performance.now();
+      if (visibleEnough && document.visibilityState === "visible") {
+        elapsed += Math.max(0, now - lastTick);
+      }
+      lastTick = now;
+      reportViewDwellRef.current.set(runId, elapsed);
+      if (elapsed >= 10_000) finish();
+    };
+
+    const handleVisibilityChange = () => {
+      tick();
+      lastTick = performance.now();
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        tick();
+        visibleEnough = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5);
+        lastTick = performance.now();
+      },
+      { threshold: [0, 0.5, 1] },
+    );
+
+    observer.observe(target);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    intervalId = window.setInterval(tick, 250);
+
+    return () => {
+      if (intervalId !== null) window.clearInterval(intervalId);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeSessionRunId, reportReady]);
 
   useEffect(() => {
     if (!latestQuestion) return;
@@ -232,55 +555,152 @@ export default function Home() {
   }, [latestQuestion]);
 
   useEffect(() => {
-    const cached = readCachedReport();
-    if (!cached) return;
+    let cancelled = false;
 
-    setDraft({ title: cached.title, content: "", publishedAt: cached.publishedAt });
-    setScoring({ status: "success", data: cached.scoring });
-    setQuestions({
-      status: "success",
-      data: { questions: cached.questionOrder, source: "fallback" },
-    });
-    setQuestionOrder(cached.questionOrder);
-    setDiagnostics(cached.diagnostics);
-    setAnalysisStarted(true);
-    setRestoredFromCache(true);
-  }, []);
+    async function restoreSession() {
+      const stored = readDraftSession();
+      const cached = readCachedReport();
+
+      if (stored) {
+        const storedHash = await createAnalysisHash(stored.draft);
+        if (cancelled) return;
+
+        draftRef.current = stored.draft;
+        setDraft(stored.draft);
+        if (stored.analysis?.status === "running") {
+          markDraftAnalysis(stored.draft, storedHash, "failed");
+          setError("上次分析在完成前中断，草稿已恢复，请重新分析。");
+        } else if (
+          stored.analysis?.status === "success" &&
+          stored.analysis.analysisHash === storedHash &&
+          cached?.analysisHash === storedHash
+        ) {
+          restoreCachedAnalysis(cached, stored.draft);
+        }
+      } else if (cached) {
+        restoreCachedAnalysis(cached, {
+          title: cached.report.title,
+          content: "",
+          publishedAt: cached.report.publishedAt,
+        });
+      }
+
+      if (!cancelled) {
+        storageReadyRef.current = true;
+        setStorageReady(true);
+      }
+    }
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [restoreCachedAnalysis]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    draftRef.current = draft;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+    }
+
+    const timerId = window.setTimeout(() => {
+      if (draftSaveTimerRef.current !== timerId) return;
+      draftSaveTimerRef.current = null;
+      saveDraftSession(draftRef.current);
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+    draftSaveTimerRef.current = timerId;
+
+    return () => {
+      if (draftSaveTimerRef.current !== timerId) return;
+      window.clearTimeout(timerId);
+      draftSaveTimerRef.current = null;
+    };
+  }, [draft, storageReady]);
+
+  useEffect(() => {
+    const handlePageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        flushDraftSession();
+        return;
+      }
+      flushDraftSession();
+      abortActiveAnalysis();
+      setGeoAnalysisToken(null);
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      flushDraftSession();
+      abortActiveAnalysis();
+      setGeoAnalysisToken(null);
+    };
+  }, [abortActiveAnalysis, flushDraftSession]);
 
   useEffect(() => {
     if (restoredFromCache || !analysisStarted || scoring.status !== "success" || questions.status !== "success") return;
-    if (!questionOrder.length) return;
-    const allSettled = questionOrder.every((question) => {
-      const status = diagnostics[question]?.status;
-      return status === "success" || status === "error";
-    });
-    if (!allSettled) return;
+    if (!diagnosticsSettled) return;
 
+    const analysisHash = activeAnalysisHashRef.current;
+    if (!analysisHash) return;
+
+    if (!diagnosticsSucceeded) {
+      markDraftAnalysis(draft, analysisHash, "failed");
+      return;
+    }
+
+    markDraftAnalysis(draft, analysisHash, "success");
     saveCachedReport({
       title: draft.title,
       publishedAt: draft.publishedAt,
       scoring: scoring.data,
+      questionSource: questions.data.source,
       questionOrder,
       diagnostics,
-    });
-  }, [analysisStarted, diagnostics, draft.publishedAt, draft.title, questionOrder, questions, restoredFromCache, scoring]);
+    }, analysisHash);
+  }, [analysisStarted, diagnostics, diagnosticsSettled, diagnosticsSucceeded, draft, questionOrder, questions, restoredFromCache, scoring]);
 
   function updateDraft(field: keyof ArticleDraft, value: string) {
-    setDraft((current) => ({ ...current, [field]: value }));
+    if (!editorStartedReportedRef.current) {
+      editorStartedReportedRef.current = true;
+      void postGeoBetaEvent({ event: "editor_started" });
+    }
+    setDraft((current) => {
+      const nextDraft = { ...current, [field]: value };
+      draftRef.current = nextDraft;
+      return nextDraft;
+    });
     if (field === "title" || field === "content") {
       setFieldErrors((current) => ({ ...current, [field]: undefined }));
     }
   }
 
   function loadSample(sample: (typeof SAMPLES)[number]) {
+    if (!editorStartedReportedRef.current) {
+      editorStartedReportedRef.current = true;
+      void postGeoBetaEvent({ event: "editor_started" });
+    }
     activeRunRef.current += 1;
-    setDraft({ title: sample.title, content: sample.content, publishedAt: sample.publishedAt });
+    abortActiveAnalysis();
+    setGeoAnalysisToken(null);
+    const nextDraft = {
+      title: sample.title,
+      content: sample.content,
+      publishedAt: sample.publishedAt,
+    };
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
+    clearPersistedDraftAnalysis(nextDraft);
     setAnalysisStarted(false);
+    setWorkspaceStage("review");
+    setReportView("overview");
     setSession({ status: "idle" });
     setScoring({ status: "idle" });
     setQuestions({ status: "idle" });
     setQuestionOrder([]);
     setDiagnostics({});
+    setFeedbackByQuestion({});
     setParagraphs([]);
     setFollowUpQuestion("");
     setFollowUpError("");
@@ -288,19 +708,37 @@ export default function Home() {
     setError("");
     setFieldErrors({});
     setRestoredFromCache(false);
+    setRecheckBaseline(null);
+    setPatchChecklist([]);
   }
 
-  async function loadScoring(runId: number, article: ArticleDraft) {
+  function handleLoadSample(sample: (typeof SAMPLES)[number]) {
+    const isDirty = (draft?.title?.trim() ?? "") !== "" || contentText.trim() !== "";
+    if (!isDirty || window.confirm("加载样本将覆盖当前已输入内容，确认继续吗？")) {
+      loadSample(sample);
+    }
+  }
+
+  async function loadScoring(
+    runId: number,
+    article: ArticleDraft,
+    signal: AbortSignal,
+  ) {
     try {
-      const response = await postGeoJson("/api/evaluate-scoring", article);
-      if (!response.ok) throw new Error(await responseError(response, "评分暂时失败。"));
-      const data = (await response.json()) as EvaluateScoringResponse;
+      const data = await withGeoRequestDeadline(async (requestSignal) => {
+        const response = await postGeoJson("/api/evaluate-scoring", article, { signal: requestSignal });
+        if (!response.ok) throw new Error(await responseError(response, "评分暂时失败。"));
+        return (await response.json()) as EvaluateScoringResponse;
+      }, { signal, deadlineMs: SCORING_DEADLINE_MS });
       if (activeRunRef.current === runId) setScoring({ status: "success", data });
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
+      const analysisHash = activeAnalysisHashRef.current;
+      if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
       setScoring({
         status: "error",
-        error: requestError instanceof Error ? requestError.message : "评分暂时失败。",
+        error: requestErrorMessage(requestError, "评分暂时失败。", "评分分析超时，请稍后重试。"),
       });
     }
   }
@@ -310,21 +748,23 @@ export default function Home() {
     title: string,
     articleParagraphs: Paragraph[],
     question: string,
+    signal: AbortSignal,
   ) {
-    if (activeRunRef.current !== runId) return;
+    if (activeRunRef.current !== runId || signal.aborted) return;
     setDiagnostics((current) => ({
       ...current,
       [question]: { ...current[question], question, status: "loading" },
     }));
 
     try {
-      const data = await requestDiagnostic(title, articleParagraphs, question);
+      const data = await requestDiagnostic(title, articleParagraphs, question, signal);
       if (activeRunRef.current !== runId) return;
       setDiagnostics((current) => ({
         ...current,
         [question]: { ...current[question], question, status: "success", data, error: undefined },
       }));
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
       setDiagnostics((current) => ({
         ...current,
@@ -332,20 +772,27 @@ export default function Home() {
           ...current[question],
           question,
           status: "error",
-          error: requestError instanceof Error ? requestError.message : "该问题分析失败。",
+          error: requestErrorMessage(requestError, "该问题分析失败。", "该问题分析超时，请稍后重试。"),
         },
       }));
     }
   }
 
-  async function loadQuestionsAndDiagnostics(runId: number, articleParagraphs: Paragraph[], title: string) {
+  async function loadQuestionsAndDiagnostics(
+    runId: number,
+    articleParagraphs: Paragraph[],
+    article: ArticleDraft,
+    signal: AbortSignal,
+  ) {
     try {
-      const response = await postGeoJson("/api/predict-questions", {
-        title,
-        numbered_paragraphs: articleParagraphs,
-      });
-      if (!response.ok) throw new Error(await responseError(response, "问题预测暂时失败。"));
-      const data = (await response.json()) as PredictQuestionsResponse;
+      const data = await withGeoRequestDeadline(async (requestSignal) => {
+        const response = await postGeoJson("/api/predict-questions", {
+          title: article.title,
+          numbered_paragraphs: articleParagraphs,
+        }, { signal: requestSignal });
+        if (!response.ok) throw new Error(await responseError(response, "问题预测暂时失败。"));
+        return (await response.json()) as PredictQuestionsResponse;
+      }, { signal, deadlineMs: QUESTIONS_DEADLINE_MS });
       if (activeRunRef.current !== runId) return;
 
       setQuestions({ status: "success", data });
@@ -353,16 +800,20 @@ export default function Home() {
       setDiagnostics(initialDiagnostics(data.questions));
       await Promise.all(
         data.questions.map((question) =>
-          scheduleGeoDiagnostic(() =>
-            diagnoseQuestion(runId, title, articleParagraphs, question),
+          scheduleGeoDiagnostic(
+            () => diagnoseQuestion(runId, article.title, articleParagraphs, question, signal),
+            signal,
           ),
         ),
       );
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
+      const analysisHash = activeAnalysisHashRef.current;
+      if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
       setQuestions({
         status: "error",
-        error: requestError instanceof Error ? requestError.message : "问题预测暂时失败。",
+        error: requestErrorMessage(requestError, "问题预测暂时失败。", "问题预测超时，请稍后重试。"),
       });
     }
   }
@@ -371,44 +822,72 @@ export default function Home() {
     runId: number,
     article: ArticleDraft,
     articleParagraphs: Paragraph[],
+    signal: AbortSignal,
   ) {
     try {
-      const response = await postGeoJson(
-        "/api/analysis-session",
-        {},
-        { includeAnalysisToken: false },
-      );
-      if (!response.ok) {
-        throw new Error(await responseError(response, "暂时无法开始体检。"));
-      }
-
-      const session = (await response.json()) as AnalysisSessionClientData;
+      const session = await withGeoRequestDeadline(async (requestSignal) => {
+        const response = await postGeoJson(
+          "/api/analysis-session",
+          {},
+          { includeAnalysisToken: false, signal: requestSignal },
+        );
+        if (!response.ok) {
+          throw new Error(await responseError(response, "暂时无法开始体检。"));
+        }
+        return (await response.json()) as AnalysisSessionClientData;
+      }, { signal, deadlineMs: ANALYSIS_SESSION_DEADLINE_MS });
       if (!session.token || typeof session.token !== "string") {
         throw new Error("分析会话无效，请重新提交。");
       }
       if (activeRunRef.current !== runId) return;
 
       setGeoAnalysisToken(session.token);
+      setActiveSessionRunId(session.runId);
       setSession({ status: "success" });
       recordUsage();
-      void loadScoring(runId, article);
-      void loadQuestionsAndDiagnostics(runId, articleParagraphs, article.title);
+      void postGeoBetaEvent({ event: "analysis_started", runId: session.runId });
+      void loadScoring(runId, article, signal);
+      void loadQuestionsAndDiagnostics(runId, articleParagraphs, article, signal);
     } catch (requestError) {
+      if (isGeoAbortError(requestError)) return;
       if (activeRunRef.current !== runId) return;
-      const message = requestError instanceof Error ? requestError.message : "暂时无法开始体检。";
+      const analysisHash = activeAnalysisHashRef.current;
+      if (analysisHash) markDraftAnalysis(article, analysisHash, "failed");
+      const message = requestErrorMessage(requestError, "暂时无法开始体检。", "建立分析会话超时，请稍后重试。");
       setSession({ status: "error", error: message });
       setScoring({ status: "idle" });
       setQuestions({ status: "idle" });
     }
   }
 
-  function startAnalysis(article: ArticleDraft) {
+  async function startAnalysis(article: ArticleDraft, force = false) {
+    flushDraftSession(article);
     const runId = activeRunRef.current + 1;
     activeRunRef.current = runId;
+    abortActiveAnalysis();
+    const controller = new AbortController();
+    analysisControllerRef.current = controller;
+    const { signal } = controller;
+    const analysisHash = await createAnalysisHash(article);
+    if (activeRunRef.current !== runId || signal.aborted) return;
+
+    const cached = readCachedReport();
+    if (!force && cached?.analysisHash === analysisHash) {
+      markDraftAnalysis(article, analysisHash, "success");
+      restoreCachedAnalysis(cached, article);
+      return;
+    }
+
     const articleParagraphs = createNumberedParagraphs(article.content);
 
+    if (!recheckBaseline) setPatchChecklist([]);
+    activeAnalysisHashRef.current = analysisHash;
+    markDraftAnalysis(article, analysisHash, "running");
     setParagraphs(articleParagraphs);
     setAnalysisStarted(true);
+    beginAnalysisProgress();
+    setWorkspaceStage("report");
+    setReportView("overview");
     setSession({ status: "loading" });
     setRestoredFromCache(false);
     setExpandedQuestion(null);
@@ -416,17 +895,19 @@ export default function Home() {
     setQuestions({ status: "loading" });
     setQuestionOrder([]);
     setDiagnostics({});
+    setFeedbackByQuestion({});
     setFollowUpQuestion("");
     setFollowUpError("");
     setLatestQuestion(null);
     setGeoAnalysisToken(null);
+    setActiveSessionRunId(null);
 
     window.requestAnimationFrame(() => {
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
     });
 
-    void openAnalysisSession(runId, article, articleParagraphs);
+    void openAnalysisSession(runId, article, articleParagraphs, signal);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -434,8 +915,12 @@ export default function Home() {
     setError("");
 
     const nextFieldErrors: FieldErrors = {};
-    if (!draft.title.trim()) nextFieldErrors.title = "请输入文章标题。";
-    if (!draft.content.trim()) nextFieldErrors.content = "请粘贴文章正文。";
+    if (!(draft.title ?? "").trim()) nextFieldErrors.title = "请输入文章标题。";
+    if (!contentText.trim()) {
+      nextFieldErrors.content = "请粘贴文章正文。";
+    } else if (contentText.trim().length < MIN_ARTICLE_CHARACTERS) {
+      nextFieldErrors.content = `正文至少需要 ${MIN_ARTICLE_CHARACTERS} 字，才能进行可信度审查。`;
+    }
 
     if (Object.keys(nextFieldErrors).length) {
       setFieldErrors(nextFieldErrors);
@@ -445,7 +930,7 @@ export default function Home() {
       });
       return;
     }
-    if (draft.content.length > 12_000) {
+    if (contentLength > MAX_ARTICLE_CHARACTERS) {
       setError("正文超过 12,000 字，请删减后重试。");
       return;
     }
@@ -454,55 +939,172 @@ export default function Home() {
       return;
     }
 
-    startAnalysis(draft);
+    void startAnalysis({ ...draft, content: contentText });
   }
 
   function backToEditor() {
     activeRunRef.current += 1;
+    abortActiveAnalysis();
+    clearAnalysisProgressTimers();
+    analysisCompletionHandledRef.current = false;
+    setAnalysisProgressStep(0);
+    setAnalysisProgressComplete(false);
+    clearPersistedDraftAnalysis();
+    setActiveSessionRunId(null);
+    setGeoAnalysisToken(null);
     setAnalysisStarted(false);
     setSession({ status: "idle" });
     setExpandedQuestion(null);
     setError("");
   }
 
+  function openEditorForRecheck() {
+    if (scoring.status === "success" && diagnosticsSucceeded) {
+      setRecheckBaseline((current) => current ?? createReportComparisonSnapshot(
+        scoring.data,
+        questionOrder,
+        diagnostics,
+      ));
+    }
+    setWorkspaceStage("recheck");
+    backToEditor();
+    focusEditor();
+  }
+
+  function returnToEditorAfterError() {
+    setWorkspaceStage(recheckBaseline ? "recheck" : "review");
+    if (!recheckBaseline) setReportView("overview");
+    backToEditor();
+    focusEditor();
+  }
+
+  function startNewAnalysis() {
+    setRecheckBaseline(null);
+    setPatchChecklist([]);
+    setWorkspaceStage("review");
+    setReportView("overview");
+    backToEditor();
+    focusEditor();
+  }
+
+  function scrollToSection(sectionId: string) {
+    const settledOnlySection = sectionId === "diagnostic-section" || sectionId === "evidence-section";
+    const succeededOnlySection = sectionId === "patch-workshop" || sectionId === "recheck-comparison";
+    if (settledOnlySection && !reportAvailable) return;
+    if (succeededOnlySection && !workflowSucceeded) return;
+
+    if (sectionId === "patch-workshop") {
+      setWorkspaceStage("advice");
+      setReportView("patch");
+    } else if (sectionId === "diagnostic-section") {
+      setWorkspaceStage("report");
+      setReportView("diagnosis");
+    } else if (sectionId === "evidence-section") {
+      setWorkspaceStage("report");
+      setReportView("evidence");
+    } else if (sectionId === "recheck-comparison") {
+      if (!recheckBaseline) return;
+      setWorkspaceStage("recheck");
+      setReportView("recheck");
+    } else if (sectionId === "report-overview" || sectionId === "report-core") {
+      setWorkspaceStage("report");
+      setReportView("overview");
+    }
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+      });
+    });
+  }
+
   function retryScoring() {
-    startAnalysis(draft);
+    void startAnalysis(draft, true);
   }
 
   function retryQuestions() {
-    startAnalysis(draft);
+    void startAnalysis(draft, true);
   }
 
   function reportStatus() {
     if (restoredFromCache) {
-      return { label: "本地缓存报告", className: "border-[#d8e4e1] text-[#687386]" };
+      return { label: "本地缓存报告", className: "status-neutral" };
     }
     if (session.status === "loading") {
-      return { label: "正在建立会话", className: "border-[#ead8ac] bg-[#fffaf0] text-[#8a5b12]" };
+      return { label: "正在建立会话", className: "status-warning" };
     }
     if (session.status === "error" || scoring.status === "error" || questions.status === "error") {
-      return { label: "需要重新体检", className: "border-[#f0d6d1] bg-[#fff8f6] text-[#a43e2b]" };
+      return { label: "需要重新审查", className: "status-danger" };
     }
     if (scoring.status === "loading" || questions.status === "loading") {
-      return { label: "正在分析", className: "border-[#d8e4e1] bg-[#f3f7f6] text-[#0e766e]" };
+      return { label: "正在分析", className: "status-info" };
     }
     if (scoring.status === "success" && scoring.data.source === "model") {
-      return { label: "AI 模型分析", className: "border-[#b9d9d4] bg-[#e7f4f1] text-[#0e766e]" };
+      return { label: "AI 模型分析", className: "status-success" };
     }
-    return { label: "安全降级结果", className: "border-[#d8e4e1] text-[#687386]" };
+    return { label: "安全降级结果", className: "status-neutral" };
   }
 
   function retryDiagnostic(question: string) {
     const current = diagnostics[question];
     if (!current || current.errorCount >= 2 || !paragraphs.length) return;
 
+    const runId = activeRunRef.current;
+    const signal = analysisControllerRef.current?.signal;
+    if (!signal || signal.aborted) return;
     setDiagnostics((state) => ({
       ...state,
       [question]: { ...state[question], status: "queued", errorCount: state[question].errorCount + 1 },
     }));
-    void scheduleGeoDiagnostic(() =>
-      diagnoseQuestion(activeRunRef.current, draft.title, paragraphs, question),
-    );
+    void scheduleGeoDiagnostic(
+      () => diagnoseQuestion(runId, draft.title, paragraphs, question, signal),
+      signal,
+    ).catch((scheduleError: unknown) => {
+      if (isGeoAbortError(scheduleError) || activeRunRef.current !== runId) return;
+      setDiagnostics((state) => ({
+        ...state,
+        [question]: {
+          ...state[question],
+          question,
+          status: "error",
+          error: requestErrorMessage(scheduleError, "该问题分析失败。", "该问题分析超时，请稍后重试。"),
+        },
+      }));
+    });
+  }
+
+  function focusEditor() {
+    window.requestAnimationFrame(() => titleRef.current?.focus());
+  }
+
+  function openReviewStage() {
+    if (analysisStarted) {
+      startNewAnalysis();
+      return;
+    }
+    setRecheckBaseline(null);
+    setReportView("overview");
+    setWorkspaceStage("review");
+    focusEditor();
+  }
+
+  function openReportStage() {
+    if (!analysisStarted) return;
+    scrollToSection("report-overview");
+  }
+
+  function openAdviceStage() {
+    if (!canOpenAdvice) return;
+    scrollToSection("patch-workshop");
+  }
+
+  function openRecheckStage() {
+    if (!canOpenRecheck) return;
+    if (recheckBaseline && workflowSucceeded) {
+      scrollToSection("recheck-comparison");
+      return;
+    }
+    openEditorForRecheck();
   }
 
   function submitFollowUp(event: FormEvent<HTMLFormElement>) {
@@ -527,6 +1129,11 @@ export default function Home() {
     }
 
     const runId = activeRunRef.current;
+    const signal = analysisControllerRef.current?.signal;
+    if (!signal || signal.aborted) {
+      setFollowUpError("当前分析会话已结束，请重新运行体检后再追问。");
+      return;
+    }
     setFollowUpQuestion("");
     setFollowUpError("");
     setLatestQuestion(question);
@@ -536,357 +1143,175 @@ export default function Home() {
       ...current,
       [question]: { question, status: "queued", errorCount: 0 },
     }));
-    void scheduleGeoDiagnostic(() =>
-      diagnoseQuestion(runId, draft.title, paragraphs, question),
-    );
+    void scheduleGeoDiagnostic(
+      () => diagnoseQuestion(runId, draft.title, paragraphs, question, signal),
+      signal,
+    ).catch((scheduleError: unknown) => {
+      if (isGeoAbortError(scheduleError) || activeRunRef.current !== runId) return;
+      setDiagnostics((state) => ({
+        ...state,
+        [question]: {
+          ...state[question],
+          question,
+          status: "error",
+          error: requestErrorMessage(scheduleError, "该问题分析失败。", "该问题分析超时，请稍后重试。"),
+        },
+      }));
+    });
   }
 
-  function renderScoreDashboard() {
-    if (scoring.status === "loading" || scoring.status === "idle") return <ScoreSkeleton />;
-    if (scoring.status === "error") {
-      return (
-        <div className="card flex min-h-[150px] flex-col items-start justify-center p-6">
-          <h2 className="font-bold">评分暂时失败</h2>
-          <p className="mt-2 text-sm text-[#687386]">{scoring.error}</p>
-          {!restoredFromCache && draft.content ? (
-            <button type="button" onClick={retryScoring} className="mt-4 h-9 rounded-lg bg-[#0e766e] px-4 text-sm font-semibold text-white">
-              重新评分
-            </button>
-          ) : null}
-        </div>
-      );
-    }
+  function submitDiagnosisFeedback(question: string, helpful: boolean) {
+    if (restoredFromCache || !activeSessionRunId) return;
+    if (feedbackByQuestion[question] !== undefined) return;
+    const diagnosticIndex = questionOrder.indexOf(question);
+    if (diagnosticIndex < 0) return;
 
-    const report = scoring.data;
-    return (
-      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div className="card overflow-hidden border-[#17212b] bg-[#17212b] p-5 text-white sm:p-6">
-          <div className="text-xs font-bold text-[#aeb9c5]">综合 GEO 得分</div>
-          <div className="mt-4 flex items-end gap-2">
-            <strong className="text-6xl text-[#7dc8bd]">{report.totalScore}</strong>
-            <span className="pb-2 text-[#c2cad3]">/ 100</span>
-          </div>
-          <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-[#7dc8bd]" style={{ width: `${report.totalScore}%` }} />
-          </div>
-          <p className="mt-4 text-sm leading-6 text-[#c2cad3]">
-            该分数衡量内容被 AI 理解与引用的准备度，不代表实际收录或排名。
-          </p>
-        </div>
-
-        <div className="card p-5 sm:p-6">
-          <div className="label">四维看板</div>
-          <div className="mt-5 grid gap-x-7 gap-y-5 min-[560px]:grid-cols-2">
-            {DIMENSION_META.map(({ key, label, bar }) => {
-              const dimension = report.dimensions[key];
-              const percentage = Math.round((dimension.score / dimension.max) * 100);
-              return (
-                <div key={key}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-semibold">{label}</span>
-                    <span className="text-[#687386]">{dimension.score} / {dimension.max}</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#edf0f2]">
-                    <div className={`h-full rounded-full ${bar}`} style={{ width: `${percentage}%` }} />
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-[#687386]">{dimension.reason}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+    setFeedbackByQuestion((current) => ({ ...current, [question]: helpful }));
+    void postGeoBetaEvent({
+      event: "diagnosis_feedback",
+      runId: activeSessionRunId,
+      diagnosticIndex,
+      helpful,
+    });
   }
 
-  function renderDiagnostics() {
-    if (questions.status === "loading" || questions.status === "idle") {
-      return (
-        <div className="mt-3 grid gap-3" aria-label="正在预测读者问题">
-          {Array.from({ length: 5 }, (_, index) => (
-            <div key={index} className="card flex min-h-[76px] items-center gap-3 p-4">
-              <span className="h-8 w-8 rounded-lg bg-[#edf0f2]" />
-              <span className="h-4 w-2/3 animate-pulse rounded bg-[#edf0f2] motion-reduce:animate-none" />
-            </div>
-          ))}
-        </div>
-      );
-    }
-    if (questions.status === "error") {
-      return (
-        <div className="card mt-3 p-5">
-          <p className="font-semibold">{questions.error}</p>
-          {!restoredFromCache && paragraphs.length ? (
-            <button type="button" onClick={retryQuestions} className="mt-3 h-9 rounded-lg bg-[#0e766e] px-4 text-sm font-semibold text-white">
-              重新生成问题
-            </button>
-          ) : null}
-        </div>
-      );
-    }
-
-    return (
-      <div className="mt-3 grid gap-3">
-        {questionOrder.map((question, index) => {
-          const item = diagnostics[question] ?? {
-            question,
-            status: "queued" as const,
-            errorCount: 0,
-          };
-          return (
-            <div key={question} ref={latestQuestion === question ? latestQuestionRef : undefined}>
-              <DiagnosticAccordion
-                id={String(index + 1).padStart(2, "0")}
-                item={item}
-                expanded={expandedQuestion === question}
-                onToggle={() => setExpandedQuestion((current) => (current === question ? null : question))}
-                onRetry={() => retryDiagnostic(question)}
-                canRetry={item.errorCount < 2 && paragraphs.length > 0}
-              />
-            </div>
-          );
-        })}
-      </div>
-    );
+  function addPatchChecklistItem(item: PatchChecklistItem) {
+    setPatchChecklist((current) => (
+      current.some((existing) => existing.id === item.id) ? current : [...current, item]
+    ));
   }
+
+  const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL;
 
   return (
-    <main className="min-h-screen bg-[#f6f8f7] text-[#17212b]">
-      <header className="sticky top-0 z-40 border-b border-[#e1e6ea] bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-5 lg:px-8">
-          <div className="flex items-center gap-3">
-            <span className="relative grid h-10 w-10 place-items-center overflow-hidden rounded-lg bg-[#17212b] text-sm font-bold text-white">
-              理
-              <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 bg-[#3aa395]" />
-            </span>
-            <div>
-              <div className="text-sm font-bold leading-5">理据 GEO</div>
-              <div className="hidden text-xs text-[#667085] sm:block">内容体检工作台</div>
-            </div>
-          </div>
-          <span className="rounded-full border border-[#cce2de] bg-[#edf7f5] px-3 py-1.5 text-xs font-semibold text-[#0b6b63]">正文不保存</span>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-5 sm:py-7 lg:px-8">
-        {analysisStarted ? (
-          <section
-            aria-live="polite"
-            aria-busy={session.status === "loading" || scoring.status === "loading" || questions.status === "loading"}
-          >
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-              <div className="min-w-0">
-                <button
-                  type="button"
-                  onClick={backToEditor}
-                  className="mb-4 inline-flex h-9 items-center gap-2 rounded-lg border border-[#d6dde2] bg-white px-3 text-sm font-semibold text-[#465266] hover:border-[#aebcc6] hover:bg-[#f8faf9]"
-                >
-                  <span aria-hidden="true">←</span>
-                  返回编辑
-                </button>
-                <p className="max-w-3xl break-words text-sm text-[#667085]">{draft.title}</p>
-                <h1 className="mt-1 text-2xl font-bold sm:text-3xl">体检报告</h1>
-              </div>
-              <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${reportStatus().className}`}>
-                {reportStatus().label}
-              </span>
-            </div>
-
-            {session.status === "error" ? (
-              <div role="alert" className="border border-[#f0d6d1] border-l-4 border-l-[#d85f47] bg-[#fff8f6] p-5 sm:p-6">
-                <h2 className="text-lg font-bold text-[#8f3524]">无法开始本次体检</h2>
-                <p className="mt-2 text-sm leading-6 text-[#6f453d]">{session.error}</p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => startAnalysis(draft)}
-                    className="h-10 rounded-lg bg-[#17202f] px-5 text-sm font-bold text-white hover:bg-[#2a3444]"
-                  >
-                    重新开始体检
-                  </button>
-                  <button
-                    type="button"
-                    onClick={backToEditor}
-                    className="h-10 rounded-lg border border-[#d8a99f] bg-white px-5 text-sm font-semibold text-[#8f3524]"
-                  >
-                    返回编辑
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <div hidden={session.status === "error"}>
-              {session.status === "loading" ? (
-                <div className="mb-5 flex items-center gap-3 border-l-2 border-[#93c4bd] bg-[#f3f7f6] px-4 py-3 text-sm text-[#465266]">
-                  <span aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#b9d9d4] border-t-[#0e766e] motion-reduce:animate-none" />
-                  <span>正在准备文章体检，请稍候。</span>
-                </div>
-              ) : null}
-
-              {renderScoreDashboard()}
-
-              <section className="mt-8">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <p className="label">Question Diagnostics</p>
-                  <h2 className="mt-1 text-xl font-bold sm:text-2xl">AI 读者问题诊断</h2>
-                </div>
-                {questionOrder.length ? (
-                  <span className="rounded-full border border-[#d6dde2] bg-white px-3 py-1.5 text-xs font-semibold text-[#667085]">
-                    已完成 {completedCount} / {questionOrder.length}
-                  </span>
-                ) : null}
-              </div>
-              {renderDiagnostics()}
-
-              {questions.status === "success" ? (
-                <form onSubmit={submitFollowUp} className="card mt-4 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <label htmlFor="follow-up-question" className="text-sm font-bold">测试读者真实提问</label>
-                    <span className="text-xs text-[#687386]">{questionOrder.length} / 10</span>
-                  </div>
-                  <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                    <input
-                      id="follow-up-question"
-                      value={followUpQuestion}
-                      onChange={(event) => {
-                        setFollowUpQuestion(event.target.value);
-                        setFollowUpError("");
-                      }}
-                      maxLength={200}
-                      disabled={!paragraphs.length || questionOrder.length >= 10}
-                      placeholder="例如：文章解释清楚为什么选择 A 而不是 B 吗？"
-                      className="h-11 min-w-0 flex-1 rounded-lg border border-[#d6dde2] bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-[#eef2f3]"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!paragraphs.length || questionOrder.length >= 10 || !followUpQuestion.trim()}
-                      className="h-11 rounded-lg bg-[#17212b] px-5 text-sm font-bold text-white hover:bg-[#2a3642] disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      分析这个问题
-                    </button>
-                  </div>
-                  {followUpError ? <p role="alert" className="mt-2 text-sm text-[#a43e2b]">{followUpError}</p> : null}
-                  {customQuestions.length ? (
-                    <p className="mt-3 text-xs text-[#687386]">
-                      追问覆盖率：{answeredCustomQuestions} / {customQuestions.length} 可完全回答
-                    </p>
-                  ) : null}
-                </form>
-              ) : null}
-              </section>
-
-              <PatchWorkshop title={draft.title} paragraphs={paragraphs} />
-
-              {scoring.status === "success" && scoring.data.numbered_paragraphs.length ? (
-                <section className="mt-7">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-lg font-bold">原文证据锚点</h2>
-                  <span className="text-xs text-[#687386]">共 {scoring.data.numbered_paragraphs.length} 段</span>
-                </div>
-                <div className="grid gap-3">
-                  {scoring.data.numbered_paragraphs.map((paragraph) => (
-                    <article key={paragraph.id} className="card grid gap-3 p-4 sm:grid-cols-[80px_1fr]">
-                      <span className="text-xs font-bold text-[#0e766e]">{paragraph.id}</span>
-                      <p className="text-sm leading-7 text-[#465266]">{paragraph.text}</p>
-                    </article>
-                  ))}
-                </div>
-                </section>
-              ) : restoredFromCache ? (
-                <p className="mt-7 border-l-2 border-[#d8e4e1] pl-4 text-sm text-[#687386]">缓存报告不保留原文段落。重新运行体检可查看完整证据锚点。</p>
-              ) : null}
-            </div>
-          </section>
-        ) : (
-          <section>
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-              <div>
-              <p className="label">AI Search Readiness</p>
-                <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">新建内容体检</h1>
-              </div>
-              <p className="text-sm text-[#667085]">公众号 / 博客中文长文</p>
-            </div>
-
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_320px]">
-              <form onSubmit={submit} className="card p-4 sm:p-5">
-                <div className="grid gap-4 min-[560px]:grid-cols-[1fr_190px]">
-                  <label className="grid gap-2 text-sm font-semibold">
-                    <span>文章标题</span>
-                    <input
-                      ref={titleRef}
-                      value={draft.title}
-                      onChange={(event) => updateDraft("title", event.target.value)}
-                      maxLength={120}
-                      aria-invalid={Boolean(fieldErrors.title)}
-                      aria-describedby={fieldErrors.title ? "title-error" : undefined}
-                      className={`h-11 rounded-lg border bg-white px-3 font-normal ${fieldErrors.title ? "border-[#c95742]" : "border-[#d6dde2]"}`}
-                      placeholder="输入文章标题"
-                    />
-                    {fieldErrors.title ? <span id="title-error" className="text-xs font-normal text-[#a43e2b]">{fieldErrors.title}</span> : null}
-                  </label>
-                  <div className="grid content-start gap-2 text-sm font-semibold">
-                    <span>发布日期</span>
-                    <DatePicker value={draft.publishedAt} onChange={(value) => updateDraft("publishedAt", value)} />
-                  </div>
-                </div>
-
-                <label className="mt-4 grid gap-2 text-sm font-semibold">
-                  <span className="flex items-center justify-between">
-                    正文
-                    <span className={remaining < 0 ? "text-[#d85f47]" : "font-normal text-[#687386]"}>{draft.content.length.toLocaleString()} / 12,000</span>
-                  </span>
-                  <textarea
-                    ref={contentRef}
-                    value={draft.content}
-                    onChange={(event) => updateDraft("content", event.target.value)}
-                    aria-invalid={Boolean(fieldErrors.content)}
-                    aria-describedby={fieldErrors.content ? "content-error" : undefined}
-                    className={`min-h-[280px] resize-y rounded-lg border bg-white p-4 font-normal leading-7 sm:min-h-[300px] lg:min-h-[310px] ${fieldErrors.content ? "border-[#c95742]" : "border-[#d6dde2]"}`}
-                    placeholder="粘贴文章正文"
-                  />
-                  {fieldErrors.content ? <span id="content-error" className="text-xs font-normal text-[#a43e2b]">{fieldErrors.content}</span> : null}
-                </label>
-
-                {error ? <p role="alert" className="mt-4 rounded-lg bg-[#fff0ed] px-4 py-3 text-sm text-[#a43e2b]">{error}</p> : null}
-
-                <div className="mt-4 flex flex-col gap-3 border-t border-[#e1e6ea] pt-4 min-[480px]:flex-row min-[480px]:items-center min-[480px]:justify-between">
-                  <span className="text-xs text-[#667085]">每日最多 10 次</span>
-                  <button type="submit" className="h-11 w-full rounded-lg bg-[#0b6b63] px-6 text-sm font-bold text-white shadow-[0_6px_16px_rgba(11,107,99,.18)] hover:bg-[#095c55] min-[480px]:w-auto">
-                    立即体检
-                  </button>
-                </div>
-              </form>
-
-              <aside className="lg:sticky lg:top-24 lg:self-start">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold">演示样本</h2>
-                  <span className="text-xs text-[#8a94a3]">3 组</span>
-                </div>
-                <div className="mt-3 grid gap-3 min-[560px]:grid-cols-3 lg:grid-cols-1">
-                  {SAMPLES.map((sample, index) => {
-                    const style = SAMPLE_STYLES[index];
-                    return (
-                    <button
-                      key={sample.label}
-                      type="button"
-                      onClick={() => loadSample(sample)}
-                      className={`card group min-h-[128px] border-l-4 p-4 text-left transition-transform hover:-translate-y-0.5 hover:border-[#aebcc6] ${style.border}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${style.badge}`}>0{index + 1}</span>
-                        <span className="text-xs font-semibold text-[#667085] group-hover:text-[#17212b]">载入样本</span>
-                      </div>
-                      <div className="mt-3 font-bold">{sample.label}</div>
-                      <div className="mt-1 text-sm leading-6 text-[#667085]">{sample.note}</div>
-                    </button>
-                  )})}
-                </div>
-                <div className="mt-4 border-l-2 border-[#cbd8d5] pl-4 text-xs leading-6 text-[#667085]">仅评估内容准备度，不保证 AI 搜索收录、排名或实际引用。</div>
-              </aside>
-            </div>
-          </section>
+    <main className="app-shell">
+      <AppHeader
+        analysisStarted={analysisStarted}
+        onShowEditor={() => (
+          analysisStarted
+            ? workflowSucceeded
+              ? openEditorForRecheck()
+              : returnToEditorAfterError()
+            : focusEditor()
         )}
+        onNewAnalysis={startNewAnalysis}
+        feedbackUrl={feedbackUrl}
+        onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
+        navigation={(
+          <WorkspaceCommandBar
+            stage={workspaceStage}
+            status={workspaceStatus}
+            title={draft.title}
+            canOpenReport={analysisStarted}
+            canOpenAdvice={canOpenAdvice}
+            canOpenRecheck={canOpenRecheck}
+            onOpenReview={openReviewStage}
+            onOpenReport={openReportStage}
+            onOpenAdvice={openAdviceStage}
+            onOpenRecheck={openRecheckStage}
+          />
+        )}
+      />
+
+      <div className="workspace-shell-layout">
+        <WorkspaceSidebar
+          stage={workspaceStage}
+          reportView={reportView}
+          canOpenReport={analysisStarted}
+          canOpenAdvice={canOpenAdvice}
+          canOpenRecheck={canOpenRecheck}
+          onOpenReview={openReviewStage}
+          onOpenReport={openReportStage}
+          onOpenEvidence={() => scrollToSection("evidence-section")}
+          onOpenDiagnosis={() => scrollToSection("diagnostic-section")}
+          onOpenAdvice={openAdviceStage}
+          onOpenRecheck={openRecheckStage}
+          feedbackUrl={feedbackUrl}
+          onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
+        />
+
+        <div className="workspace-shell-content">
+          {analysisStarted ? (
+            <ReportWorkspace
+            view={reportView}
+            title={draft.title}
+            analysisSignal={analysisControllerRef.current?.signal}
+            contentAvailable={Boolean(draft.content)}
+            reportStatus={reportStatus()}
+            session={session}
+            scoring={scoring}
+            questions={questions}
+            scoreBand={currentScoreBand}
+            questionOrder={questionOrder}
+            diagnostics={diagnostics}
+            diagnosticsSettled={diagnosticsSettled}
+            diagnosticsSucceeded={diagnosticsSucceeded}
+            patchChecklist={patchChecklist}
+            recheckBaseline={recheckBaseline}
+            runId={activeSessionRunId}
+            completedCount={completedCount}
+            expandedQuestion={expandedQuestion}
+            latestQuestion={latestQuestion}
+            latestQuestionRef={latestQuestionRef}
+            restoredFromCache={restoredFromCache}
+            analysisProgressStep={analysisProgressStep}
+            analysisProgressAnimationKey={activeRunRef.current}
+            analysisProgressComplete={analysisProgressComplete}
+            paragraphs={paragraphs}
+            followUpQuestion={followUpQuestion}
+            followUpError={followUpError}
+            canAskFollowUp={canAskFollowUp}
+            canSubmitFollowUp={canSubmitFollowUp}
+            customQuestionCount={customQuestions.length}
+            answeredCustomQuestionCount={answeredCustomQuestions}
+            feedbackByQuestion={feedbackByQuestion}
+            feedbackEnabled={Boolean(activeSessionRunId) && !restoredFromCache}
+            canRetryDiagnostic={(question) => {
+              const item = diagnostics[question];
+              return Boolean(item && item.errorCount < 2 && paragraphs.length > 0);
+            }}
+            onBackToEditor={openEditorForRecheck}
+            onReturnToEditor={returnToEditorAfterError}
+            onRestartAnalysis={() => void startAnalysis(draft, true)}
+            onRetryScoring={retryScoring}
+            onRetryQuestions={retryQuestions}
+            onRetryDiagnostic={retryDiagnostic}
+            onToggleQuestion={(question) =>
+              setExpandedQuestion((current) => (current === question ? null : question))
+            }
+            onFollowUpQuestionChange={(value) => {
+              setFollowUpQuestion(value);
+              setFollowUpError("");
+            }}
+            onSubmitFollowUp={submitFollowUp}
+            onDiagnosisFeedback={submitDiagnosisFeedback}
+            onAddPatchChecklistItem={addPatchChecklistItem}
+            onScrollToSection={scrollToSection}
+            />
+          ) : (
+            <EditorWorkspace
+            draft={draft}
+            contentLength={contentLength}
+            minArticleCharacters={MIN_ARTICLE_CHARACTERS}
+            maxArticleCharacters={MAX_ARTICLE_CHARACTERS}
+            remaining={remaining}
+            fieldErrors={fieldErrors}
+            error={error}
+            titleRef={titleRef}
+            contentRef={contentRef}
+            samples={EDITOR_SAMPLES}
+            dimensions={EDITOR_DIMENSIONS}
+            recheckContext={recheckBaseline ? {
+              score: recheckBaseline.totalScore,
+              issueCount: recheckBaseline.diagnostics.filter(isReportIssue).length,
+              checklistItems: patchChecklist,
+            } : null}
+            onSubmit={submit}
+            onDraftChange={updateDraft}
+            onLoadSample={(index) => handleLoadSample(SAMPLES[index])}
+            />
+          )}
+        </div>
       </div>
     </main>
   );

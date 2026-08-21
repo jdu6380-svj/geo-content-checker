@@ -1,13 +1,48 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Copy,
+  FileCheck2,
+  FilePenLine,
+  RefreshCw,
+  TextSelect,
+} from "lucide-react";
 
-import { postGeoJson } from "@/lib/client/geo-api";
-import type { GeneratePatchesResponse, Paragraph } from "@/lib/schemas/geo";
+import {
+  createGeoAbortError,
+  isGeoAbortError,
+  postGeoBetaEvent,
+  postGeoJson,
+} from "@/lib/client/geo-api";
+import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
+import {
+  getReportIssueStatus,
+  type ReportIssueStatus,
+} from "@/lib/client/report-comparison";
+import type { DiagnosticsState } from "@/lib/client/report-state";
+import type {
+  DiagnosticResult,
+  GeneratePatchesResponse,
+  Paragraph,
+  PatchAction,
+  PatchMode,
+} from "@/lib/schemas/geo";
 
 type PatchWorkshopProps = {
   title: string;
   paragraphs: Paragraph[];
+  diagnostics: DiagnosticsState;
+  runId: string | null;
+  analysisSignal?: AbortSignal;
+  checklistItems: PatchChecklistItem[];
+  onAddChecklistItem: (item: PatchChecklistItem) => void;
+  onBackToEditor: () => void;
+  onOpenOverview: () => void;
+  onOpenRecheck: () => void;
 };
 
 type PatchState =
@@ -16,7 +51,18 @@ type PatchState =
   | { status: "success"; data: GeneratePatchesResponse }
   | { status: "error"; error: string };
 
-type PatchTab = "faq" | "facts";
+const PATCH_STATUS_META: Record<ReportIssueStatus, { label: string; className: string }> = {
+  high: { label: "高风险", className: "is-danger" },
+  attention: { label: "注意", className: "is-warning" },
+  passed: { label: "已通过", className: "is-success" },
+};
+
+function initialPatchStates(): Record<PatchMode, PatchState> {
+  return {
+    advice: { status: "idle" },
+    content_draft: { status: "idle" },
+  };
+}
 
 async function readError(response: Response): Promise<string> {
   try {
@@ -43,182 +89,443 @@ function copyWithSelection(text: string): boolean {
   }
 }
 
-export function PatchWorkshop({ title, paragraphs }: PatchWorkshopProps) {
-  const [patches, setPatches] = useState<PatchState>({ status: "idle" });
-  const [activeTab, setActiveTab] = useState<PatchTab>("faq");
-  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "manual">("idle");
+async function copyWithClipboard(text: string): Promise<void> {
+  if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error("Clipboard write timed out")), 1_500);
+
+    navigator.clipboard.writeText(text).then(
+      () => {
+        window.clearTimeout(timeoutId);
+        resolve();
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+function actionPresentation(action: PatchAction) {
+  if (action.type === "author_evidence") {
+    return {
+      eyebrow: "证据补充",
+      title: action.field,
+      body: action.reason,
+      sourceLabel: "来源问题",
+      source: action.relatedQuestion ?? "诊断指出关键事实仍缺少可核验依据",
+      purpose: "补齐支撑核心结论的事实、来源或适用边界。",
+      decision: "需要人工确认事实、来源与适用边界",
+      accent: "patch-action-evidence",
+      sourceClassName: "status-warning",
+    };
+  }
+  if (action.type === "structure_change") {
+    return {
+      eyebrow: "结构调整",
+      title: action.title,
+      body: action.instruction,
+      sourceLabel: "作用段落",
+      source: action.targetParagraphIds.join(", "),
+      purpose: "降低读者定位步骤、结论与适用边界的成本。",
+      decision: "需要人工判断结构调整是否改变原意",
+      accent: "patch-action-structure",
+      sourceClassName: "status-secondary",
+    };
+  }
+  if (action.type === "faq") {
+    return {
+      eyebrow: "FAQ 参考材料",
+      title: action.question,
+      body: action.answer,
+      sourceLabel: "使用证据",
+      source: `${action.evidence.paragraphId} · “${action.evidence.quote}”`,
+      purpose: "把已有原文事实整理为可核对的问答表达。",
+      decision: "核对问答是否完整表达原文边界",
+      accent: "patch-action-faq",
+      sourceClassName: "status-success",
+    };
+  }
+  return {
+    eyebrow: "事实卡片参考",
+    title: action.label,
+    body: action.value,
+    sourceLabel: "使用证据",
+    source: `${action.evidence.paragraphId} · “${action.evidence.quote}”`,
+    purpose: "把已有原文事实整理为可复核的结构化材料。",
+    decision: "核对事实卡片是否脱离上下文或扩大结论",
+    accent: "patch-action-fact",
+    sourceClassName: "status-info",
+  };
+}
+
+function findActionDiagnostic(
+  action: PatchAction,
+  diagnostics: DiagnosticResult[],
+  index: number,
+): DiagnosticResult | undefined {
+  if (action.type === "author_evidence" && action.relatedQuestion) {
+    const related = diagnostics.find((item) => item.question === action.relatedQuestion);
+    if (related) return related;
+  }
+
+  if (action.type === "structure_change") {
+    const related = diagnostics.find((item) => (
+      action.title.includes(item.question) ||
+      item.evidence.some((evidence) => action.targetParagraphIds.includes(evidence.paragraphId))
+    ));
+    if (related) return related;
+  }
+
+  if (action.type === "faq" || action.type === "fact_card") {
+    const related = diagnostics.find((item) => (
+      item.evidence.some((evidence) => evidence.paragraphId === action.evidence.paragraphId)
+    ));
+    if (related) return related;
+  }
+
+  return diagnostics[index] ?? diagnostics[0];
+}
+
+export function PatchWorkshop({
+  title,
+  paragraphs,
+  diagnostics,
+  runId,
+  analysisSignal,
+  checklistItems,
+  onAddChecklistItem,
+  onBackToEditor,
+  onOpenOverview,
+  onOpenRecheck,
+}: PatchWorkshopProps) {
+  const [activeMode, setActiveMode] = useState<PatchMode>("advice");
+  const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(initialPatchStates);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
+  const generateButtonRef = useRef<HTMLButtonElement>(null);
   const manualCopyRef = useRef<HTMLTextAreaElement>(null);
+  const mountedRef = useRef(true);
+  const patchRequestControllerRef = useRef<AbortController | null>(null);
+  const patchRequestIdRef = useRef(0);
+  const activePatch = patches[activeMode];
+  const checklistItemIds = new Set(checklistItems.map((item) => item.id));
+  const diagnosticResults = Object.values(diagnostics).flatMap((item) => item.data ? [item.data] : []);
+  const canGenerate = paragraphs.length > 0 && diagnosticResults.length > 0;
+  const priorityDiagnostic = diagnosticResults.find(
+    (item) => getReportIssueStatus(item) !== "passed",
+  ) ?? diagnosticResults[0];
+  const priorityEvidence = priorityDiagnostic?.evidence[0];
+  const priorityParagraph = priorityEvidence
+    ? paragraphs.find((paragraph) => paragraph.id === priorityEvidence.paragraphId)
+    : paragraphs[0];
+  const priorityParagraphIndex = priorityParagraph
+    ? paragraphs.findIndex((paragraph) => paragraph.id === priorityParagraph.id)
+    : 0;
+  const previewStart = Math.max(0, priorityParagraphIndex - 1);
+  const articlePreview = paragraphs.slice(previewStart, previewStart + 3);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      patchRequestControllerRef.current?.abort();
+      patchRequestControllerRef.current = null;
+    };
+  }, []);
+
+  function selectMode(mode: PatchMode) {
+    setActiveMode(mode);
+    setCopyStatus("idle");
+  }
+
+  function setPatchForMode(mode: PatchMode, next: PatchState) {
+    setPatches((current) => ({ ...current, [mode]: next }));
+  }
 
   async function generatePatches() {
-    if (!paragraphs.length || patches.status === "loading") return;
-    setPatches({ status: "loading" });
+    if (!canGenerate || activePatch.status === "loading" || analysisSignal?.aborted) return;
+    const requestMode = activeMode;
+    const requestId = patchRequestIdRef.current + 1;
+    patchRequestIdRef.current = requestId;
+    patchRequestControllerRef.current?.abort();
+    setPatches((current) => {
+      const next = { ...current };
+      (Object.keys(next) as PatchMode[]).forEach((mode) => {
+        if (next[mode].status === "loading") next[mode] = { status: "idle" };
+      });
+      return next;
+    });
+
+    const requestController = new AbortController();
+    patchRequestControllerRef.current = requestController;
+    const onAnalysisAbort = () => requestController.abort();
+    analysisSignal?.addEventListener("abort", onAnalysisAbort, { once: true });
+
+    setPatchForMode(requestMode, { status: "loading" });
     setCopyStatus("idle");
+    if (runId) void postGeoBetaEvent({ event: "patch_requested", runId });
 
     try {
       const response = await postGeoJson("/api/generate-patches", {
         title,
         numbered_paragraphs: paragraphs,
+        diagnostics: diagnosticResults,
+        mode: requestMode,
+      }, {
+        signal: requestController.signal,
       });
       if (!response.ok) throw new Error(await readError(response));
+      if (requestController.signal.aborted) throw createGeoAbortError();
       const data = (await response.json()) as GeneratePatchesResponse;
-      setPatches({ status: "success", data });
+      if (requestController.signal.aborted || !mountedRef.current || requestId !== patchRequestIdRef.current) {
+        throw createGeoAbortError();
+      }
+      setPatchForMode(requestMode, { status: "success", data });
+      if (runId && !requestController.signal.aborted) void postGeoBetaEvent({ event: "patch_generated", runId });
     } catch (requestError) {
-      setPatches({
-        status: "error",
-        error: requestError instanceof Error ? requestError.message : "补丁生成失败，请稍后重试。",
-      });
+      if (!mountedRef.current || requestId !== patchRequestIdRef.current) return;
+      if (requestController.signal.aborted || isGeoAbortError(requestError)) {
+        setPatchForMode(requestMode, { status: "idle" });
+      } else {
+        setPatchForMode(requestMode, {
+          status: "error",
+          error: requestError instanceof Error ? requestError.message : "补丁生成失败，请稍后重试。",
+        });
+      }
+    } finally {
+      analysisSignal?.removeEventListener("abort", onAnalysisAbort);
+      if (patchRequestControllerRef.current === requestController) {
+        patchRequestControllerRef.current = null;
+      }
     }
   }
 
   async function copyMarkdown() {
-    if (patches.status !== "success") return;
+    if (activePatch.status !== "success") return;
+    setCopyStatus("copying");
 
     try {
-      if (!copyWithSelection(patches.data.markdown)) {
-        if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
-        await navigator.clipboard.writeText(patches.data.markdown);
+      if (!copyWithSelection(activePatch.data.markdown)) {
+        await copyWithClipboard(activePatch.data.markdown);
       }
       setCopyStatus("copied");
+      if (runId) void postGeoBetaEvent({ event: "patch_copied", runId });
     } catch {
       setCopyStatus("manual");
       window.requestAnimationFrame(() => manualCopyRef.current?.select());
     }
   }
 
+  const modeTitle = activeMode === "advice" ? "修改建议" : "内容参考材料";
+  const modeDescription = activeMode === "advice"
+    ? "把诊断中的证据缺口和结构问题整理为可执行清单。"
+    : "生成基于证据约束的修改参考材料。";
+  const visibleActions = activePatch.status === "success" ? activePatch.data.actions.slice(0, 3) : [];
+  const appliedVisibleCount = visibleActions.filter((action) => checklistItemIds.has(action.id)).length;
+
+  function applyPatch(action: PatchAction, index: number) {
+    if (checklistItemIds.has(action.id)) return;
+    const presentation = actionPresentation(action);
+    const diagnostic = findActionDiagnostic(action, diagnosticResults, index);
+    onAddChecklistItem({
+      id: action.id,
+      title: presentation.title,
+      recommendation: presentation.body,
+      location: presentation.source,
+      status: diagnostic ? getReportIssueStatus(diagnostic) : "attention",
+    });
+  }
+
   return (
-    <section className="mt-9 border-t border-[#dfe4e8] pt-8" aria-live="polite">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <section id="patch-workshop" className="phase2-patch-page section-anchor" aria-busy={activePatch.status === "loading"}>
+      <header className="phase2-subpage-header">
         <div>
-          <p className="label">Patch Workshop</p>
-          <h2 className="mt-1 text-xl font-bold sm:text-2xl">内容补丁工坊</h2>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Patch</p>
+          <h1>优化建议 Patch</h1>
+          <p>基于已识别的可信度问题，逐项审阅可应用的编辑建议。</p>
         </div>
-        {patches.status === "success" ? (
-          <span className="rounded-full border border-[#d8e4e1] bg-white px-3 py-1.5 text-xs text-[#687386]">
-            {patches.data.source === "model" ? "AI 模型生成" : "安全降级生成"}
-          </span>
-        ) : null}
-      </div>
+        <div className="phase2-subpage-actions">
+          <span>已加入 {checklistItems.length} 项 · 当前展示 {visibleActions.length} 条修改建议</span>
+          <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
+        </div>
+      </header>
 
       {!paragraphs.length ? (
-        <p className="mt-4 border-l-2 border-[#d8e4e1] pl-4 text-sm leading-6 text-[#687386]">
-          缓存报告不含正文，请重新运行体检后生成内容补丁。
-        </p>
-      ) : null}
-
-      {paragraphs.length && patches.status === "idle" ? (
-        <div className="mt-4 grid items-center gap-4 rounded-lg border border-[#dfe4e8] bg-white p-4 sm:grid-cols-[1fr_auto] sm:p-5">
-          <p className="text-sm leading-6 text-[#687386]">内容只取自原文，生成后仍需人工核对。</p>
-          <button
-            type="button"
-            onClick={generatePatches}
-            className="h-10 w-full rounded-lg bg-[#0b6b63] px-5 text-sm font-bold text-white hover:bg-[#095c55] sm:w-auto"
-          >
-            生成内容补丁
-          </button>
+        <div className="phase2-loading-surface">
+          <div>
+            <p className="data-label">修改建议暂不可生成</p>
+            <h3>当前缓存报告未保留正文</h3>
+            <p>返回编辑器恢复文章并重新运行审查后，Evidra 才能依据本次诊断生成修改建议。</p>
+          </div>
+          <button type="button" onClick={onBackToEditor}>返回编辑器</button>
+        </div>
+      ) : diagnosticResults.length === 0 ? (
+        <div className="phase2-loading-surface">
+          <div>
+            <p className="data-label">等待诊断结论</p>
+            <h3>完成至少一项诊断后生成修改建议</h3>
+            <p>修改材料只会使用已有诊断与 Evidence，不创建超出报告的数据。</p>
+          </div>
         </div>
       ) : null}
 
-      {patches.status === "loading" ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2" aria-label="正在生成内容补丁">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div key={index} className="card min-h-[150px] animate-pulse p-5 motion-reduce:animate-none">
-              <div className="h-4 w-1/2 rounded bg-[#e5e8ed]" />
-              <div className="mt-5 h-3 w-full rounded bg-[#edf0f2]" />
-              <div className="mt-3 h-3 w-4/5 rounded bg-[#edf0f2]" />
+      {canGenerate ? (
+        <div className="phase2-patch-layout">
+          <section className="phase2-patch-original" aria-labelledby="patch-original-heading">
+            <header>
+              <div>
+                <h2 id="patch-original-heading">Original</h2>
+                <p>原始内容</p>
+              </div>
+            </header>
+            <div className="phase2-patch-original-body">
+              <h3>{title || "未命名内容"}</h3>
+              <span>{priorityParagraph?.id || paragraphs[0]?.id || "原文"} · 关键观点</span>
+              {articlePreview.map((paragraph) => (
+                <div key={paragraph.id}>
+                  <p>{paragraph.text}</p>
+                  {paragraph.id === priorityParagraph?.id ? (
+                    <blockquote>
+                      <strong>{priorityEvidence?.quote || priorityDiagnostic?.question || paragraph.text}</strong>
+                      <span>{priorityDiagnostic?.evidenceStatus === "valid" ? "需要补充说明" : "缺少来源说明"}</span>
+                    </blockquote>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <footer>原文保持不变；建议加入修改清单后，仍需由你手动编辑正文。</footer>
+          </section>
+
+          <section className="phase2-patch-suggestions" aria-labelledby="patch-suggestion-heading">
+            <header>
+              <div>
+                <h2 id="patch-suggestion-heading">Suggested Patch</h2>
+                <p>修改建议</p>
+              </div>
+            </header>
+            <p className="phase2-patch-guidance">建议仅加入修改清单，不会自动改写正文。</p>
+            <div className="phase2-patch-suggestion-body">
+              {activePatch.status === "success" ? (
+                <>
+                  <div className="phase2-patch-card-list">
+                    {visibleActions.map((action, index) => {
+                      const presentation = actionPresentation(action);
+                      const diagnostic = findActionDiagnostic(action, diagnosticResults, index);
+                      const status = diagnostic ? getReportIssueStatus(diagnostic) : "attention";
+                      const statusPresentation = PATCH_STATUS_META[status];
+                      const applied = checklistItemIds.has(action.id);
+                      return (
+                        <article
+                          key={action.id}
+                          className={`${statusPresentation.className} ${index === 0 ? "is-primary" : "is-compact"} ${applied ? "is-applied" : ""}`}
+                        >
+                          <span>{applied ? "已加入清单" : statusPresentation.label}</span>
+                          <dl>
+                            <div><dt>问题</dt><dd>{presentation.title}</dd></div>
+                            <div><dt>建议</dt><dd>{presentation.body}</dd></div>
+                            {index === 0 ? <div><dt>修改方向</dt><dd>{presentation.purpose}</dd></div> : null}
+                            <div><dt>依据</dt><dd>{presentation.source}</dd></div>
+                          </dl>
+                          <div className="phase2-patch-card-actions">
+                            <button type="button" onClick={() => applyPatch(action, index)} disabled={applied}>
+                              {applied ? <Check aria-hidden="true" /> : null}
+                              {applied ? "已加入" : "加入修改清单"}
+                            </button>
+                            <button type="button" disabled>忽略</button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  {appliedVisibleCount ? (
+                    <div className="phase3-patch-recheck-bar" role="status" aria-live="polite">
+                      <span><Check aria-hidden="true" />修改清单已有 {checklistItems.length} 项建议</span>
+                      <p>请先人工修改正文，再进入重新验证。</p>
+                      <button type="button" onClick={onOpenRecheck}>
+                        进入重新验证
+                        <ArrowRight aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h4>{activePatch.status === "error" ? `${modeTitle}生成失败` : modeTitle}</h4>
+                    {activePatch.status === "error" ? (
+                      <p role="alert" aria-live="assertive" className="text-[var(--geo-status-danger)]">{activePatch.error}</p>
+                    ) : (
+                      <p>{activePatch.status === "loading" ? `正在生成${modeTitle}。` : modeDescription}</p>
+                    )}
+                  </div>
+                  <button
+                    ref={generateButtonRef}
+                    type="button"
+                    onClick={generatePatches}
+                    disabled={activePatch.status === "loading"}
+                    className="phase2-patch-generate"
+                  >
+                    {activePatch.status === "error" ? (
+                      <RefreshCw aria-hidden="true" className="size-4" />
+                    ) : (
+                      <FilePenLine aria-hidden="true" className={`size-4 ${activePatch.status === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`} />
+                    )}
+                    {activePatch.status === "loading" ? "正在生成" : activePatch.status === "error" ? "重新生成" : `生成${modeTitle}`}
+                  </button>
+                </>
+              )}
+              {activePatch.status === "success" ? (
+                <div className="phase2-patch-footer-actions">
+                  <button type="button" onClick={copyMarkdown} disabled={copyStatus === "copying"}>
+                    {copyStatus === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                    {copyStatus === "copied" ? "已复制" : "复制全部 Markdown"}
+                  </button>
+                  <button type="button" onClick={() => selectMode(activeMode === "advice" ? "content_draft" : "advice")}>
+                    <FileCheck2 aria-hidden="true" />{activeMode === "advice" ? "查看内容草稿" : "返回修改建议"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activePatch.status === "loading" ? (
+        <div className="phase2-patch-loading" role="status" aria-live="polite" aria-label={`正在生成${modeTitle}`}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="animate-pulse motion-reduce:animate-none">
+              <div className="h-4 w-1/2 rounded bg-[var(--geo-surface-inset)]" />
+              <div className="mt-5 h-3 w-full rounded bg-[var(--geo-surface-subtle)]" />
+              <div className="mt-3 h-3 w-4/5 rounded bg-[var(--geo-surface-subtle)]" />
             </div>
           ))}
         </div>
       ) : null}
 
-      {patches.status === "error" ? (
-        <div className="mt-4 border border-[#f0d6d1] bg-[#fff8f6] p-5">
-          <p role="alert" className="text-sm text-[#a43e2b]">{patches.error}</p>
-          <button
-            type="button"
-            onClick={generatePatches}
-            className="mt-3 h-9 rounded-lg border border-[#d8a99f] bg-white px-4 text-sm font-semibold text-[#a43e2b]"
-          >
-            重新生成
-          </button>
-        </div>
-      ) : null}
-
-      {patches.status === "success" ? (
-        <div className="mt-4">
-          <div className="flex flex-col gap-3 min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between">
-            <div className="inline-flex rounded-lg border border-[#d9dee5] bg-white p-1" aria-label="补丁类型">
-              <button
-                type="button"
-                aria-pressed={activeTab === "faq"}
-                onClick={() => setActiveTab("faq")}
-                className={`h-8 rounded-md px-4 text-sm font-semibold ${activeTab === "faq" ? "bg-[#e7f4f1] text-[#0e766e]" : "text-[#687386]"}`}
-              >
-                FAQ
-              </button>
-              <button
-                type="button"
-                aria-pressed={activeTab === "facts"}
-                onClick={() => setActiveTab("facts")}
-                className={`h-8 rounded-md px-4 text-sm font-semibold ${activeTab === "facts" ? "bg-[#e7f4f1] text-[#0e766e]" : "text-[#687386]"}`}
-              >
-                事实卡片
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {copyStatus === "copied" ? <span className="text-xs font-semibold text-[#0e766e]">已复制</span> : null}
-              {copyStatus === "manual" ? <span className="text-xs text-[#8a5b12]">请在下方手动复制</span> : null}
-              <button
-                type="button"
-                onClick={copyMarkdown}
-                className="h-9 w-full rounded-lg border border-[#b9c9c6] bg-white px-4 text-sm font-semibold text-[#0b6b63] hover:bg-[#f3f7f6] min-[420px]:w-auto"
-              >
-                复制全部 Markdown
-              </button>
-            </div>
-          </div>
-
-          {copyStatus === "manual" ? (
-            <div className="mt-4 border border-[#ead9ab] bg-[#fffaf0] p-4">
+      {activePatch.status === "success" && copyStatus === "manual" ? (
+            <div className="phase2-patch-manual-copy">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-sm font-bold">Markdown 文本</h3>
                 <button
                   type="button"
                   onClick={() => manualCopyRef.current?.select()}
-                  className="h-8 rounded-lg border border-[#d8bf7b] bg-white px-3 text-xs font-semibold text-[#7a5613]"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--geo-status-warning-border)] bg-white px-3 text-xs font-semibold text-[var(--geo-amber)]"
                 >
+                  <TextSelect aria-hidden="true" className="size-3.5" />
                   全选文本
                 </button>
               </div>
               <textarea
                 ref={manualCopyRef}
                 readOnly
-                value={patches.data.markdown}
+                value={activePatch.data.markdown}
                 onFocus={(event) => event.currentTarget.select()}
-                className="mt-3 h-44 w-full resize-y rounded-lg border border-[#e2d3aa] bg-white p-3 font-mono text-xs leading-6 text-[#465266]"
+                className="mt-3 h-44 w-full resize-y rounded-lg border border-[var(--geo-status-warning-border)] bg-white p-3 font-mono text-xs leading-6 text-[var(--geo-text-body)] focus-visible:border-[var(--geo-primary)]"
                 aria-label="可手动复制的 Markdown 文本"
               />
             </div>
-          ) : null}
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {activeTab === "faq"
-              ? patches.data.faqs.map((faq) => (
-                  <article key={`${faq.question}-${faq.evidence.paragraphId}`} className="card border-t-4 border-t-[#0b6b63] p-5">
-                    <h3 className="text-sm font-bold leading-6">{faq.question}</h3>
-                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#465266]">{faq.answer}</p>
-                    <span className="mt-4 block text-xs font-bold text-[#0b6b63]">{faq.evidence.paragraphId}</span>
-                  </article>
-                ))
-              : patches.data.factCards.map((card) => (
-                  <article key={`${card.label}-${card.evidence.paragraphId}`} className="card border-t-4 border-t-[#3d607d] p-5">
-                    <span className="text-xs font-bold text-[#3d607d]">{card.label}</span>
-                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#465266]">{card.value}</p>
-                    <span className="mt-4 block text-xs font-bold text-[#687386]">{card.evidence.paragraphId}</span>
-                  </article>
-                ))}
-          </div>
-        </div>
       ) : null}
     </section>
   );
