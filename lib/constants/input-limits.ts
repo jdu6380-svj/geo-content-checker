@@ -1,2 +1,3 @@
 export const MIN_ARTICLE_CHARACTERS = 50;
 export const MAX_ARTICLE_CHARACTERS = 12_000;
+export const MAX_EVIDENCE_QUOTE_LENGTH = 400;

@@ -4,6 +4,7 @@ import {
   serializeAdviceArtifactLineage,
   type AdviceArtifactLineage,
 } from "./advice-artifact-lineage.ts";
+import { MAX_EVIDENCE_QUOTE_LENGTH } from "../lib/constants/input-limits.ts";
 import {
   serializeAdviceQualityArtifact,
   type AdviceQualityArtifact,
@@ -137,7 +138,7 @@ function parsePatchAction(value: unknown): ParsedPatchAction {
   if (
     typeof evidence.paragraphId !== "string" ||
     !/^Para-\d+$/.test(evidence.paragraphId) ||
-    !isNonEmptyString(evidence.quote, 360)
+    !isNonEmptyString(evidence.quote, MAX_EVIDENCE_QUOTE_LENGTH)
   ) {
     throw new Error("Content Draft patch Evidence is invalid.");
   }
@@ -145,7 +146,7 @@ function parsePatchAction(value: unknown): ParsedPatchAction {
     value.type === "faq" &&
     isNonEmptyString(value.question, 160) &&
     value.question.trim().length >= 6 &&
-    isNonEmptyString(value.answer, 400)
+    isNonEmptyString(value.answer, MAX_EVIDENCE_QUOTE_LENGTH)
   ) {
     return {
       type: "faq",
@@ -162,7 +163,7 @@ function parsePatchAction(value: unknown): ParsedPatchAction {
     value.type === "fact_card" &&
     isNonEmptyString(value.label, 60) &&
     value.label.trim().length >= 2 &&
-    isNonEmptyString(value.value, 400)
+    isNonEmptyString(value.value, MAX_EVIDENCE_QUOTE_LENGTH)
   ) {
     return {
       type: "fact_card",

@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { MAX_ARTICLE_CHARACTERS } from "@/lib/constants/input-limits";
+import {
+  MAX_ARTICLE_CHARACTERS,
+  MAX_EVIDENCE_QUOTE_LENGTH,
+} from "@/lib/constants/input-limits";
 
 export const paragraphSchema = z.object({
   id: z.string().regex(/^Para-\d+$/),
@@ -61,7 +64,7 @@ export const evidenceStatusSchema = z.enum(["valid", "missing", "invalid"]);
 
 export const evidenceSchema = z.object({
   paragraphId: z.string().regex(/^Para-\d+$/),
-  quote: z.string().trim().min(1).max(400),
+  quote: z.string().trim().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
 });
 
 export const qaDiagnosticRequestSchema = predictQuestionsRequestSchema.extend({
@@ -111,14 +114,14 @@ export const modelStructureChangeActionSchema = z.object({
 export const modelFaqActionSchema = z.object({
   type: z.literal("faq"),
   question: z.string().trim().min(6).max(160),
-  answer: z.string().trim().min(1).max(400),
+  answer: z.string().trim().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
   evidence: evidenceSchema,
 });
 
 export const modelFactCardActionSchema = z.object({
   type: z.literal("fact_card"),
   label: z.string().trim().min(2).max(60),
-  value: z.string().trim().min(1).max(400),
+  value: z.string().trim().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
   evidence: evidenceSchema,
 });
 

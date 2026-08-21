@@ -1951,7 +1951,7 @@ assert.equal(
 assert.equal(contentDraftPrompts.user.includes("diagnostics"), false);
 assert.equal(contentDraftPrompts.user.includes("evidenceCandidates"), true);
 assert.equal(contentDraftPrompts.system.includes("2 到 6 个动作"), true);
-assert.equal(contentDraftPrompts.system.includes("不超过 200 个字符"), true);
+assert.equal(contentDraftPrompts.system.includes("不超过 400 个字符"), true);
 assert.equal(
   contentDraftPrompts.system.includes("只能逐字使用输入 evidenceCandidates"),
   true,
@@ -2081,6 +2081,48 @@ assert.equal(
 );
 assert.equal(anchoredContentActions?.[1]?.evidence.quote, "已经完全匹配");
 
+const anchoredMismatchedContentActions = anchorContentActionQuotes(
+  [
+    {
+      type: "faq",
+      question: "摘要字段不应改变证据锚点吗？",
+      answer: "这是模型生成的摘要",
+      evidence: {
+        paragraphId: "Para-1",
+        quote: "AI能力\n需要连续证据",
+      },
+    },
+    {
+      type: "fact_card",
+      label: "事实原文",
+      value: "简短摘要",
+      evidence: {
+        paragraphId: "Para-2",
+        quote: "已经 完全匹配",
+      },
+    },
+  ],
+  [
+    {
+      id: "Para-1",
+      text: "系统要求ＡＩ能力  \n\t需要连续证据，并保留原文格式。",
+    },
+    {
+      id: "Para-2",
+      text: "这段内容已经  \n\t完全匹配。",
+    },
+  ],
+);
+assert.deepEqual(
+  anchoredMismatchedContentActions?.map((action) =>
+    action.type === "faq" ? [action.answer, action.evidence.quote] : [action.value, action.evidence.quote],
+  ),
+  [
+    ["ＡＩ能力  \n\t需要连续证据", "ＡＩ能力  \n\t需要连续证据"],
+    ["已经  \n\t完全匹配", "已经  \n\t完全匹配"],
+  ],
+);
+
 assert.equal(
   anchorContentActionQuotes(
     [{
@@ -2117,7 +2159,7 @@ assert.equal(
   ),
   null,
 );
-assert.equal(
+assert.deepEqual(
   anchorContentActionQuotes(
     [{
       type: "fact_card",
@@ -2127,7 +2169,12 @@ assert.equal(
     }],
     [{ id: "Para-1", text: "ＡＩ证据。" }],
   ),
-  null,
+  [{
+    type: "fact_card",
+    label: "字段一致性",
+    value: "ＡＩ证据",
+    evidence: { paragraphId: "Para-1", quote: "ＡＩ证据" },
+  }],
 );
 assert.equal(
   anchorContentActionQuotes(

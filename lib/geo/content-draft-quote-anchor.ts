@@ -2,8 +2,7 @@ import type {
   ModelContentAction,
   Paragraph,
 } from "@/lib/schemas/geo";
-
-const MAX_EVIDENCE_QUOTE_LENGTH = 400;
+import { MAX_EVIDENCE_QUOTE_LENGTH } from "../constants/input-limits.ts";
 const graphemeSegmenter = new Intl.Segmenter("und", {
   granularity: "grapheme",
 });
@@ -87,9 +86,6 @@ export function anchorContentActionQuotes(
   for (const action of actions) {
     const paragraph = paragraphMap.get(action.evidence.paragraphId);
     if (!paragraph) return null;
-
-    const actionText = action.type === "faq" ? action.answer : action.value;
-    if (actionText !== action.evidence.quote) return null;
 
     const quote = uniqueCanonicalSourceSpan(
       paragraph,
