@@ -31,7 +31,7 @@ jobs:
       - name: Security unit tests
         run: npm run security:unit
 
-      - name: Start fallback server
+      - name: Start local migration-check server
         run: |
           npm run dev:webpack -- --hostname 127.0.0.1 --port 3001 > /tmp/geo-next.log 2>&1 &
           echo $! > /tmp/geo-next.pid
@@ -44,12 +44,12 @@ jobs:
           cat /tmp/geo-next.log
           exit 1
 
-      - name: Fallback blackbox
+      - name: Legacy anonymous migration blackbox
         env:
           GEO_BASE_URL: http://127.0.0.1:3001
-        run: npm run blackbox:fallback
+        run: npm run blackbox:legacy-migration
 
-      - name: Stop fallback server
+      - name: Stop local migration-check server
         if: always()
         run: |
           if [ -f /tmp/geo-next.pid ]; then

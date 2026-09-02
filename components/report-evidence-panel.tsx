@@ -149,18 +149,20 @@ export function ReportEvidencePanel({
                       <div>
                         <dt>Source</dt>
                         <dd className="is-link">
-                          <button
-                            type="button"
-                            className="phase3-evidence-source"
-                            onClick={() => {
-                              const sourceId = data.evidence[0]?.paragraphId;
-                              if (!sourceId) return;
-                              const source = document.querySelector<HTMLElement>(`[data-paragraph-id="${sourceId}"]`);
-                              source?.scrollIntoView({ behavior: "smooth", block: "center" });
-                            }}
-                          >
-                            <Link2 aria-hidden="true" />{sourceText}
-                          </button>
+                          {data.evidence[0]?.paragraphId ? (
+                            <button
+                              type="button"
+                              className="phase3-evidence-source"
+                              onClick={() => {
+                                const sourceId = data.evidence[0]?.paragraphId;
+                                if (!sourceId) return;
+                                const source = document.querySelector<HTMLElement>(`[data-paragraph-id="${sourceId}"]`);
+                                source?.scrollIntoView({ behavior: "smooth", block: "center" });
+                              }}
+                            >
+                              <Link2 aria-hidden="true" />{sourceText}
+                            </button>
+                          ) : <span className="phase3-evidence-source-unavailable">{sourceText}</span>}
                         </dd>
                       </div>
                       <div><dt>Confidence</dt><dd className={status.className}>{status.confidence}</dd></div>

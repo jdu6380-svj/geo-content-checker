@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { getUpstashRedisRestConfig } from "./redis-config.ts";
 
 export type AnalysisRateLimitMode = "redis" | "memory" | "memory-quota";
 export type AnalysisRateLimitReason =
@@ -219,8 +220,7 @@ function createWarmupDefinitions(
 function getRedisClient(): Redis | null {
   if (redisClient !== undefined) return redisClient;
 
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  const { url, token } = getUpstashRedisRestConfig();
 
   if (!url && !token) {
     redisClient = null;

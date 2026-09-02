@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { Redis } from "@upstash/redis";
+import { getUpstashRedisRestConfig } from "./redis-config.ts";
 import { NextResponse } from "next/server";
 
 import {
@@ -107,8 +108,7 @@ let lastMemoryCleanup = 0;
 function getRedisClient(): Redis | null {
   if (redisClient !== undefined) return redisClient;
 
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  const { url, token } = getUpstashRedisRestConfig();
   if (!url && !token) {
     redisClient = null;
     return redisClient;

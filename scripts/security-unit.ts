@@ -390,9 +390,9 @@ assert.match(pageSource, /QUESTIONS_DEADLINE_MS = 45_000/);
 assert.match(pageSource, /DIAGNOSTIC_DEADLINE_MS = 60_000/);
 assert.equal(
   (pageSource.match(/withGeoRequestDeadline\(async \(requestSignal\)/g) ?? []).length,
-  4,
+  3,
 );
-assert.match(pageSource, /if \(isGeoRequestDeadlineError\(error\)\) return deadlineMessage/);
+assert.match(pageSource, /isGeoRequestDeadlineError\(error\)/);
 assert.match(pageSource, /!workflowSucceeded\) return/);
 assert.ok(analysisProgressSource.includes("const analysisBusy ="), "analysis progress busy state must be derived");
 assert.ok(analysisProgressSource.includes("{hasAnalysisError ?"), "analysis errors must expose recovery actions");
@@ -423,12 +423,15 @@ assert.ok(pageSource.includes("workflowSucceeded\n              ? openEditorForR
 assert.ok(pageSource.includes("returnToEditorAfterError()"), "header editor action must use ordinary recovery for incomplete runs");
 
 const scoringRouteSource = readFileSync(
-  fileURLToPath(new URL("../app/api/evaluate-scoring/route.ts", import.meta.url)),
+  fileURLToPath(new URL("../app/api/evaluate-scoring/handler.ts", import.meta.url)),
   "utf8",
 );
 assert.match(scoringRouteSource, /timeoutMs:\s*32_000/);
 assert.doesNotMatch(scoringRouteSource, /timeoutMs:\s*15_000/);
-assert.match(scoringRouteSource, /export const maxDuration = 36/);
+assert.match(
+  readFileSync(fileURLToPath(new URL("../app/api/evaluate-scoring/route.ts", import.meta.url)), "utf8"),
+  /export const maxDuration = 36/,
+);
 assert.match(scoringRouteSource, /maxTokens:\s*2_400/);
 assert.doesNotMatch(scoringRouteSource, /maxTokens:\s*1_200/);
 assert.match(scoringRouteSource, /reasoningEffort:\s*"low"/);
@@ -439,12 +442,15 @@ assert.ok(
   "evaluate-scoring JSON boundary contract is missing",
 );
 const predictQuestionsRouteSource = readFileSync(
-  fileURLToPath(new URL("../app/api/predict-questions/route.ts", import.meta.url)),
+  fileURLToPath(new URL("../app/api/predict-questions/handler.ts", import.meta.url)),
   "utf8",
 );
 assert.match(predictQuestionsRouteSource, /timeoutMs:\s*32_000/);
 assert.doesNotMatch(predictQuestionsRouteSource, /timeoutMs:\s*10_000/);
-assert.match(predictQuestionsRouteSource, /export const maxDuration = 36/);
+assert.match(
+  readFileSync(fileURLToPath(new URL("../app/api/predict-questions/route.ts", import.meta.url)), "utf8"),
+  /export const maxDuration = 36/,
+);
 assert.match(predictQuestionsRouteSource, /maxTokens:\s*1_600/);
 assert.match(predictQuestionsRouteSource, /reasoningEffort:\s*"low"/);
 assert.match(
@@ -456,7 +462,7 @@ assert.match(
   /failureClassification:\s*schemaFailure\.requiredFieldMissing/,
 );
 const diagnosticRouteSource = readFileSync(
-  fileURLToPath(new URL("../app/api/qa-diagnostic/route.ts", import.meta.url)),
+  fileURLToPath(new URL("../app/api/qa-diagnostic/handler.ts", import.meta.url)),
   "utf8",
 );
 const globalErrorSource = readFileSync(
@@ -480,7 +486,10 @@ assert.ok(
   "qa-diagnostic token limit contract is missing",
 );
 assert.match(diagnosticRouteSource, /reasoningEffort:\s*"low"/);
-assert.match(diagnosticRouteSource, /export const maxDuration = 50/);
+assert.match(
+  readFileSync(fileURLToPath(new URL("../app/api/qa-diagnostic/route.ts", import.meta.url)), "utf8"),
+  /export const maxDuration = 50/,
+);
 assert.match(diagnosticRouteSource, /modelOutputTokenLimit:\s*4_000/);
 assert.ok(
   /顶层字段必须且只能各出现一次/.test(diagnosticRouteSource),
@@ -562,11 +571,14 @@ assert.ok(
   "server Sentry context is missing: requestId",
 );
 const patchesRouteSource = readFileSync(
-  fileURLToPath(new URL("../app/api/generate-patches/route.ts", import.meta.url)),
+  fileURLToPath(new URL("../app/api/generate-patches/handler.ts", import.meta.url)),
   "utf8",
 );
 assert.match(patchesRouteSource, /temperature:\s*0/);
-assert.match(patchesRouteSource, /export const maxDuration = 50/);
+assert.match(
+  readFileSync(fileURLToPath(new URL("../app/api/generate-patches/route.ts", import.meta.url)), "utf8"),
+  /export const maxDuration = 50/,
+);
 assert.match(patchesRouteSource, /const CONTENT_DRAFT_TIMEOUT_MS = 28_000/);
 assert.match(
   patchesRouteSource,
@@ -6179,6 +6191,7 @@ const releaseConfigScript = fileURLToPath(new URL("./check-release-config.mjs", 
 const validReleaseEnvironment: NodeJS.ProcessEnv = {
   NODE_ENV: "test",
   VERCEL_ENV: "preview",
+  REQUIRE_RELEASE_CONFIG: "true",
   OPENAI_BASE_URL: "https://api.deepseek.example/v1",
   OPENAI_API_KEY: "test-model-key",
   OPENAI_MODEL: "test-model",
@@ -6194,6 +6207,28 @@ const validReleaseEnvironment: NodeJS.ProcessEnv = {
   SENTRY_ORG: "test-org",
   SENTRY_PROJECT: "test-project",
   SENTRY_AUTH_TOKEN: "test-sentry-token",
+  NEXT_PUBLIC_APP_URL: "https://app.example",
+  COMMERCIAL_AUTH_ADAPTER: "clerk",
+  COMMERCIAL_DATA_ADAPTER: "neon",
+  COMMERCIAL_WORKSPACE_BOOTSTRAP: "clerk-org",
+  COMMERCIAL_STORAGE_ADAPTER: "vercel-blob",
+  COMMERCIAL_PAYMENT_EVENT_STORE: "neon",
+  COMMERCIAL_EXECUTOR: "openai-compatible",
+  DATABASE_URL: "postgresql://db.example/app",
+  CLERK_SECRET_KEY: "sk_test_clerk_key",
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_clerk_key",
+  BLOB_READ_WRITE_TOKEN: "blob-test-token",
+  COMMERCIAL_PAYMENT_PROVIDER: "alipay",
+  NEXT_PUBLIC_COMMERCIAL_PAYMENT_PROVIDER: "alipay",
+  ALIPAY_FIRST_PURCHASE_PLAN: "new_user",
+  ALIPAY_APP_ID: "app-test",
+  ALIPAY_PRIVATE_KEY: "private-key-placeholder",
+  ALIPAY_PUBLIC_KEY: "public-key-placeholder",
+  ALIPAY_GATEWAY_URL: "https://openapi-sandbox.dl.alipaydev.com/gateway.do",
+  ALIPAY_NOTIFY_URL: "https://app.example/api/alipay/notify",
+  ALIPAY_RETURN_URL: "https://app.example/api/alipay/return",
+  ALIPAY_PLAN_AMOUNT_MAP: "new_user=9.90,pro=99.00",
+  ALIPAY_PLAN_RUN_LIMIT_MAP: "new_user=2,pro=20",
 };
 
 function runReleaseConfig(overrides: Partial<NodeJS.ProcessEnv> = {}) {

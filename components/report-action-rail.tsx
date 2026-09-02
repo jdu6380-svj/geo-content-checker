@@ -23,6 +23,8 @@ export function ReportActionRail({
 }: ReportActionRailProps) {
   const diagnosticsComplete = Boolean(totalCount && completedCount === totalCount);
   const patchAvailable = diagnosticsComplete && contentAvailable;
+  const patchDisabledReason = !patchAvailable ? (contentAvailable ? "诊断完成后可用" : "完成诊断并保留正文后可用") : null;
+  const recheckDisabledReason = !contentAvailable ? "完成报告并保留正文后可用" : null;
 
   return (
     <aside className="report-action-rail report-hero-action min-w-0" aria-label="报告完成后的操作">
@@ -59,24 +61,28 @@ export function ReportActionRail({
             <ArrowRight aria-hidden="true" className="size-4" />
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => onScrollToSection("patch-workshop")}
-          disabled={!patchAvailable}
-          className="report-completion-button is-secondary"
-        >
-          <FilePenLine aria-hidden="true" className="size-4" />
-          进入修改建议
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </button>
+          <button
+            type="button"
+            onClick={() => onScrollToSection("patch-workshop")}
+            disabled={!patchAvailable}
+            aria-label={patchDisabledReason ? `进入修改建议（${patchDisabledReason}）` : "进入修改建议"}
+            title={patchDisabledReason ?? undefined}
+            className="report-completion-button is-secondary"
+          >
+            <FilePenLine aria-hidden="true" className="size-4" />
+            {patchDisabledReason ? `修改建议（${patchDisabledReason}）` : "进入修改建议"}
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </button>
         <button
           type="button"
           onClick={onBackToEditor}
           disabled={!contentAvailable}
+          aria-label={recheckDisabledReason ? `重新验证（${recheckDisabledReason}）` : "重新验证"}
+          title={recheckDisabledReason ?? undefined}
           className="report-completion-button is-tertiary"
         >
           <RotateCcw aria-hidden="true" className="size-4" />
-          重新验证
+          {recheckDisabledReason ? `重新验证（${recheckDisabledReason}）` : "重新验证"}
           <ArrowRight aria-hidden="true" className="size-4" />
         </button>
       </div>

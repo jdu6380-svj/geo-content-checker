@@ -63,6 +63,11 @@ export function ReportNavigationPanel({
         {NAVIGATION_ITEMS.map(({ id, label, icon: Icon }, index) => {
           const disabled = (id === "patch" && !patchAvailable) ||
             (id === "recheck" && !recheckAvailable);
+          const disabledReason = id === "patch" && !patchAvailable
+            ? "诊断完成后可用"
+            : id === "recheck" && !recheckAvailable
+              ? (recheckLabel === "暂无正文" ? "完成报告并保留正文后可用" : "分析完成后可用")
+              : null;
           const active = activeView === id;
           return (
             <button
@@ -70,6 +75,8 @@ export function ReportNavigationPanel({
               type="button"
               className={active ? "is-active" : ""}
               aria-current={active ? "page" : undefined}
+              aria-label={disabledReason ? `${label}（${disabledReason}）` : label}
+              title={disabledReason ?? undefined}
               disabled={disabled}
               onClick={() => onNavigate(id)}
             >
@@ -78,7 +85,7 @@ export function ReportNavigationPanel({
                 <b>{String(index + 1).padStart(2, "0")}</b>
                 {label}
               </span>
-              <small>{meta[id]}</small>
+              <small>{disabledReason ?? meta[id]}</small>
             </button>
           );
         })}

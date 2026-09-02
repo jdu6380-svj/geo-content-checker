@@ -43,41 +43,41 @@ export function QuickStartGuide() {
 
 export function RecentReviewCard({
   score = 72,
-  title = "Demo 内容：AI 搜索长文审查示例",
+  title = "当前内容审查报告",
   onOpenReport,
 }: RecentReviewCardProps) {
   return (
     <section className="phase-rail-card phase-recent-report" aria-labelledby="phase-recent-report-title">
       <header>
-        <h2 id="phase-recent-report-title">Demo 报告预览</h2>
+        <h2 id="phase-recent-report-title">{onOpenReport ? "当前审查报告" : "报告结构模板"}</h2>
         {onOpenReport ? <button type="button" onClick={onOpenReport}>打开报告 <ArrowRight aria-hidden="true" /></button> : null}
       </header>
 
-      <div className="phase-recent-summary">
+      {onOpenReport ? <div className="phase-recent-summary">
         <div className="phase-recent-score">
           <strong>{score}</strong>
           <span>/100</span>
-          <small>示例分数</small>
+          <small>综合评分</small>
         </div>
         <div>
           <h3>{title}</h3>
-          <p>示例数据 · 仅用于说明报告结构</p>
+          <p>基于当前已完成的内容审查</p>
         </div>
-      </div>
+      </div> : <div className="phase-recent-summary"><div><h3>尚未生成真实审查报告</h3><p>提交内容后，这里会显示评分、诊断与修改建议。下方仅说明报告字段，不包含真实分数。</p></div></div>}
 
       <ul className="phase-recent-metrics">
         {SCORE_ITEMS.map((item) => (
           <li key={item.label}>
             <span className={`phase-metric-dot ${item.tone}`} aria-hidden="true" />
             <strong>{item.label}</strong>
-            <b className={item.tone}>{item.value}</b>
+            <b className={item.tone}>{onOpenReport ? item.value : "待生成"}</b>
             <ArrowRight aria-hidden="true" />
           </li>
         ))}
       </ul>
 
       <button type="button" className="phase-view-report-button" onClick={onOpenReport} disabled={!onOpenReport}>
-        {onOpenReport ? "打开当前报告" : "Demo 报告结构"} <ArrowRight aria-hidden="true" />
+        {onOpenReport ? "打开当前报告" : "提交内容后查看报告"} <ArrowRight aria-hidden="true" />
       </button>
     </section>
   );

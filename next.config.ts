@@ -2,17 +2,20 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+// Clerk hosts the sign-in UI and session API on the instance's frontend domain.
+const clerkOrigins = "https://*.clerk.accounts.dev https://*.clerk.dev";
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://img.clerk.com",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
-  `connect-src 'self'${isDevelopment ? " ws: wss:" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${clerkOrigins} https://challenges.cloudflare.com${isDevelopment ? " 'unsafe-eval'" : ""}`,
+  `connect-src 'self' ${clerkOrigins} https://challenges.cloudflare.com${isDevelopment ? " ws: wss:" : ""}`,
+  "frame-src 'self' https://challenges.cloudflare.com",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),

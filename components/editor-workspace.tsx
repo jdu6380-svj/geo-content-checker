@@ -2,6 +2,7 @@
 
 import type { DragEvent, FormEvent, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -56,6 +57,7 @@ type EditorWorkspaceProps = {
   remaining: number;
   fieldErrors: EditorFieldErrors;
   error: string;
+  authRequired?: boolean;
   titleRef: RefObject<HTMLInputElement | null>;
   contentRef: RefObject<HTMLTextAreaElement | null>;
   samples: EditorWorkspaceSample[];
@@ -112,6 +114,7 @@ export function EditorWorkspace({
   remaining,
   fieldErrors,
   error,
+  authRequired = false,
   titleRef,
   contentRef,
   samples,
@@ -151,7 +154,7 @@ export function EditorWorkspace({
     if (!SUPPORTED_UPLOAD_PATTERN.test(file.name)) {
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setUploadError("当前 Beta 仅支持 Markdown（.md、.markdown）与 TXT 文本文件。PDF、DOCX 尚未开放解析。");
+      setUploadError("当前支持 Markdown（.md、.markdown）与 TXT 文本文件。PDF、DOCX 暂不支持解析。");
       return;
     }
 
@@ -371,18 +374,25 @@ export function EditorWorkspace({
               </div>
             )}
 
-            {error ? <p className="phase-editor-error" role="alert">{error}</p> : null}
+            {error ? (
+              <p className="phase-editor-error" role="alert">
+                {error}
+                {authRequired ? (
+                  <Link href="/sign-in?redirect_url=%2Fdashboard">登录后进入商业工作台</Link>
+                ) : null}
+              </p>
+            ) : null}
 
             <section className="phase-recent-list" aria-labelledby="phase-recent-list-title">
-              <h2 id="phase-recent-list-title">示例审查内容</h2>
+              <h2 id="phase-recent-list-title">审查模板</h2>
               <ul>
                 {samples.slice(0, 3).map((sample, index) => {
                   const presentation = SAMPLE_PRESENTATION[index] ?? SAMPLE_PRESENTATION[0];
                   return (
                     <li key={sample.id}>
                       <span className={`phase-recent-file-icon ${presentation.tone}`}>{presentation.marker}</span>
-                      <div><strong>Demo 内容 · {sample.title}</strong><span>{sample.status} · {sample.description}</span></div>
-                      <button type="button" onClick={() => handleSample(index)}>载入示例 <ArrowRight aria-hidden="true" /></button>
+                      <div><strong>内容模板 · {sample.title}</strong><span>{sample.status} · {sample.description} · 非真实用户报告</span></div>
+                      <button type="button" onClick={() => handleSample(index)}>载入模板 <ArrowRight aria-hidden="true" /></button>
                     </li>
                   );
                 })}

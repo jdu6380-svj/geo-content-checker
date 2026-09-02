@@ -58,7 +58,7 @@ Do not add these secrets to `.env.example`, Preview application variables, build
 
 ## Preview Validation
 
-1. Run `npm run check`, `npm run security:unit`, `npm run build`, `npm run blackbox:fallback`, and `git diff --check` under Node 22.
+1. Run `npm run check`, `npm run security:unit`, `npm run build`, `npm run blackbox:legacy-migration`, and `git diff --check` under Node 22.
 2. Verify the Draft PR Diff against `origin/main`; do not continue if it contains credentials, artifacts, or scope expansion.
 3. Confirm every required variable above exists in Vercel `Preview` with the intended branch scope. Vercel Sensitive values are not exportable, so the Git Integration Preview build is the authoritative `release:check` value gate.
 4. Push a real product, defect, security, stability, or release-documentation commit to `feature/public-beta-hardening`. Do not create an empty or deployment-only commit.
@@ -67,13 +67,13 @@ Do not add these secrets to `.env.example`, Preview application variables, build
 7. Confirm the Preview URL belongs to that deployment and neither equals nor redirects to a Production domain or alias.
 8. Confirm `GET /api/health` returns HTTP 200 with `status: "ok"` and all five checks are `true`.
 9. Complete browser UX smoke at `1440x900`, `1280x800`, and `390x844`, including Editor, real Loading, Report, score rail, Diagnosis, Patch, keyboard operation, and overflow.
-10. Require the `Preview Blackbox` workflow for the PR head SHA to pass. The workflow waits for the matching Git Integration Preview, or accepts an explicit URL and SHA through its future manual entry, then verifies URL, Project, Git source, Preview Target, Branch, READY state, and Deployment SHA before running `blackbox:model -- --skip-declared-length-check`. Vercel buffers incomplete request bodies before they reach the application, so the malformed declared-length transport check remains mandatory in the local `security:unit` and `blackbox:fallback` gates instead. Every model-capable route must return `source: "model"`; fallback, mocks, and fixtures do not satisfy this gate.
+10. Require the `Preview Legacy Migration Boundary` workflow for the PR head SHA to pass. The workflow waits for the matching Git Integration Preview, or accepts an explicit URL and SHA through its future manual entry, verifies URL, Project, Git source, Preview Target, Branch, READY state, and Deployment SHA, then runs `blackbox:legacy-migration`. This confirms old anonymous analysis routes are closed before parsing user content. It is not an AI, payment, private-result, or commercial entitlement acceptance gate; those checks belong to the authorized staging smoke sequence.
 11. Complete one real Preview analysis, then trigger a controlled `A5SmokeError` through the existing client-side Sentry global error capture. Do not add a business test route. Verify Sentry receives a `preview` event with the matching Release SHA and stack but without body, Prompt, evidence, cookies, User-Agent, raw IP, client UUID, authorization headers, or secrets.
 12. Verify `geo_api_request` structured logs contain only fields from the code-owned top-level allowlist. The allowlist categories are request/route/status/timing/source/rate-limit metadata; model and budget status/timing; Token counts and optional cost; and bounded response-shape, Evidence-count, schema, and parse diagnostics. `geo_api_stage` is checked separately for request ID, route, stage, timestamp, and latency. Neither stream records request/response bodies, article or question text, Prompt, Evidence quotes, model content/reasoning, credentials/authentication material, cookies, query strings, User-Agent, client identifiers, secrets, or provider request identifiers.
 
 Changing a Preview variable does not retroactively update an existing Deployment. For A.5, do not click Redeploy and do not use Vercel CLI deployment; wait for the real commit in step 4 to create a new Git Integration Preview.
 
-Local validation can be affected by a workstation running Node 24 or by a sandbox that blocks local-port connections. A local `blackbox:fallback` failure under those conditions is not the final release result. The final decision requires CI on Node 22, a Vercel Preview, the real provider API, and `blackbox:model` returning `source: "model"`.
+Local validation can be affected by a workstation running Node 24 or by a sandbox that blocks local-port connections. A local `blackbox:legacy-migration` failure under those conditions is not the final release result. Commercial acceptance still requires the authorized staging smoke, including its configured provider, workspace, entitlement, private-result, and audit checks.
 
 ## Model Acceptance
 
@@ -100,7 +100,7 @@ Production remains blocked until a human reviews at least 50 exported evidence, 
 1. Confirm Preview acceptance, model acceptance, Evidence Quality Check, Sentry privacy review, and rollback readiness.
 2. Merge `feature/public-beta-hardening` into `main`.
 3. Deploy `main` to Vercel Production and retain the previous deployment as the rollback point.
-4. Confirm health, run `blackbox:model`, and complete one manual end-to-end analysis.
+4. Confirm health, run `blackbox:legacy-migration`, and complete one authenticated commercial end-to-end analysis with the approved staging/production checklist.
 5. Create and push the annotated tag only after Production passes:
 
 ```bash

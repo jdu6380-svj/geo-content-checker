@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { getUpstashRedisRestConfig } from "./redis-config.ts";
 
 import type { BetaEvent, BetaRunEvent } from "@/lib/schemas/beta-event";
 import { hashBetaRunId } from "@/lib/server/beta-identity";
@@ -104,8 +105,7 @@ function runIdempotencyKey(event: BetaRunEvent): string {
 
 function getRedisClient(): Redis | null {
   if (redisClient !== undefined) return redisClient;
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  const { url, token } = getUpstashRedisRestConfig();
 
   if (!url && !token) {
     redisClient = null;

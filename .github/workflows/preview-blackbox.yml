@@ -1,4 +1,4 @@
-name: Preview Blackbox
+name: Preview Legacy Migration Boundary
 
 on:
   pull_request:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: preview-blackbox-${{ github.ref }}
+  group: preview-legacy-migration-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           if [ "$SOURCE_BRANCH" != "$EXPECTED_BRANCH" ]; then
-            echo "::error::Preview Blackbox must run from $EXPECTED_BRANCH."
+            echo "::error::Preview legacy migration boundary must run from $EXPECTED_BRANCH."
             exit 1
           fi
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
@@ -81,17 +81,17 @@ jobs:
           CHECKOUT_SHA: ${{ steps.checkout.outputs.sha }}
         run: node scripts/validate-preview-deployment.mjs
 
-      - name: Run protected Preview model blackbox
+      - name: Run protected Preview legacy migration blackbox
         env:
           GEO_BASE_URL: ${{ steps.preflight.outputs.preview_url }}
-        run: npm run blackbox:model -- --skip-declared-length-check
+        run: npm run blackbox:legacy-migration
 
       - name: Record validation target
         if: success()
         shell: bash
         run: |
           {
-            echo "## Preview Blackbox PASS"
+            echo "## Preview Legacy Migration Boundary PASS"
             echo
             echo "- Branch: \`$SOURCE_BRANCH\`"
             echo "- Commit: \`$EXPECTED_SHA\`"

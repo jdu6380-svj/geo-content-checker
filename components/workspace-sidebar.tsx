@@ -13,6 +13,7 @@ import {
   RotateCcw,
   UsersRound,
 } from "lucide-react";
+import Link from "next/link";
 
 import type { ReportWorkspaceView } from "@/components/report-workspace";
 import type { WorkspaceStage } from "@/components/workspace-command-bar";
@@ -59,27 +60,32 @@ export function WorkspaceSidebar({
 
         <div className="phase-sidebar-section">
           <p>工作空间</p>
-          <button type="button" onClick={onOpenReport} disabled={!canOpenReport} className={stage === "report" ? "is-active" : ""}>
-            <FileText aria-hidden="true" />我的审查
-          </button>
-          <button type="button" disabled><Folder aria-hidden="true" />当前草稿</button>
-          <button type="button" disabled><UsersRound aria-hidden="true" />单用户 Beta</button>
+          {canOpenReport ? (
+            <button type="button" onClick={onOpenReport} className={stage === "report" ? "is-active" : ""}>
+              <FileText aria-hidden="true" />我的审查
+            </button>
+          ) : null}
+          <Link href="/dashboard"><UsersRound aria-hidden="true" />商业工作区</Link>
         </div>
 
         <div className="phase-sidebar-section">
           <p>工具</p>
-          <button type="button" onClick={onOpenAdvice} disabled={!canOpenAdvice} className={stage === "advice" ? "is-active" : ""}>
-            <Bot aria-hidden="true" />AI 修改建议
-          </button>
-          <button type="button" onClick={onOpenRecheck} disabled={!canOpenRecheck} className={stage === "recheck" ? "is-active" : ""}>
-            <RotateCcw aria-hidden="true" />重新验证
-          </button>
-          <button type="button" disabled><LayoutGrid aria-hidden="true" />示例内容</button>
+          {canOpenAdvice ? (
+            <button type="button" onClick={onOpenAdvice} className={stage === "advice" ? "is-active" : ""}>
+              <Bot aria-hidden="true" />AI 修改建议
+            </button>
+          ) : null}
+          {canOpenRecheck ? (
+            <button type="button" onClick={onOpenRecheck} className={stage === "recheck" ? "is-active" : ""}>
+              <RotateCcw aria-hidden="true" />重新验证
+            </button>
+          ) : null}
+          <button type="button" onClick={onOpenReview}><LayoutGrid aria-hidden="true" />审查模板</button>
         </div>
 
         <div className="phase-sidebar-section">
-          <p>Beta 体验</p>
-          <button type="button" disabled><CircleHelp aria-hidden="true" />单用户模式</button>
+          <p>账户与支持</p>
+          <Link href="/sign-in"><CircleHelp aria-hidden="true" />登录或注册</Link>
           <a href="/feedback" target="_blank" rel="noreferrer" onClick={onFeedbackClick}>
             <MessageSquareText aria-hidden="true" />反馈建议
           </a>
@@ -87,10 +93,10 @@ export function WorkspaceSidebar({
       </nav>
 
       <div className="phase-sidebar-footer">
-        <span className="phase-user-avatar">B</span>
+        <span className="phase-user-avatar">E</span>
         <div>
-          <strong>Beta 访客</strong>
-          <span>本地体验</span>
+          <strong>Evidra</strong>
+          <span>内容审查工作台</span>
         </div>
         <ChevronDown aria-hidden="true" />
       </div>

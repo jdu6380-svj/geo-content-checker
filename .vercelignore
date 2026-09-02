@@ -1,0 +1,13 @@
+# Keep large media and local state out of Vercel uploads.
+videos/**
+.env*
+.vercel/**
+node_modules/**
+.next/**
+artifacts/**
+coverage/**
+output/**
+outputs/**
+work/**
+design-qa/**
+*.log

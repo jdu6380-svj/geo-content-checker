@@ -5,18 +5,17 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
-  CreditCard,
   FileCheck2,
   Hand,
   Plus,
   RotateCcw,
-  Settings,
   ShieldCheck,
   UserRound,
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import Link from "next/link";
 
 import { EvidraBrandMark } from "@/components/evidra-brand-mark";
 
@@ -31,16 +30,16 @@ type AppHeaderProps = {
 
 type HeaderLayer = "invite" | "notifications" | "account" | null;
 
-const BETA_STATUS_ITEMS = [
-  { name: "单用户体验", detail: "当前浏览器会话", status: "已启用", date: "Beta", tone: "is-success" },
-  { name: "账户与订阅", detail: "不创建用户身份", status: "未启用", date: "Beta", tone: "is-warning" },
-  { name: "团队与邀请", detail: "不提供协作入口", status: "未启用", date: "Beta", tone: "is-warning" },
+const WORKFLOW_STATUS_ITEMS = [
+  { name: "内容审查", detail: "粘贴或上传内容", status: "可开始", date: "当前", tone: "is-success" },
+  { name: "认证工作台", detail: "保存项目与报告", status: "需登录", date: "账户", tone: "is-warning" },
+  { name: "团队额度", detail: "在工作区统一管理", status: "工作台", date: "套餐", tone: "is-purple" },
 ] as const;
 
-const BETA_NOTICES = [
-  { title: "本地体验模式", description: "当前不会创建真实账户或同步个人身份。", time: "Beta", tone: "is-purple", icon: UserRound },
-  { title: "报告来自当前会话", description: "仅展示本次提交内容的审查结果。", time: "当前", tone: "is-warning", icon: FileCheck2 },
-  { title: "反馈入口已开放", description: "可通过左侧反馈入口提交真实体验。", time: "可用", tone: "is-success", icon: CircleHelp },
+const WORKFLOW_NOTICES = [
+  { title: "开始新的内容审查", description: "粘贴正文或上传文本文件，提交后生成审查结果。", time: "可用", tone: "is-purple", icon: FileCheck2 },
+  { title: "报告仅基于已提交内容", description: "模板只用于准备输入，不代表真实分析结果。", time: "提醒", tone: "is-warning", icon: ShieldCheck },
+  { title: "商业工作台", description: "登录后管理项目、共享额度、套餐与客户交付报告。", time: "账户", tone: "is-success", icon: UserRound },
 ] as const;
 
 export function AppHeader({
@@ -75,14 +74,14 @@ export function AppHeader({
             <EvidraBrandMark className="brand-mark" />
             <span>
               <strong>Evidra</strong>
-              <small>内容可信度审查</small>
+              <small>AI 内容可信度与 GEO 发布前审查</small>
             </span>
           </button>
 
           <div className="phase-header-main">
-            <div className="phase-header-greeting" role="status" aria-label="Beta 体验模式，当前会话">
+            <div className="phase-header-greeting" role="status" aria-label="AI 内容发布前审查">
               <Hand aria-hidden="true" />
-              <span><strong>Beta 体验模式</strong> · 当前会话</span>
+              <span><strong>AI 内容发布前审查</strong> · 当前工作区</span>
             </div>
 
             <div className="phase-header-actions">
@@ -99,13 +98,13 @@ export function AppHeader({
                 aria-expanded={layer === "invite"}
               >
                 <CircleHelp aria-hidden="true" />
-                <span>Beta 说明</span>
+                <span>工作流说明</span>
               </button>
               <button
                 type="button"
                 className={`phase-header-icon-button ${layer === "notifications" ? "is-active" : ""}`}
                 onClick={() => toggleLayer("notifications")}
-                aria-label="查看 Beta 提示"
+                aria-label="查看审查提醒"
                 aria-expanded={layer === "notifications"}
               >
                 <Bell aria-hidden="true" />
@@ -114,10 +113,10 @@ export function AppHeader({
                 type="button"
                 className={`phase-account-trigger ${layer === "account" ? "is-active" : ""}`}
                 onClick={() => toggleLayer("account")}
-                aria-label="打开 Beta 状态菜单"
+                aria-label="打开账户入口"
                 aria-expanded={layer === "account"}
               >
-                <span className="phase-user-avatar">B</span>
+                <span className="phase-user-avatar">E</span>
                 <ChevronDown aria-hidden="true" />
               </button>
             </div>
@@ -126,13 +125,13 @@ export function AppHeader({
           <div className="phase-header-hidden-nav" aria-hidden="true">{navigation}</div>
 
           {layer === "notifications" ? (
-            <section className="phase-header-popover phase-notification-popover" aria-label="Beta 提示" tabIndex={-1} autoFocus>
+            <section className="phase-header-popover phase-notification-popover" aria-label="审查提醒" tabIndex={-1} autoFocus>
               <header>
-                <h2>Beta 提示</h2>
+                <h2>审查提醒</h2>
                 <button type="button" onClick={() => setLayer(null)}>关闭</button>
               </header>
               <ul>
-                {BETA_NOTICES.map(({ title, description, time, tone, icon: Icon }) => (
+                {WORKFLOW_NOTICES.map(({ title, description, time, tone, icon: Icon }) => (
                   <li key={title}>
                     <span className={`phase-notification-icon ${tone}`}><Icon aria-hidden="true" /></span>
                     <div>
@@ -148,16 +147,15 @@ export function AppHeader({
           ) : null}
 
           {layer === "account" ? (
-            <section className="phase-header-popover phase-account-popover" aria-label="Beta 状态菜单" tabIndex={-1} autoFocus>
+            <section className="phase-header-popover phase-account-popover" aria-label="账户入口" tabIndex={-1} autoFocus>
               <div className="phase-account-profile">
-                <span className="phase-user-avatar is-large">B</span>
-                <div><strong>Beta 访客</strong><span>本地体验模式</span></div>
+                <span className="phase-user-avatar is-large">E</span>
+                <div><strong>Evidra 工作台</strong><span>登录后保存项目与报告</span></div>
               </div>
               <div className="phase-account-menu-group">
-                <button type="button" disabled><UserRound aria-hidden="true" />未绑定真实账户</button>
-                <button type="button" disabled><Settings aria-hidden="true" />设置暂未开放</button>
-                <button type="button" disabled><CreditCard aria-hidden="true" />无订阅计划</button>
-                <button type="button" disabled><CircleHelp aria-hidden="true" />当前为单用户 Beta</button>
+                <Link href="/sign-in"><UserRound aria-hidden="true" />登录</Link>
+                <Link href="/sign-up"><Plus aria-hidden="true" />注册</Link>
+                <Link href="/dashboard"><FileCheck2 aria-hidden="true" />项目、额度与套餐</Link>
               </div>
               <button type="button" className="phase-account-logout is-neutral" onClick={() => setLayer(null)}><X aria-hidden="true" />关闭菜单</button>
             </section>
@@ -176,35 +174,35 @@ export function AppHeader({
             autoFocus
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <button type="button" className="phase-modal-close" onClick={() => setLayer(null)} aria-label="关闭 Beta 说明">
+            <button type="button" className="phase-modal-close" onClick={() => setLayer(null)} aria-label="关闭工作流说明">
               <X aria-hidden="true" />
             </button>
             <header>
-              <h2 id="phase-invite-title">Evidra Beta 体验说明</h2>
-              <p>当前为单用户受控体验，不提供账户、订阅、团队或好友邀请能力。</p>
+              <h2 id="phase-invite-title">Evidra 审查工作流</h2>
+              <p>粘贴或上传内容即可开始发布前审查；登录商业工作台后，可按工作区管理项目、共享额度和客户交付报告。</p>
             </header>
 
             <div className="phase-invite-section">
-              <label htmlFor="phase-invite-link">当前体验模式</label>
+              <label htmlFor="phase-invite-link">当前输入方式</label>
               <div className="phase-invite-link-row">
-                <input id="phase-invite-link" value="单用户 · 当前浏览器 · 本地草稿" readOnly />
-                <button type="button" disabled><Check aria-hidden="true" />Beta 模式</button>
+                <input id="phase-invite-link" value="粘贴正文 · 上传文本 · 使用审查模板" readOnly />
+                <span className="phase-invite-status" role="status"><Check aria-hidden="true" />内容审查</span>
               </div>
             </div>
 
             <div className="phase-invite-section">
               <span className="phase-invite-label">可体验流程</span>
-              <div className="phase-share-methods">
-                <button type="button" disabled><FileCheck2 aria-hidden="true" />提交内容</button>
-                <button type="button" disabled><ShieldCheck aria-hidden="true" />查看依据</button>
-                <button type="button" disabled><RotateCcw aria-hidden="true" />重新验证</button>
+              <div className="phase-share-methods" aria-label="可体验流程状态">
+                <span><FileCheck2 aria-hidden="true" />提交内容</span>
+                <span><ShieldCheck aria-hidden="true" />查看依据</span>
+                <span><RotateCcw aria-hidden="true" />重新验证</span>
               </div>
             </div>
 
             <div className="phase-invite-records">
               <h3>能力状态</h3>
               <ul>
-                {BETA_STATUS_ITEMS.map((record) => (
+                {WORKFLOW_STATUS_ITEMS.map((record) => (
                   <li key={record.name}>
                     <span className="phase-invite-avatar">{record.name.slice(0, 1)}</span>
                     <div><strong>{record.name}</strong><span>{record.detail}</span></div>
@@ -213,7 +211,7 @@ export function AppHeader({
                 ))}
               </ul>
             </div>
-            <p className="phase-invite-note">当前 Preview 不代表正式账户服务，也不会生成真实邀请、订阅或团队记录。</p>
+            <p className="phase-invite-note">未登录时不会创建账户、订阅或团队记录；模板内容也不会被标记为真实用户报告。</p>
           </section>
         </div>
       ) : null}

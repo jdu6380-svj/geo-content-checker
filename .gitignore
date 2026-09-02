@@ -26,7 +26,16 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local private key and certificate material
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
 # Generated TypeScript and OS files
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+.vercel

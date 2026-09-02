@@ -36,13 +36,7 @@ npm run dev
 npm run dev:model
 ```
 
-在服务运行期间检查 `GET /api/health` 的 `checks.modelConfigured` 与 `checks.redisConfigured` 都为 `true`，再执行：
-
-```bash
-npm run blackbox:model
-```
-
-完整分析流程必须返回 `source: "model"`，并在结构化日志或响应头中确认 `rateLimitMode: "redis"`。`dev:model` 缺少 Upstash 凭据时会在开发环境回退到 `memory`，即使模型可用也不算 Redis 验证通过。健康接口只有在全部健康项（也包含反馈入口和 Sentry）均配置完成时才返回 `200 / ok`；因此真实模型和 Redis 验收应以这两个单项检查、模型来源和 Redis 限流模式共同判断。
+在服务运行期间检查 `GET /api/health` 的模型与 Redis readiness 均为 `true`，再通过登录后的商业工作台提交一条非敏感测试内容。真实验收必须确认商业运行由受控 executor 完成、私有结果可回访且额度只在成功后扣减；旧匿名 API 不再用于模型验收。`dev:model` 缺少 Upstash 凭据时会在开发环境回退到 `memory`，即使模型可用也不算 Redis 验证通过。
 
 服务端为所有 API 输出结构化日志，并由代码拥有的顶层白名单限制为请求/路由/状态/耗时、结果来源、限流状态、模型与 provider 状态/耗时、预算、Token 数量、可选费用、受限响应形状及校验诊断等运行元数据类别；只记录 Token 数量，不记录授权 Token 或任何内容。日志不会记录文章正文、问题证据、API Key 或内部 Prompt。
 
@@ -70,7 +64,7 @@ npm run setup:env
 
 ```bash
 npm run check
-npm run blackbox:model
+npm run blackbox:legacy-migration
 npm run build
 ```
 
@@ -83,20 +77,18 @@ npm run build
 ```bash
 # 安全测试运行器需预先注入 VERCEL_AUTOMATION_BYPASS_SECRET。
 GEO_BASE_URL=https://your-preview.vercel.app \
-npm run blackbox:model -- --skip-declared-length-check
+npm run blackbox:legacy-migration
 ```
 
 受 Deployment Protection 保护的 Preview 必须使用 Vercel 官方 `x-vercel-protection-bypass` 请求头。该 Secret 只属于自动化测试运行器，不加入 `.env.example`、Vercel 应用环境变量或仓库。
 
-仓库提供 GitHub Actions 工作流 `Preview Blackbox`。在当前 Draft PR 中，它只对 `feature/public-beta-hardening` 的 PR 更新运行，并按 Commit SHA 等待 Git Integration Preview；合并后也可使用手动入口。工作流固定使用 GitHub Environment `Preview`，并要求：
+仓库提供 GitHub Actions 工作流 `Preview Legacy Migration Boundary`。在当前 Draft PR 中，它只对 `feature/public-beta-hardening` 的 PR 更新运行，并按 Commit SHA 等待 Git Integration Preview；合并后也可使用手动入口。工作流固定使用 GitHub Environment `Preview`，并要求：
 
 - Environment Secrets：`VERCEL_AUTOMATION_BYPASS_SECRET`、`VERCEL_TOKEN`
 - Environment Variables：`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`
 - 手动入口输入：唯一 Preview Deployment URL 和完整 Commit SHA
 
-工作流会先通过 Vercel API 发现或校验对应 Preview，确认 Project、Git 来源、Preview Target、Branch、READY 状态和 Commit SHA，再运行原生 `blackbox:model`。它不会创建、重试、Promote 或修改任何 Deployment。
-
-Vercel 会在应用前缓冲不完整的请求体，因此远程模型验收显式跳过畸形 `Content-Length` 传输用例；该用例仍必须由本地 `security:unit` 和 `blackbox:fallback` 通过。
+工作流会先通过 Vercel API 发现或校验对应 Preview，确认 Project、Git 来源、Preview Target、Branch、READY 状态和 Commit SHA，再运行 `blackbox:legacy-migration`。它不会创建、重试、Promote 或修改任何 Deployment；也不代表模型、支付、数据库或私有报告验收已经完成。
 
 如果 Preview 变量在已有 Deployment 创建后更新，旧 Deployment 不会读取新值。A.5 不点击 Redeploy；等待下一次真实产品、缺陷、安全、稳定性或发布文档 Commit 触发新的 Git Integration Preview。
 
@@ -132,17 +124,7 @@ Preview 故障测试结束后，必须恢复 `REDIS_QUOTA_FAIL_OPEN=false`。
    GEO_BASE_URL=https://your-preview.example.com npm run blackbox
    ```
 
-   无真实模型密钥时显式验证降级结果：
-
-   ```bash
-   npm run blackbox:fallback
-   ```
-
-   接入真实模型后显式验证模型结果：
-
-   ```bash
-   npm run blackbox:model
-   ```
+   商业运行的真实 AI、私有报告和额度验证只使用已授权的 staging smoke，不使用旧匿名 API。
 
 5. 在业务逻辑稳定后执行 UI 优化：
    - 优化加载、成功、局部失败、会话失败和重新体检状态。
@@ -177,9 +159,11 @@ Preview 故障测试结束后，必须恢复 `REDIS_QUOTA_FAIL_OPEN=false`。
 
 测试脚本不会输出文章正文、分析令牌或环境密钥。
 
-## MVP 边界
+## 当前商业与匿名边界
 
-- 正文只在当前请求中处理，不保存到服务端数据库。
-- 最近一份报告仅保存在浏览器本地，并带有过期和体积清理策略。
-- MVP 不包含账号、团队 RBAC、支付或服务端报告历史。
-- 生产部署需要真实模型凭据、Upstash Redis、监控告警和独立隐私说明。
+- 认证商业工作台使用 Clerk actor、Neon workspace/member、私有 Blob 结果和服务端 entitlement/quota；workspace、项目、run 与 result 均由服务端归属校验。
+- 商业分析只从认证后的 project-level analyze 入口执行；报告成功持久化后才扣除一次额度，失败、取消或未生成完整报告不扣除。
+- 首发支付 provider 为支付宝一次性套餐；未配置支付宝、Neon、Blob、Clerk 或 OpenAI-compatible executor 时，商业入口保持 fail-closed，不展示伪成功。
+- 旧匿名分析端点仅返回 `401 AUTHENTICATION_REQUIRED` 并引导登录；首页仍可保留本地草稿、模板和输入预览，但不会产生商业 run、报告或额度记录。
+- staging 配置检查、迁移、一次性 workspace provisioning、health、smoke 和人工验收顺序见 [`docs/staging-launch-runbook.md`](docs/staging-launch-runbook.md) 与 [`docs/staging-handoff-template.md`](docs/staging-handoff-template.md)。交接模板只记录变量名、状态和责任，不记录凭证值。
+- 匿名兼容体验的本地缓存与指标不是商业账户、账单、entitlement 或客户报告事实；商业 staging/production 仍需真实凭证、迁移和人工验收。

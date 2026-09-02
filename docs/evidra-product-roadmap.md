@@ -126,10 +126,10 @@ Evidra 不是通用聊天机器人、完整文章写作工具、自动发布系�
 
 ### Phase A.5：Preview 验收
 
-- 在 Node 22 下完成本地检查、构建、安全与 fallback 黑盒。
+- 在 Node 22 下完成本地检查、构建、安全与旧匿名入口迁移黑盒。
 - 如果 Preview 环境变量在既有 Deployment 创建后更新，旧 Deployment 不会读取新值；A.5 不执行 Redeploy 或 CLI 部署，下一次真实产品、缺陷、安全、稳定性或 Release 文档 Commit 通过 Git Integration 自然触发新 Preview。
-- 本地验证可能受 Node 24 与沙箱禁止本地端口连接影响；fallback 黑盒的本地失败不能作为最终结论，最终门禁以 CI Node 22、Vercel Preview、真实供应商 API 和 `blackbox:model` 返回 `source: "model"` 为准。
-- 先验证 Source、Branch、SHA、Target、Environment 和非 Production URL，再按 Build、Health、浏览器 UX、完整分析、模型黑盒和 Sentry Smoke 顺序验收。
+- 本地验证可能受 Node 24 与沙箱禁止本地端口连接影响；旧匿名入口迁移黑盒的本地失败不能作为最终结论。商业验收以 CI Node 22、Vercel Preview 边界检查及受控 staging 的真实供应商、工作区、额度和私有结果证据为准。
+- 先验证 Source、Branch、SHA、Target、Environment 和非 Production URL，再按 Build、Health、浏览器 UX、旧入口迁移边界和 Sentry Smoke 顺序验收；商业运行验收转入 staging runbook。
 - 当前 A.5 不创建、重试、删除或 Promote 故障 Deployment，不修改 Production。
 
 ### Phase B.1：两阶段模型技术验证
@@ -194,7 +194,7 @@ analysis_completed + patch_applied + repeat_analysis
 - [ ] `REDIS_QUOTA_FAIL_OPEN=false`，且使用应用读取的准确 Upstash 变量名。
 - [ ] Sentry Preview 配置和隐私检查通过。
 - [ ] Phase B/Commercial Readiness 完成模型成本校准和供应商费用告警；此项不阻断 A.5 Preview。
-- [ ] Preview Health、完整流程和 `blackbox:model` 通过。
+- [ ] Preview Health 与 `blackbox:legacy-migration` 通过；商业完整流程通过授权 staging smoke。
 - [ ] Redis、timeout、429、无效 JSON 和 fallback 故障验证通过。
 - [ ] B.1 模型稳定性、Evidence 和成本门禁通过。
 - [ ] B.2 真实 Beta 样本和信任指标达到最低要求。

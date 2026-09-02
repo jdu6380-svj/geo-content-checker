@@ -48,13 +48,13 @@ import {
   MAX_ARTICLE_CHARACTERS,
   MIN_ARTICLE_CHARACTERS,
 } from "@/lib/constants/input-limits";
-import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 import type {
   DiagnosticResult,
   EvaluateScoringResponse,
   Paragraph,
   PredictQuestionsResponse,
 } from "@/lib/schemas/geo";
+import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
 
 type ArticleDraft = {
   title: string;
@@ -98,7 +98,7 @@ const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
   {
     label: "信息缺失",
     note: "观点明确，证据不足",
-    title: "内容创作者必须马上布局 AI 搜索",
+    title: "B2B SaaS 内容团队如何准备 AI 搜索发布",
     publishedAt: "",
     content:
       "AI 搜索已经非常重要，所有创作者都应该马上开始布局。未来绝大部分用户都会通过 AI 获取信息。\n\n创作者需要把文章写得更好，让 AI 更容易理解。只要内容质量足够高，就有机会得到更多曝光。\n\n具体方法包括优化结构、增加信息和回答用户问题。坚持执行，就能获得明显效果。",
@@ -106,7 +106,7 @@ const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
   {
     label: "营销过强",
     note: "承诺很多，事实很少",
-    title: "一个方法让你的内容获得爆发式增长",
+    title: "B2B SaaS 多产品线的 AI 搜索增长承诺风险",
     publishedAt: "2026-07-13",
     content:
       "这是目前效果最强、全网领先的内容增长方法。任何人使用后都能快速提升流量，并获得前所未有的曝光。\n\n我们的独家方案可以彻底解决内容不被看见的问题，不需要复杂操作，也不需要长期等待。\n\n现在开始使用，你的文章就会更容易被所有 AI 平台推荐。这是创作者不可错过的增长机会。",
@@ -122,7 +122,7 @@ const DIMENSION_META = [
 
 const SAMPLE_META: Record<number, SamplePresentationMeta> = {
   0: {
-    status: "完整示例",
+    status: "完整模板",
     description: "信息边界清楚，适合了解完整输入",
     badgeClassName: "status-success",
   },
@@ -167,13 +167,11 @@ function scoreBand(score: number): { label: string; note: string } {
 
 function getDailyUsage(): number {
   if (typeof window === "undefined") return 0;
-
   try {
-    const today = new Date().toISOString().slice(0, 10);
     const saved = window.localStorage.getItem(DAILY_USAGE_KEY);
     if (!saved) return 0;
     const value = JSON.parse(saved) as { date?: string; count?: number };
-    return value.date === today && typeof value.count === "number" ? value.count : 0;
+    return value.date === new Date().toISOString().slice(0, 10) && typeof value.count === "number" ? value.count : 0;
   } catch {
     return 0;
   }
@@ -181,30 +179,18 @@ function getDailyUsage(): number {
 
 function recordUsage(): void {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    window.localStorage.setItem(
-      DAILY_USAGE_KEY,
-      JSON.stringify({ date: today, count: getDailyUsage() + 1 }),
-    );
+    const date = new Date().toISOString().slice(0, 10);
+    window.localStorage.setItem(DAILY_USAGE_KEY, JSON.stringify({ date, count: getDailyUsage() + 1 }));
   } catch {
-    // A blocked localStorage should not make the analysis workflow unusable.
+    // Local usage is legacy-only telemetry and must not block drafting.
   }
 }
 
 function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.reject(createGeoAbortError());
-
   return new Promise((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
-      signal?.removeEventListener("abort", handleAbort);
-      resolve();
-    }, milliseconds);
-    const handleAbort = () => {
-      window.clearTimeout(timeoutId);
-      signal?.removeEventListener("abort", handleAbort);
-      reject(createGeoAbortError());
-    };
-
+    const timeoutId = window.setTimeout(() => { signal?.removeEventListener("abort", handleAbort); resolve(); }, milliseconds);
+    const handleAbort = () => { window.clearTimeout(timeoutId); signal?.removeEventListener("abort", handleAbort); reject(createGeoAbortError()); };
     signal?.addEventListener("abort", handleAbort, { once: true });
   });
 }
@@ -212,13 +198,10 @@ function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
 function retryDelay(response: Response): number {
   const retryAfter = response.headers.get("retry-after");
   if (!retryAfter) return 1_000;
-
   const seconds = Number(retryAfter);
   if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1_000, 500), 5_000);
-
-  const retryDate = Date.parse(retryAfter);
-  if (Number.isFinite(retryDate)) return Math.min(Math.max(retryDate - Date.now(), 500), 5_000);
-  return 1_000;
+  const date = Date.parse(retryAfter);
+  return Number.isFinite(date) ? Math.min(Math.max(date - Date.now(), 500), 5_000) : 1_000;
 }
 
 async function responseError(response: Response, fallback: string): Promise<string> {
@@ -231,55 +214,19 @@ async function responseError(response: Response, fallback: string): Promise<stri
 }
 
 function requestErrorMessage(error: unknown, fallback: string, deadlineMessage: string): string {
-  if (isGeoRequestDeadlineError(error)) return deadlineMessage;
-  return error instanceof Error ? error.message : fallback;
+  return isGeoRequestDeadlineError(error) ? deadlineMessage : error instanceof Error ? error.message : fallback;
 }
 
-async function requestDiagnostic(
-  title: string,
-  paragraphs: Paragraph[],
-  question: string,
-  signal: AbortSignal,
-): Promise<DiagnosticResult> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const result = await withGeoRequestDeadline(async (requestSignal) => {
-      const response = await postGeoJson("/api/qa-diagnostic", {
-        title,
-        numbered_paragraphs: paragraphs,
-        question,
-      }, { signal: requestSignal });
-
-      if (response.status === 429 && attempt === 0) {
-        const delayMs = retryDelay(response);
-        await responseError(response, "");
-        return { kind: "retry" as const, delayMs };
-      }
-      if (!response.ok) {
-        throw new Error(await responseError(response, "该问题分析失败。"));
-      }
-      return {
-        kind: "success" as const,
-        data: (await response.json()) as DiagnosticResult,
-      };
-    }, { signal, deadlineMs: DIAGNOSTIC_DEADLINE_MS });
-
-    if (result.kind === "retry") {
-      await wait(result.delayMs + Math.round(Math.random() * 250), signal);
-      continue;
-    }
-    return result.data;
-  }
-
-  throw new Error("模型服务繁忙，请稍后重试。");
+async function requestDiagnostic(title: string, paragraphs: Paragraph[], question: string, signal: AbortSignal): Promise<DiagnosticResult> {
+  void title;
+  void paragraphs;
+  void question;
+  void signal;
+  throw new Error("真实分析需在认证商业工作台中执行。");
 }
 
 function initialDiagnostics(questions: string[]): DiagnosticsState {
-  return Object.fromEntries(
-    questions.map((question) => [
-      question,
-      { question, status: "queued", errorCount: 0 } satisfies DiagnosticItem,
-    ]),
-  );
+  return Object.fromEntries(questions.map((question) => [question, { question, status: "queued", errorCount: 0 } satisfies DiagnosticItem]));
 }
 
 export default function Home() {
@@ -298,6 +245,7 @@ export default function Home() {
   const [restoredFromCache, setRestoredFromCache] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const [error, setError] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [feedbackByQuestion, setFeedbackByQuestion] = useState<Record<string, boolean | undefined>>({});
   const titleRef = useRef<HTMLInputElement>(null);
@@ -706,6 +654,7 @@ export default function Home() {
     setFollowUpError("");
     setLatestQuestion(null);
     setError("");
+    setAuthRequired(false);
     setFieldErrors({});
     setRestoredFromCache(false);
     setRecheckBaseline(null);
@@ -860,7 +809,7 @@ export default function Home() {
     }
   }
 
-  async function startAnalysis(article: ArticleDraft, force = false) {
+  async function legacyStartAnalysis(article: ArticleDraft, force = false) {
     flushDraftSession(article);
     const runId = activeRunRef.current + 1;
     activeRunRef.current = runId;
@@ -910,9 +859,17 @@ export default function Home() {
     void openAnalysisSession(runId, article, articleParagraphs, signal);
   }
 
+  function startAnalysis(_article: ArticleDraft, _force = false): void {
+    // The public editor remains available for drafting, but execution now
+    // belongs to the authenticated, workspace-scoped commercial workflow.
+    setAuthRequired(true);
+    setError("真实分析需在认证商业工作台中执行。");
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setAuthRequired(false);
 
     const nextFieldErrors: FieldErrors = {};
     if (!(draft.title ?? "").trim()) nextFieldErrors.title = "请输入文章标题。";
@@ -934,11 +891,6 @@ export default function Home() {
       setError("正文超过 12,000 字，请删减后重试。");
       return;
     }
-    if (getDailyUsage() >= 10) {
-      setError("今天的 10 次体验额度已用完，请明天再试。");
-      return;
-    }
-
     void startAnalysis({ ...draft, content: contentText });
   }
 
@@ -956,6 +908,7 @@ export default function Home() {
     setSession({ status: "idle" });
     setExpandedQuestion(null);
     setError("");
+    setAuthRequired(false);
   }
 
   function openEditorForRecheck() {
@@ -1109,55 +1062,7 @@ export default function Home() {
 
   function submitFollowUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const question = followUpQuestion.trim();
-
-    if (!paragraphs.length) {
-      setFollowUpError("缓存报告不含正文，请重新运行体检后再追问。");
-      return;
-    }
-    if (question.length < 6) {
-      setFollowUpError("问题至少需要 6 个字。");
-      return;
-    }
-    if (questionOrder.includes(question)) {
-      setFollowUpError("这个问题已经分析过了。");
-      return;
-    }
-    if (questionOrder.length >= 10) {
-      setFollowUpError("每份报告最多分析 10 个问题。");
-      return;
-    }
-
-    const runId = activeRunRef.current;
-    const signal = analysisControllerRef.current?.signal;
-    if (!signal || signal.aborted) {
-      setFollowUpError("当前分析会话已结束，请重新运行体检后再追问。");
-      return;
-    }
-    setFollowUpQuestion("");
-    setFollowUpError("");
-    setLatestQuestion(question);
-    setExpandedQuestion(question);
-    setQuestionOrder((current) => [...current, question]);
-    setDiagnostics((current) => ({
-      ...current,
-      [question]: { question, status: "queued", errorCount: 0 },
-    }));
-    void scheduleGeoDiagnostic(
-      () => diagnoseQuestion(runId, draft.title, paragraphs, question, signal),
-      signal,
-    ).catch((scheduleError: unknown) => {
-      if (isGeoAbortError(scheduleError) || activeRunRef.current !== runId) return;
-      setDiagnostics((state) => ({
-        ...state,
-        [question]: {
-          ...state[question],
-          question,
-          status: "error",
-          error: requestErrorMessage(scheduleError, "该问题分析失败。", "该问题分析超时，请稍后重试。"),
-        },
-      }));
-    });
+    setFollowUpError("真实分析需在认证商业工作台中执行，请登录后从项目中重新提交。");
   }
 
   function submitDiagnosisFeedback(question: string, helpful: boolean) {
@@ -1297,6 +1202,7 @@ export default function Home() {
             remaining={remaining}
             fieldErrors={fieldErrors}
             error={error}
+            authRequired={authRequired}
             titleRef={titleRef}
             contentRef={contentRef}
             samples={EDITOR_SAMPLES}

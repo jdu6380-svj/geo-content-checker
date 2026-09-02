@@ -183,13 +183,15 @@ export function ReportWorkspace({
       <div className="report-workspace-grid">
         <nav className="report-mobile-subnav" aria-label="报告页面导航">
           <button type="button" aria-current={view === "overview" ? "page" : undefined} onClick={() => onScrollToSection("report-overview")}>报告</button>
-          <button type="button" aria-current={view === "evidence" ? "page" : undefined} disabled={!reportComplete} onClick={() => onScrollToSection("evidence-section")}>依据</button>
-          <button type="button" aria-current={view === "diagnosis" ? "page" : undefined} disabled={!reportComplete} onClick={() => onScrollToSection("diagnostic-section")}>诊断</button>
-          <button type="button" aria-current={view === "patch" ? "page" : undefined} disabled={!flowComplete} onClick={() => onScrollToSection("patch-workshop")}>修改</button>
+          <button type="button" aria-current={view === "evidence" ? "page" : undefined} disabled={!reportComplete} title={!reportComplete ? "分析完成后可用" : undefined} aria-label={!reportComplete ? "依据（分析完成后可用）" : "依据"} onClick={() => onScrollToSection("evidence-section")}>依据</button>
+          <button type="button" aria-current={view === "diagnosis" ? "page" : undefined} disabled={!reportComplete} title={!reportComplete ? "分析完成后可用" : undefined} aria-label={!reportComplete ? "诊断（分析完成后可用）" : "诊断"} onClick={() => onScrollToSection("diagnostic-section")}>诊断</button>
+          <button type="button" aria-current={view === "patch" ? "page" : undefined} disabled={!flowComplete} title={!flowComplete ? "全部诊断完成后可用" : undefined} aria-label={!flowComplete ? "修改（全部诊断完成后可用）" : "修改"} onClick={() => onScrollToSection("patch-workshop")}>修改</button>
           <button
             type="button"
             aria-current={view === "recheck" ? "page" : undefined}
             disabled={!recheckAvailable}
+            title={!recheckAvailable ? (contentAvailable ? "分析完成后可用" : "完成报告并保留正文后可用") : undefined}
+            aria-label={!recheckAvailable ? `复检（${contentAvailable ? "分析完成后可用" : "完成报告并保留正文后可用"}）` : "复检"}
             onClick={() => {
               if (recheckBaseline) onScrollToSection("recheck-comparison");
               else onBackToEditor();

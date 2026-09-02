@@ -61,6 +61,12 @@ export class ModelCallError extends Error {
   }
 }
 
+const VERCEL_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
+
+function isVercelAiGateway(baseUrl: string): boolean {
+  return baseUrl === VERCEL_AI_GATEWAY_BASE_URL;
+}
+
 export async function callOpenAICompatibleModel({
   messages,
   temperature = 0.1,
@@ -69,9 +75,15 @@ export async function callOpenAICompatibleModel({
   reasoningEffort,
   rateLimitMode = process.env.NODE_ENV === "production" ? "fallback" : "memory",
 }: ChatCompletionOptions): Promise<ModelCallResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
   const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const usesVercelAiGateway = isVercelAiGateway(baseUrl);
+  const supportsReasoningEffort = !model.toLowerCase().startsWith("deepseek-");
+  // Never forward a provider-specific key to the Gateway. Vercel deployments
+  // receive a short-lived OIDC token automatically.
+  const apiKey = usesVercelAiGateway
+    ? process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN
+    : process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     markGeoRequestOutcome({
@@ -123,9 +135,9 @@ export async function callOpenAICompatibleModel({
         model,
         messages,
         temperature,
-        response_format: { type: "json_object" },
+        ...(usesVercelAiGateway ? {} : { response_format: { type: "json_object" } }),
         ...(maxTokens ? { max_tokens: maxTokens } : {}),
-        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+        ...(reasoningEffort && !usesVercelAiGateway && supportsReasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       }),
       signal: controller.signal,
       cache: "no-store",

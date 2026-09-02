@@ -173,7 +173,19 @@ export function AnalysisProgressWorkspace({
                 <span className="phase-analysis-illustration"><FileSearch2 aria-hidden="true" /></span>
                 <h2>{hasAnalysisError ? "分析需要处理" : currentStep.activity}</h2>
                 <p>{hasAnalysisError ? "部分分析需要重试，已完成的结果会保留。" : currentStep.activityDescription}</p>
-                <div className="phase-analysis-progress-row"><div><span style={{ width: `${progress}%` }} /></div><strong>{displayedProgress}%</strong></div>
+                <div className="phase-analysis-progress-row">
+                  <div
+                    role="progressbar"
+                    aria-label="内容分析进度"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={displayedProgress}
+                    aria-valuetext={`${displayedProgress}%`}
+                  >
+                    <span style={{ width: `${progress}%` }} />
+                  </div>
+                  <strong aria-hidden="true">{displayedProgress}%</strong>
+                </div>
               </div>
 
               <ol className="phase-analysis-task-list">

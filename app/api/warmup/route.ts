@@ -17,6 +17,7 @@ import {
   markGeoRequestOutcome,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
+import { anonymousAnalysisMigrationResponse, shouldMigrateAnonymousAnalysis } from "@/lib/server/anonymous-analysis-migration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ function responseHeaders(requestId: string, mode?: string): HeadersInit {
 }
 
 async function handlePost(request: NextRequest): Promise<Response> {
+  if (shouldMigrateAnonymousAnalysis()) return anonymousAnalysisMigrationResponse();
+
   const requestId = randomUUID();
   console.warn(
     JSON.stringify({
