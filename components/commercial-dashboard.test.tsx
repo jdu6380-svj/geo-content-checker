@@ -18,9 +18,29 @@ function response(body: unknown, status = 200): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("CommercialDashboard", () => {
+  it("shows invite-only Beta access without loading or rendering payment controls", async () => {
+    vi.stubEnv("NEXT_PUBLIC_EVIDRA_BETA_MODE", "true");
+    const fetchMock = vi.fn().mockResolvedValueOnce(response({
+      projects: [],
+      usage: { workspaceId: "workspace_1", consumed: 2, limit: 10, accessMode: "beta", accessExpiresAt: "2026-10-31T00:00:00.000Z" },
+      history: [],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CommercialDashboard />);
+
+    expect(await screen.findByRole("heading", { name: "邀请制 Beta 额度" })).toBeTruthy();
+    expect(screen.getByText("Beta 授权有效")).toBeTruthy();
+    expect(screen.getByText(/不会创建支付订单/)).toBeTruthy();
+    expect(screen.queryByText(/购买 .* 次审查/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "支付运营管理" })).toBeNull();
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/commercial/projects"]);
+  });
+
   it("renders an empty workspace and creates a project through the data API", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response({ projects: [], usage: { workspaceId: "workspace_1", consumed: 0, limit: 3 } }))

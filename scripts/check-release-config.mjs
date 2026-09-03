@@ -16,6 +16,8 @@ function read(name) {
   return process.env[name]?.trim() || "";
 }
 
+const betaMode = read("NEXT_PUBLIC_EVIDRA_BETA_MODE") === "true";
+
 function requireValue(name) {
   if (!read(name)) errors.push(`${name} is required`);
 }
@@ -103,12 +105,19 @@ validateOptionalClerkMappings();
 requireValue("BLOB_READ_WRITE_TOKEN");
 if (read("COMMERCIAL_RUN_LIMIT")) errors.push("COMMERCIAL_RUN_LIMIT must be unset; use persisted workspace entitlement");
 
-requireExactValue("COMMERCIAL_PAYMENT_PROVIDER", "alipay");
-requireExactValue("NEXT_PUBLIC_COMMERCIAL_PAYMENT_PROVIDER", "alipay");
-requireExactValue("ALIPAY_FIRST_PURCHASE_PLAN", "new_user");
-for (const name of ["ALIPAY_APP_ID", "ALIPAY_PRIVATE_KEY", "ALIPAY_PUBLIC_KEY", "ALIPAY_PLAN_AMOUNT_MAP", "ALIPAY_PLAN_RUN_LIMIT_MAP"]) requireValue(name);
-for (const name of ["ALIPAY_GATEWAY_URL", "ALIPAY_NOTIFY_URL", "ALIPAY_RETURN_URL"]) requireHttpsUrl(name);
-validateAlipayPlanMappings();
+if (!betaMode) {
+  requireExactValue("COMMERCIAL_PAYMENT_PROVIDER", "alipay");
+  requireExactValue("NEXT_PUBLIC_COMMERCIAL_PAYMENT_PROVIDER", "alipay");
+  requireExactValue("ALIPAY_FIRST_PURCHASE_PLAN", "new_user");
+  for (const name of ["ALIPAY_APP_ID", "ALIPAY_PRIVATE_KEY", "ALIPAY_PUBLIC_KEY", "ALIPAY_PLAN_AMOUNT_MAP", "ALIPAY_PLAN_RUN_LIMIT_MAP"]) requireValue(name);
+  for (const name of ["ALIPAY_GATEWAY_URL", "ALIPAY_NOTIFY_URL", "ALIPAY_RETURN_URL"]) requireHttpsUrl(name);
+  validateAlipayPlanMappings();
+} else {
+  requireValue("EVIDRA_BETA_OPERATOR_SUBJECTS");
+  for (const name of ["COMMERCIAL_PAYMENT_PROVIDER", "NEXT_PUBLIC_COMMERCIAL_PAYMENT_PROVIDER", "ALIPAY_APP_ID", "ALIPAY_PRIVATE_KEY", "ALIPAY_PUBLIC_KEY", "ALIPAY_GATEWAY_URL", "ALIPAY_NOTIFY_URL", "ALIPAY_RETURN_URL", "ALIPAY_PLAN_AMOUNT_MAP", "ALIPAY_PLAN_RUN_LIMIT_MAP"]) {
+    if (read(name)) errors.push(`${name} must be unset in Evidra Beta mode`);
+  }
+}
 for (const name of ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_ID_ALLOWLIST", "STRIPE_PLAN_PRICE_MAP"]) {
   if (read(name)) errors.push(`${name} must be unset when COMMERCIAL_PAYMENT_PROVIDER=alipay`);
 }

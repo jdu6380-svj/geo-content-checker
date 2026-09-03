@@ -196,6 +196,8 @@ export class InMemoryCommercialRepository implements CommercialRepository {
       workspaceId: actor.workspaceId,
       consumed: this.usage.get(actor.workspaceId) ?? 0,
       limit: this.runLimit,
+      accessMode: "paid",
+      accessExpiresAt: null,
     };
   }
 

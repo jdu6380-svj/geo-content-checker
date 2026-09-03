@@ -8,6 +8,20 @@
 
 ## Required Services
 
+### Evidra invite-only Beta mode
+
+The portfolio Beta uses a server-side grant and does not require a real payment. Set `NEXT_PUBLIC_EVIDRA_BETA_MODE=true` and leave all Alipay variables unset (including both provider selectors); the release checker treats this as an explicit non-commercial mode. The flag hides checkout and Alipay operations in the dashboard. Keep `EVIDRA_BETA_OPERATOR_SUBJECTS` server-only and populate it with the approved operator subject id(s); never put it in a public variable or client bundle.
+
+Grant access only through `POST /api/commercial/beta/grant` while authenticated as an allowlisted workspace owner. Send an `Idempotency-Key` header and a body containing only `runLimit` and `expiresAt` (ISO timestamp). The grant is bounded, expires automatically, is audited, and is stored separately from `payment_orders` and `payment_entitlements`. Do not create a fake payment order or set a paid entitlement for Beta users. A grant is intentionally limited to the actor's current workspace.
+
+Example request shape (do not commit real ids or credentials):
+
+```json
+{"runLimit": 30, "expiresAt": "2026-10-31T00:00:00.000Z"}
+```
+
+After issuing a grant, verify the dashboard shows `Beta 授权有效`, the expected `已用 / 总额度`, and no purchase controls. Verify an expired or exhausted grant returns a stable quota error and cannot start another run. Record only the stable endpoint/status/audit outcome in the release evidence.
+
 - Vercel Preview and Production project.
 - DeepSeek OpenAI-compatible credentials.
 - Upstash Redis REST credentials.

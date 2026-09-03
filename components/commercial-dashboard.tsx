@@ -45,6 +45,7 @@ function isWorkspaceBoundaryError(error: unknown): boolean {
 }
 
 export function CommercialDashboard() {
+  const betaMode = process.env.NEXT_PUBLIC_EVIDRA_BETA_MODE?.trim() === "true";
   const [state, setState] = useState<DashboardState>("loading");
   const [projects, setProjects] = useState<CommercialProject[]>([]);
   const [history, setHistory] = useState<import("@/lib/client/commercial-api").CommercialProjectHistory[]>([]);
@@ -95,8 +96,8 @@ export function CommercialDashboard() {
     try {
       const [projectResult, subscriptionResult, plansResult] = await Promise.allSettled([
         listCommercialProjects(),
-        process.env.NEXT_PUBLIC_COMMERCIAL_PAYMENT_PROVIDER?.trim() === "alipay" ? Promise.resolve(null) : getCommercialSubscription(),
-        listCommercialPlans(),
+        betaMode || process.env.NEXT_PUBLIC_COMMERCIAL_PAYMENT_PROVIDER?.trim() === "alipay" ? Promise.resolve(null) : getCommercialSubscription(),
+        betaMode ? Promise.resolve([]) : listCommercialPlans(),
       ]);
       if (projectResult.status === "rejected") throw projectResult.reason;
       const result = projectResult.value;
@@ -131,7 +132,7 @@ export function CommercialDashboard() {
       setError(errorMessage(loadError));
       setErrorCode(loadError instanceof CommercialApiError ? loadError.code : "");
     }
-  }, []);
+  }, [betaMode]);
 
   useEffect(() => {
     const billing = new URLSearchParams(window.location.search).get("billing");
@@ -417,6 +418,7 @@ export function CommercialDashboard() {
   const selectedProject = projects.find((project) => project.id === selectedId) ?? null;
   const selectedHistory = history.find((entry) => entry.projectId === selectedId)?.runs ?? [];
   const quotaFull = usage ? usage.consumed >= usage.limit : false;
+  const betaAccessActive = usage?.accessMode === "beta" && !quotaFull;
 
   return (
     <main className="commercial-dashboard" aria-labelledby="commercial-dashboard-title">
@@ -445,14 +447,14 @@ export function CommercialDashboard() {
       {billingMessage ? <section className="commercial-dashboard-info" role="status">{billingMessage}</section> : null}
       <section className="commercial-billing-panel" aria-labelledby="commercial-billing-title" aria-busy={state === "loading" || checkouting !== null}>
         <div className="commercial-billing-summary">
-          <div><p className="commercial-eyebrow">Workspace usage</p><h2 id="commercial-billing-title">套餐与共享额度</h2></div>
-          <div className="commercial-billing-status"><strong>{subscriptionLabel(subscription)}</strong><span>{usage ? `已用 ${usage.consumed} / ${usage.limit} 次审查` : "额度待确认"}</span></div>
+          <div><p className="commercial-eyebrow">Workspace usage</p><h2 id="commercial-billing-title">{betaMode ? "邀请制 Beta 额度" : "套餐与共享额度"}</h2></div>
+          <div className="commercial-billing-status"><strong>{betaMode ? betaAccessActive ? "Beta 授权有效" : "等待 Beta 授权" : subscriptionLabel(subscription)}</strong><span>{usage ? `已用 ${usage.consumed} / ${usage.limit} 次审查` : "额度待确认"}</span></div>
         </div>
         {billingError ? <p className="commercial-billing-error" role="alert">{billingError}</p> : null}
-        {quotaFull ? <p className="commercial-billing-error">{plansError ? "当前工作区没有可用审查次数，支付入口尚未配置，暂不能购买。" : "当前工作区共享额度已用完，请选择可用套餐或等待支付状态更新。"}</p> : null}
-        <p className="commercial-billing-muted">面向 B2B SaaS 内容、增长与品牌团队；实际套餐名称、价格与额度以服务端当前配置为准。</p>
-        <p className="commercial-billing-muted">套餐为一次性支付，不自动续费；付款成功并完成校验后才发放审查次数，失败或未生成完整报告不扣次数。</p>
-        {state === "loading" && plans.length === 0 ? <div className="commercial-plan-skeleton" aria-label="正在加载支付宝套餐"><span /><span /><span /></div> : plans.length > 0 ? <div className="commercial-plan-list">{plans.map((plan) => {
+        {quotaFull ? <p className="commercial-billing-error">{betaMode ? "本次 Beta 授权额度已用完。" : plansError ? "当前工作区没有可用审查次数，支付入口尚未配置，暂不能购买。" : "当前工作区共享额度已用完，请选择可用套餐或等待支付状态更新。"}</p> : null}
+        <p className="commercial-billing-muted">{betaMode ? "这是邀请制免费 Beta。额度由服务端授权并记录，授权到期后自动失效；不会创建支付订单。" : "面向 B2B SaaS 内容、增长与品牌团队；实际套餐名称、价格与额度以服务端当前配置为准。"}</p>
+        {!betaMode ? <p className="commercial-billing-muted">套餐为一次性支付，不自动续费；付款成功并完成校验后才发放审查次数，失败或未生成完整报告不扣次数。</p> : null}
+        {!betaMode && (state === "loading" && plans.length === 0 ? <div className="commercial-plan-skeleton" aria-label="正在加载支付宝套餐"><span /><span /><span /></div> : plans.length > 0 ? <div className="commercial-plan-list">{plans.map((plan) => {
           const planCopy: Record<string, { name: string; scene: string; unit: string; badge?: string }> = {
             new_user: { name: "Starter", scene: "一篇内容的审查与复查", unit: "30 天有效" },
             growth: { name: "Growth", scene: "内容团队日常发布前审查", unit: "12 个月有效", badge: "推荐起步方案" },
@@ -462,15 +464,15 @@ export function CommercialDashboard() {
           const copy = planCopy[plan.key] ?? { name: plan.key, scene: "发布前内容审查", unit: "以服务端规则为准" };
           const unitPrice = plan.runLimit > 0 ? (Number(plan.amount) / plan.runLimit).toFixed(2) : null;
           return <article key={plan.key} className="commercial-plan-card"><strong>{copy.name}</strong>{copy.badge ? <em>{copy.badge}</em> : null}<span>¥{plan.amount} · {plan.runLimit} 次发布前审查</span><small>{copy.scene} · {copy.unit}{unitPrice ? ` · 每次约 ¥${unitPrice}` : ""}</small><button type="button" onClick={() => void handleCheckout(plan.key)} disabled={checkouting !== null || portalLoading}>{checkouting === plan.key ? "正在打开支付宝" : `购买 ${plan.runLimit} 次审查 ¥${plan.amount}`}</button></article>;
-        })}</div> : <p className="commercial-billing-muted">{plansError ? `${plansError}当前不能购买套餐。` : "支付宝套餐暂不可用，请稍后重试。"}</p>}
-        {subscription && (subscription.status === "active" || subscription.status === "trialing") && subscription.currentPeriodEnd && new Date(subscription.currentPeriodEnd).getTime() > Date.now() ? (
+        })}</div> : <p className="commercial-billing-muted">{plansError ? `${plansError}当前不能购买套餐。` : "支付宝套餐暂不可用，请稍后重试。"}</p>)}
+        {!betaMode && subscription && (subscription.status === "active" || subscription.status === "trialing") && subscription.currentPeriodEnd && new Date(subscription.currentPeriodEnd).getTime() > Date.now() ? (
           <button type="button" className="commercial-portal-button" onClick={() => void handlePortal()} disabled={portalLoading || checkouting !== null}>
             {portalLoading ? "打开中" : "管理订阅"}
           </button>
         ) : null}
       </section>
 
-      <AlipayOperatorPanel />
+      {!betaMode ? <AlipayOperatorPanel /> : null}
       <CommercialRunRecoveryPanel />
 
       <div className="commercial-dashboard-grid">

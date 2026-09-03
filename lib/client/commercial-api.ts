@@ -10,6 +10,8 @@ export type CommercialUsage = {
   workspaceId: string;
   consumed: number;
   limit: number;
+  accessMode?: "beta" | "paid" | "none";
+  accessExpiresAt?: string | null;
 };
 
 export type CommercialProjectList = {
@@ -129,10 +131,15 @@ function parseUsage(value: unknown): CommercialUsage | null {
     typeof value.limit !== "number" ||
     !Number.isSafeInteger(value.limit)
   ) return null;
+  const accessModes = ["beta", "paid", "none"];
+  if (value.accessMode !== undefined && (typeof value.accessMode !== "string" || !accessModes.includes(value.accessMode))) return null;
+  if (value.accessExpiresAt !== undefined && value.accessExpiresAt !== null && typeof value.accessExpiresAt !== "string") return null;
   return {
     workspaceId: value.workspaceId,
     consumed: value.consumed,
     limit: value.limit,
+    ...(value.accessMode !== undefined ? { accessMode: value.accessMode as CommercialUsage["accessMode"] } : {}),
+    ...(value.accessExpiresAt !== undefined ? { accessExpiresAt: value.accessExpiresAt as string | null } : {}),
   };
 }
 

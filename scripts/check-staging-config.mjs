@@ -266,6 +266,12 @@ secretShape("CLERK_SECRET_KEY", /^sk_(test|live)_[A-Za-z0-9_]+$/);
 secretShape("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", /^pk_(test|live)_[A-Za-z0-9_]+$/);
 clerkMappings();
 paymentConfiguration();
+const betaMode = value("NEXT_PUBLIC_EVIDRA_BETA_MODE");
+if (betaMode && betaMode !== "true" && betaMode !== "false") fail("NEXT_PUBLIC_EVIDRA_BETA_MODE", "invalid_boolean");
+else pass("NEXT_PUBLIC_EVIDRA_BETA_MODE", betaMode === "true" ? "invite_only" : "disabled");
+if (betaMode === "true") required("EVIDRA_BETA_OPERATOR_SUBJECTS");
+else if (value("EVIDRA_BETA_OPERATOR_SUBJECTS")) fail("EVIDRA_BETA_OPERATOR_SUBJECTS", "must_be_unset_outside_beta");
+else pass("EVIDRA_BETA_OPERATOR_SUBJECTS", "unset");
 for (const name of ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_ID_ALLOWLIST", "STRIPE_PRICE_ID_RUN_LIMITS", "STRIPE_PLAN_PRICE_MAP"]) {
   if (value(name)) fail(name, "mixed_provider_forbidden"); else pass(name, "unset");
 }

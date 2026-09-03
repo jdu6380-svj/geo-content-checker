@@ -195,6 +195,26 @@ create table if not exists payment_entitlements (
   unique (out_trade_no, status)
 );
 
+-- Invite-only Beta access is intentionally separate from payment records.
+-- quota_ceiling is an absolute usage ceiling captured when the grant is made,
+-- so an expired grant cannot unlock quota from another entitlement.
+create table if not exists beta_access_grants (
+  grant_id text primary key,
+  workspace_id text not null references workspaces(id),
+  granted_by text not null,
+  idempotency_key text not null,
+  run_limit integer not null check (run_limit > 0),
+  quota_ceiling bigint not null check (quota_ceiling > 0),
+  status text not null check (status in ('active', 'revoked')),
+  expires_at timestamptz not null,
+  created_at timestamptz not null,
+  unique (workspace_id, idempotency_key)
+);
+
+create index if not exists beta_access_grants_active_workspace
+  on beta_access_grants (workspace_id, expires_at)
+  where status = 'active';
+
 -- The new-user package is a one-time successful entitlement per workspace.
 -- Pending orders do not appear here and therefore do not consume the claim.
 create unique index if not exists payment_entitlements_new_user_once

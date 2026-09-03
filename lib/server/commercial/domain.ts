@@ -71,6 +71,8 @@ export type UsageSnapshot = {
   workspaceId: string;
   consumed: number;
   limit: number;
+  accessMode?: "beta" | "paid" | "none";
+  accessExpiresAt?: string | null;
 };
 
 export class CommercialValidationError extends Error {

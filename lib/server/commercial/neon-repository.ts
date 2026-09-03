@@ -198,15 +198,21 @@ export class NeonCommercialRepository implements CommercialRepository {
                 where entitlement.workspace_id = usage.workspace_id
                   and entitlement.status = 'granted'
                   and entitlement.run_limit > 0
-              ))
+              ) and usage.consumed + usage.reserved < workspace.run_limit)
+              or exists (
+                select 1 from beta_access_grants as beta
+                where beta.workspace_id = usage.workspace_id
+                  and beta.status = 'active'
+                  and beta.expires_at > now()
+                  and usage.consumed + usage.reserved < beta.quota_ceiling
+              )
               or (${providerMode} = 'stripe'
                 and subscription.workspace_id = usage.workspace_id
                 and subscription.status in ('active', 'trialing')
                 and subscription.current_period_end > now()
-                and subscription.entitlement_run_limit = workspace.run_limit)
+                and subscription.entitlement_run_limit = workspace.run_limit
+                and usage.consumed + usage.reserved < workspace.run_limit)
             )
-            and workspace.run_limit > 0
-            and usage.consumed + usage.reserved < workspace.run_limit
             and not exists (
               select 1 from idempotency_keys
               where workspace_id = usage.workspace_id and operation = 'run.create' and idempotency_key = ${idempotencyKey}
@@ -233,15 +239,21 @@ export class NeonCommercialRepository implements CommercialRepository {
                 where entitlement.workspace_id = usage.workspace_id
                   and entitlement.status = 'granted'
                   and entitlement.run_limit > 0
-              ))
+              ) and usage.consumed + usage.reserved < workspace.run_limit)
+              or exists (
+                select 1 from beta_access_grants as beta
+                where beta.workspace_id = usage.workspace_id
+                  and beta.status = 'active'
+                  and beta.expires_at > now()
+                  and usage.consumed + usage.reserved < beta.quota_ceiling
+              )
               or (${providerMode} = 'stripe'
                 and subscription.workspace_id = usage.workspace_id
                 and subscription.status in ('active', 'trialing')
                 and subscription.current_period_end > now()
-                and subscription.entitlement_run_limit = workspace.run_limit)
+                and subscription.entitlement_run_limit = workspace.run_limit
+                and usage.consumed + usage.reserved < workspace.run_limit)
             )
-            and workspace.run_limit > 0
-            and usage.consumed + usage.reserved < workspace.run_limit
           returning usage.workspace_id
         ) insert into analysis_runs (id, workspace_id, project_id, status, created_by, created_at, usage_state)
         select ${runId}, ${actor.workspaceId}, ${projectId}, 'queued', ${actor.subjectId}, ${now}::timestamptz, 'reserved' from reserved
@@ -354,30 +366,38 @@ export class NeonCommercialRepository implements CommercialRepository {
     await this.assertMember(actor);
     const rows = (await sql`
       select u.consumed,
-        case
-          when ${providerMode} = 'alipay'
+        case when ${providerMode} = 'alipay'
             and exists (
               select 1 from payment_entitlements as entitlement
               where entitlement.workspace_id = u.workspace_id
                 and entitlement.status = 'granted'
                 and entitlement.run_limit > 0
             )
-            then w.run_limit
-          when ${providerMode} = 'stripe'
+            then w.run_limit else 0 end as run_limit,
+        case when ${providerMode} = 'stripe'
             and s.status in ('active', 'trialing')
             and s.current_period_end > now()
             and s.entitlement_run_limit = w.run_limit
-            then w.run_limit
-          else 0
-        end as run_limit
+            then w.run_limit else 0 end as stripe_limit,
+        coalesce(beta.quota_ceiling, 0) as beta_limit,
+        beta.expires_at
       from usage_counters u
       join workspaces w on w.id = u.workspace_id
       left join subscriptions s on s.workspace_id = u.workspace_id
+      left join lateral (
+        select max(quota_ceiling)::bigint as quota_ceiling, max(expires_at) as expires_at
+        from beta_access_grants
+        where workspace_id = u.workspace_id and status = 'active' and expires_at > now()
+      ) beta on true
       where u.workspace_id = ${actor.workspaceId}
-    `) as unknown as Array<{ consumed: number; run_limit: number }>;
+    `) as unknown as Array<{ consumed: number; run_limit: number; stripe_limit: number; beta_limit: number; expires_at: string | Date | null }>;
     const row = rows[0];
     if (!row) throw new CommercialDataUnavailableError();
-    return { workspaceId: actor.workspaceId, consumed: Number(row.consumed), limit: Number(row.run_limit) };
+    const betaLimit = Number(row.beta_limit);
+    const paidLimit = Math.max(Number(row.run_limit), Number(row.stripe_limit));
+    const limit = Math.max(betaLimit, paidLimit);
+    const accessExpiresAt = betaLimit >= paidLimit && row.expires_at ? iso(row.expires_at) : null;
+    return { workspaceId: actor.workspaceId, consumed: Number(row.consumed), limit, accessMode: betaLimit >= paidLimit && betaLimit > 0 ? "beta" : paidLimit > 0 ? "paid" : "none", accessExpiresAt };
   }
 
   async getRun(actor: CommercialActor, runId: string): Promise<AnalysisRun | null> {

@@ -140,6 +140,16 @@ test("allows a fully unconfigured payment provider only when it remains fail-clo
   assert.match(partial.stdout, /ALIPAY_PRIVATE_KEY missing/);
 });
 
+test("requires an explicit operator allowlist for invite-only Beta mode", () => {
+  const missing = run({ ...validEnv, NEXT_PUBLIC_EVIDRA_BETA_MODE: "true", EVIDRA_BETA_OPERATOR_SUBJECTS: "" });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stdout, /EVIDRA_BETA_OPERATOR_SUBJECTS missing/);
+
+  const accepted = run({ ...validEnv, NEXT_PUBLIC_EVIDRA_BETA_MODE: "true", EVIDRA_BETA_OPERATOR_SUBJECTS: "user_operator" });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stdout, /NEXT_PUBLIC_EVIDRA_BETA_MODE invite_only/);
+});
+
 test("rejects a persistent migration confirmation input", () => {
   const result = run({ ...validEnv, COMMERCIAL_MIGRATION_CONFIRM: "true" });
   assert.equal(result.status, 1);

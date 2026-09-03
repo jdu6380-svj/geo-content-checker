@@ -82,6 +82,7 @@ async function handleGet(_request: NextRequest): Promise<Response> {
     isConfigured("OPENAI_API_KEY") &&
     isConfigured("OPENAI_MODEL");
   const workspaceBootstrapConfigured = process.env.COMMERCIAL_WORKSPACE_BOOTSTRAP === "clerk-org";
+  const betaMode = process.env.NEXT_PUBLIC_EVIDRA_BETA_MODE?.trim() === "true";
   const mixedStripeConfiguration = [
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
@@ -115,7 +116,7 @@ async function handleGet(_request: NextRequest): Promise<Response> {
       isHttpsUrl(process.env.NEXT_PUBLIC_FEEDBACK_URL) &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail),
     sentryConfigured: isHttpsUrl(process.env.NEXT_PUBLIC_SENTRY_DSN),
-    paymentConfigured:
+    paymentConfigured: betaMode ? isConfigured("EVIDRA_BETA_OPERATOR_SUBJECTS") && !mixedStripeConfiguration :
       process.env.COMMERCIAL_PAYMENT_PROVIDER === "alipay" &&
       process.env.NEXT_PUBLIC_COMMERCIAL_PAYMENT_PROVIDER === "alipay" &&
       process.env.ALIPAY_FIRST_PURCHASE_PLAN === "new_user" &&
