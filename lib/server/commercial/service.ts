@@ -8,6 +8,7 @@ import {
   type CommercialActor,
 } from "./domain";
 import { InMemoryCommercialRepository, type CommercialRepository } from "./repository";
+import { getCommercialDatabaseUrl } from "./neon-client";
 import { getNeonCommercialRepository } from "./neon-repository";
 
 export type CommercialServiceConfig = {
@@ -132,7 +133,7 @@ export function getConfiguredCommercialService(): CommercialService | null {
   if (process.env.COMMERCIAL_DATA_ADAPTER !== "neon") return null;
   const repository = getNeonCommercialRepository();
   if (!repository) return null;
-  const key = createHash("sha256").update(process.env.DATABASE_URL?.trim() ?? "").digest("hex");
+  const key = createHash("sha256").update(getCommercialDatabaseUrl() ?? "").digest("hex");
   if (!neonService || neonService.key !== key) {
     neonService = { key, service: new CommercialService({ repository }) };
   }

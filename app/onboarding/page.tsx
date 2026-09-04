@@ -2,6 +2,7 @@ import { OrganizationSwitcher } from "@clerk/nextjs";
 import Link from "next/link";
 
 import { CommercialWorkspaceOnboarding } from "@/components/commercial-workspace-onboarding";
+import { getCommercialDatabaseUrl } from "@/lib/server/commercial/neon-client";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export default function OnboardingPage() {
     process.env.COMMERCIAL_DATA_ADAPTER === "neon" &&
     process.env.CLERK_SECRET_KEY?.trim() &&
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() &&
-    process.env.DATABASE_URL?.trim() &&
+    getCommercialDatabaseUrl() &&
     (process.env.COMMERCIAL_WORKSPACE_BOOTSTRAP === "clerk-org" || process.env.COMMERCIAL_CLERK_ORG_WORKSPACE_MAP?.trim()),
   );
   if (!configured) {

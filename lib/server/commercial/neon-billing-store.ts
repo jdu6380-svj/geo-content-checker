@@ -1,4 +1,4 @@
-import { getNeonSql } from "./neon-client";
+import { getCommercialDatabaseUrl, getNeonSql } from "./neon-client";
 import { CommercialDataUnavailableError } from "./domain";
 import type { CheckoutRecord, PaymentEventStore, PortalRecord, SubscriptionState } from "./providers";
 
@@ -233,5 +233,5 @@ function portalFromRow(row: PortalRow): PortalRecord {
 }
 
 export function getNeonPaymentEventStore(): NeonPaymentEventStore | null {
-  return process.env.DATABASE_URL?.trim() ? new NeonPaymentEventStore() : null;
+  return getCommercialDatabaseUrl() ? new NeonPaymentEventStore() : null;
 }

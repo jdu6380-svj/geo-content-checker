@@ -12,7 +12,7 @@ import {
   type Project,
   type UsageSnapshot,
 } from "./domain";
-import { getNeonSql } from "./neon-client";
+import { getCommercialDatabaseUrl, getNeonSql } from "./neon-client";
 import type { CommercialRepository } from "./repository";
 
 type SqlClient = ReturnType<typeof getNeonSql>;
@@ -491,7 +491,7 @@ export class NeonCommercialRepository implements CommercialRepository {
 }
 
 export function getNeonCommercialRepository(): NeonCommercialRepository | null {
-  return process.env.DATABASE_URL?.trim() ? new NeonCommercialRepository() : null;
+  return getCommercialDatabaseUrl() ? new NeonCommercialRepository() : null;
 }
 
 export type WorkspaceProvisioningInput = {

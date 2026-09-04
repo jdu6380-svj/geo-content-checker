@@ -62,6 +62,14 @@ export type CommercialSubscription = {
   entitlementRunLimit?: number;
 };
 
+export type CommercialBetaGrant = {
+  grantId: string;
+  workspaceId: string;
+  runLimit: number;
+  expiresAt: string;
+  createdAt: string;
+};
+
 export class CommercialApiError extends Error {
   constructor(
     readonly code: string,
@@ -71,6 +79,18 @@ export class CommercialApiError extends Error {
     super(message);
     this.name = "CommercialApiError";
   }
+}
+
+export async function grantCommercialBeta(runLimit = 30, expiresAt = "2026-10-31T00:00:00.000Z"): Promise<CommercialBetaGrant> {
+  const response = await requestJson<{ grant?: CommercialBetaGrant; error?: string; message?: string }>("/api/commercial/beta/grant", {
+    method: "POST",
+    headers: { "content-type": "application/json", "idempotency-key": createCommercialIdempotencyKey() },
+    body: JSON.stringify({ runLimit, expiresAt }),
+  });
+  if (!response || !response.grant || typeof response.grant.grantId !== "string") {
+    throw new CommercialApiError(response?.error ?? "BETA_GRANT_FAILED", 500, response?.message ?? "Beta 授权暂时不可用。");
+  }
+  return response.grant;
 }
 
 const SAFE_MESSAGES: Record<string, string> = {

@@ -19,6 +19,7 @@ function response(body: unknown, status = 200): Response {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  Reflect.deleteProperty(navigator, "clipboard");
 });
 
 describe("CommercialDashboard", () => {
@@ -183,7 +184,12 @@ describe("CommercialDashboard", () => {
       .mockResolvedValueOnce(response({ plans: [] }))
       .mockResolvedValueOnce(response({ run: { id: "run_1", workspaceId: "workspace_1", projectId: "project_1", status: "succeeded", createdBy: "user_1", createdAt: project.createdAt, resultKey: "private/run_1" } }, 201))
       .mockResolvedValueOnce(response({ run: { id: "run_1", workspaceId: "workspace_1", projectId: "project_1", status: "succeeded", createdBy: "user_1", createdAt: project.createdAt, resultKey: "private/run_1" } }))
-      .mockResolvedValueOnce(response(result));
+      .mockResolvedValueOnce(response(result))
+      .mockResolvedValueOnce(response({
+        projects: [project],
+        usage: { workspaceId: "workspace_1", consumed: 1, limit: 3 },
+        history: [{ projectId: "project_1", runs: [{ id: "run_1", workspaceId: "workspace_1", projectId: "project_1", status: "succeeded", createdBy: "user_1", createdAt: project.createdAt, resultAvailable: true }] }],
+      }));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
     await screen.findByRole("heading", { name: "内容审查项目" });
@@ -193,7 +199,9 @@ describe("CommercialDashboard", () => {
     expect(await screen.findByText("总分 82")).toBeTruthy();
     expect(screen.getByText("问题一")).toBeTruthy();
     expect(screen.getByText("建议内容")).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    await waitFor(() => expect(screen.getByText("已用 1 / 3 次审查")).toBeTruthy());
+    expect(screen.getByText("已完成")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(7);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/commercial/projects",
       "/api/stripe/subscription",
@@ -201,7 +209,76 @@ describe("CommercialDashboard", () => {
       "/api/commercial/projects/project_1/analyze",
       "/api/commercial/runs/run_1",
       "/api/commercial/runs/run_1/result",
+      "/api/commercial/projects",
     ]);
+  });
+
+  it("supports the edit and recheck loop with score comparison and Patch actions", async () => {
+    const firstResult = {
+      source: "deterministic",
+      contentDigest: "digest_before",
+      contentLength: 8,
+      score: 62,
+      diagnostics: { status: "available", issueCount: 2 },
+      patch: { status: "generated" },
+      analysis: {
+        scoring: { totalScore: 62, dimensions: {} },
+        questions: { questions: ["问题一", "问题二", "问题三", "问题四", "问题五"] },
+        diagnostics: [{}],
+        patch: { mode: "advice", markdown: "补充来源与适用范围", actions: [] },
+      },
+    };
+    const secondResult = {
+      ...firstResult,
+      contentDigest: "digest_after",
+      score: 84,
+      diagnostics: { status: "available", issueCount: 0 },
+      analysis: { ...firstResult.analysis, scoring: { totalScore: 84, dimensions: {} }, patch: { mode: "advice", markdown: "已补充可追溯来源", actions: [] } },
+    };
+    let launchCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/commercial/projects" && (!init?.method || init.method === "GET")) {
+        return response({ projects: [project], usage: { workspaceId: "workspace_1", consumed: launchCount, limit: 3 }, history: [] });
+      }
+      if (url === "/api/stripe/subscription") return response({ subscription: null });
+      if (url === "/api/alipay/plans") return response({ plans: [] });
+      if (url === "/api/commercial/projects/project_1/analyze") {
+        launchCount += 1;
+        return response({ run: { id: `run_${launchCount}`, workspaceId: "workspace_1", projectId: "project_1", status: "succeeded", createdBy: "user_1", createdAt: project.createdAt } }, 201);
+      }
+      if (url.startsWith("/api/commercial/runs/") && !url.endsWith("/result")) {
+        const runId = url.split("/").at(-1);
+        return response({ run: { id: runId, workspaceId: "workspace_1", projectId: "project_1", status: "succeeded", createdBy: "user_1", createdAt: project.createdAt } });
+      }
+      if (url.endsWith("/result")) return response(url.includes("run_1") ? firstResult : secondResult);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+
+    render(<CommercialDashboard />);
+    await screen.findByRole("heading", { name: "内容审查项目" });
+    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "初始正文" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
+    expect(await screen.findByText("总分 62")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "复制 Patch" }));
+    expect(await screen.findByRole("button", { name: "已复制" })).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith("补充来源与适用范围");
+    fireEvent.click(screen.getByRole("button", { name: "加入修改清单" }));
+    expect(screen.getByRole("button", { name: "已加入修改清单" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "补充来源后的正文" } });
+    fireEvent.click(screen.getByRole("button", { name: "重新分析" }));
+    expect(await screen.findByText("总分 84")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "复查结果" })).toBeTruthy();
+    expect(screen.getByText("+22")).toBeTruthy();
+    expect(screen.getByText("62 → 84")).toBeTruthy();
+    expect(screen.getByText(/修改后的内容可信度有所提升/)).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/commercial/projects/project_1/analyze")).toHaveLength(2);
   });
 
   it("restores project run history without exposing storage keys and opens a private report", async () => {

@@ -7,6 +7,7 @@ import {
   isStrongSecuritySecret,
 } from "@/lib/server/security-config";
 import { getUpstashRedisRestConfig } from "@/lib/server/redis-config.ts";
+import { getCommercialDatabaseUrl } from "@/lib/server/commercial/neon-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,7 +71,7 @@ async function handleGet(_request: NextRequest): Promise<Response> {
     isConfigured("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY");
   const dataConfigured =
     process.env.COMMERCIAL_DATA_ADAPTER === "neon" &&
-    /^(postgres|postgresql):\/\//.test(process.env.DATABASE_URL?.trim() ?? "");
+    /^(postgres|postgresql):\/\//.test(getCommercialDatabaseUrl() ?? "");
   const storageConfigured =
     process.env.COMMERCIAL_STORAGE_ADAPTER === "vercel-blob" &&
     isConfigured("BLOB_READ_WRITE_TOKEN");

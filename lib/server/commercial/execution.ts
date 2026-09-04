@@ -130,6 +130,13 @@ const PATCH_SYSTEM_PROMPT = "你是严格的中文 GEO 内容诊断编辑器。�
 function modelFailure(error: unknown): never {
   if (error instanceof CommercialExecutionInvalidOutputError || error instanceof CommercialExecutionRetryableError) throw error;
   if (error instanceof ModelCallError) {
+    // Keep the commercial route diagnosable without logging provider responses,
+    // credentials, or any user-supplied article content.
+    console.info(JSON.stringify({
+      event: "commercial_model_failure",
+      providerStatus: error.status ?? null,
+      errorCategory: error.errorCategory ?? "unknown",
+    }));
     if (error.status === 429 || (error.status !== undefined && error.status >= 500) || error.errorCategory === "provider_timeout" || error.errorCategory === "provider_network") {
       throw new CommercialExecutionRetryableError();
     }
@@ -152,7 +159,11 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
         maxTokens: options.maxTokens,
         timeoutMs: options.timeoutMs,
         reasoningEffort: "low",
-        rateLimitMode: process.env.NODE_ENV === "production" ? "fallback" : "memory",
+        rateLimitMode: process.env.VERCEL_ENV === "production"
+          ? "fallback"
+          : process.env.VERCEL_ENV === "preview"
+            ? "redis"
+            : "memory",
       });
       return result.content;
     } catch (error) {
@@ -231,6 +242,29 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
   }
 }
 
+/**
+ * Preview remains useful when a third-party model endpoint is temporarily
+ * unavailable. The returned result retains its deterministic source marker;
+ * production never takes this path.
+ */
+export class PreviewResilientCommercialExecutor implements CommercialAnalysisExecutor {
+  constructor(
+    private readonly modelExecutor: CommercialAnalysisExecutor = new OpenAICompatibleCommercialExecutor(),
+    private readonly fallbackExecutor: CommercialAnalysisExecutor = new DeterministicCommercialExecutor(),
+  ) {}
+
+  async execute(input: CommercialAnalysisInput): Promise<CommercialAnalysisResult> {
+    try {
+      return await this.modelExecutor.execute(input);
+    } catch (error) {
+      if (error instanceof CommercialExecutionRetryableError) {
+        return this.fallbackExecutor.execute(input);
+      }
+      throw error;
+    }
+  }
+}
+
 export function getConfiguredCommercialExecutor(): CommercialAnalysisExecutor | null {
   const mode = process.env.COMMERCIAL_EXECUTOR;
   if (process.env.NODE_ENV !== "production" && mode === "deterministic") return new DeterministicCommercialExecutor();
@@ -245,7 +279,10 @@ export function getConfiguredCommercialExecutor(): CommercialAnalysisExecutor | 
     ? Boolean(process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim())
     : Boolean(process.env.OPENAI_API_KEY?.trim());
   if (mode === "openai-compatible" && baseUrlIsHttps && hasCredentials && process.env.OPENAI_MODEL?.trim()) {
-    return new OpenAICompatibleCommercialExecutor();
+    const executor = new OpenAICompatibleCommercialExecutor();
+    return process.env.VERCEL_ENV === "preview"
+      ? new PreviewResilientCommercialExecutor(executor)
+      : executor;
   }
   return null;
 }

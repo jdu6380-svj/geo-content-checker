@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { CommercialDataUnavailableError, CommercialIdempotencyConflictError, CommercialValidationError, commercialIdSchema, type CommercialActor } from "./domain";
-import { getNeonSql } from "./neon-client";
+import { getCommercialDatabaseUrl, getNeonSql } from "./neon-client";
 
 export type BetaGrant = {
   grantId: string;
@@ -99,5 +99,5 @@ export class InMemoryBetaAccessRepository implements BetaAccessRepository {
 }
 
 export function getNeonBetaAccessRepository(): NeonBetaAccessRepository | null {
-  return process.env.COMMERCIAL_DATA_ADAPTER === "neon" && process.env.DATABASE_URL?.trim() ? new NeonBetaAccessRepository() : null;
+  return process.env.COMMERCIAL_DATA_ADAPTER === "neon" && getCommercialDatabaseUrl() ? new NeonBetaAccessRepository() : null;
 }

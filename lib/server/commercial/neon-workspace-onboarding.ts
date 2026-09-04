@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { CommercialDataUnavailableError } from "./domain";
-import { getNeonSql } from "./neon-client";
+import { getCommercialDatabaseUrl, getNeonSql } from "./neon-client";
 import type {
   CommercialWorkspaceOnboardingRepository,
   CommercialWorkspaceRole,
@@ -68,6 +68,6 @@ export class NeonCommercialWorkspaceOnboardingRepository implements CommercialWo
 }
 
 export function getNeonCommercialWorkspaceOnboardingRepository(): NeonCommercialWorkspaceOnboardingRepository | null {
-  if (process.env.COMMERCIAL_DATA_ADAPTER !== "neon" || !process.env.DATABASE_URL?.trim()) return null;
+  if (process.env.COMMERCIAL_DATA_ADAPTER !== "neon" || !getCommercialDatabaseUrl()) return null;
   return new NeonCommercialWorkspaceOnboardingRepository();
 }

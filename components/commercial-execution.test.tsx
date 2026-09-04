@@ -12,6 +12,7 @@ import {
   CommercialAnalysisOrchestrator,
   DeterministicCommercialExecutor,
   OpenAICompatibleCommercialExecutor,
+  PreviewResilientCommercialExecutor,
   type CommercialModelCall,
   getConfiguredCommercialExecutor,
   type CommercialAnalysisExecutor,
@@ -258,6 +259,22 @@ describe("commercial analysis orchestration", () => {
       throw new ModelCallError("timeout details", { errorCategory: "provider_timeout" });
     };
     await expect(new OpenAICompatibleCommercialExecutor(timedOut).execute({ title: "A", content: "Content" })).rejects.toBeInstanceOf(CommercialExecutionRetryableError);
+  });
+
+  it("uses a clearly marked deterministic result for retryable Preview model failures only", async () => {
+    const unavailable: CommercialAnalysisExecutor = {
+      execute: async () => { throw new CommercialExecutionRetryableError(); },
+    };
+    const fallback = new DeterministicCommercialExecutor();
+    const executor = new PreviewResilientCommercialExecutor(unavailable, fallback);
+
+    await expect(executor.execute(input)).resolves.toMatchObject({ source: "deterministic" });
+
+    const invalidOutput: CommercialAnalysisExecutor = {
+      execute: async () => { throw new CommercialExecutionInvalidOutputError(); },
+    };
+    await expect(new PreviewResilientCommercialExecutor(invalidOutput, fallback).execute(input))
+      .rejects.toBeInstanceOf(CommercialExecutionInvalidOutputError);
   });
 
   it("replays a completed idempotent launch without executing or writing twice", async () => {

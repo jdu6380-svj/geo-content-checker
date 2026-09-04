@@ -73,7 +73,11 @@ export async function callOpenAICompatibleModel({
   timeoutMs = 10_000,
   maxTokens,
   reasoningEffort,
-  rateLimitMode = process.env.NODE_ENV === "production" ? "fallback" : "memory",
+  rateLimitMode = process.env.VERCEL_ENV === "production"
+    ? "fallback"
+    : process.env.VERCEL_ENV === "preview"
+      ? "redis"
+      : "memory",
 }: ChatCompletionOptions): Promise<ModelCallResult> {
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
   const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");

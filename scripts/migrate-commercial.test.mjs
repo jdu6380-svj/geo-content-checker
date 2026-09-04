@@ -27,6 +27,10 @@ test("requires explicit postgres URL and one-shot confirmation", () => {
     DATABASE_URL: "postgresql://db.test/db",
     COMMERCIAL_MIGRATION_CONFIRM: "true",
   }).ok, true);
+  assert.equal(validateMigrationEnvironment({
+    NEON_DATABASE_URL: "postgresql://neon.test/db",
+    COMMERCIAL_MIGRATION_CONFIRM: "true",
+  }).ok, true);
 });
 
 test("splits SQL without splitting quoted semicolons", () => {

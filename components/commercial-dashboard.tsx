@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderKanban, Plus, RefreshCw, ShieldAlert } from "lucide-react";
+import { BarChart3, CheckCircle2, ClipboardCheck, FileClock, FileSearch, FolderKanban, Home, Lightbulb, Plus, RefreshCw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CommercialRunRecoveryPanel } from "@/components/commercial-run-recovery-panel";
@@ -18,6 +18,7 @@ import {
   launchCommercialAnalysis,
   listCommercialPlans,
   listCommercialProjects,
+  grantCommercialBeta,
   type CommercialAnalysisResult,
   type CommercialProject,
   type CommercialRunHistoryItem,
@@ -59,6 +60,9 @@ export function CommercialDashboard() {
   const [content, setContent] = useState("");
   const [run, setRun] = useState<CommercialRun | null>(null);
   const [result, setResult] = useState<CommercialAnalysisResult | null>(null);
+  const [baselineResult, setBaselineResult] = useState<CommercialAnalysisResult | null>(null);
+  const [patchCopied, setPatchCopied] = useState(false);
+  const [patchAdopted, setPatchAdopted] = useState(false);
   const [runState, setRunState] = useState<RunState>("idle");
   const [runError, setRunError] = useState("");
   const [runErrorCode, setRunErrorCode] = useState("");
@@ -72,6 +76,8 @@ export function CommercialDashboard() {
   const [checkouting, setCheckouting] = useState<string | null>(null);
   const [billingMessage, setBillingMessage] = useState("");
   const [portalLoading, setPortalLoading] = useState(false);
+  const [betaGrantLoading, setBetaGrantLoading] = useState(false);
+  const [betaGrantMessage, setBetaGrantMessage] = useState("");
   const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const cancelKeyRef = useRef<{ runId: string; key: string } | null>(null);
 
@@ -86,6 +92,9 @@ export function CommercialDashboard() {
     setUsage(null);
     setRun(null);
     setResult(null);
+    setBaselineResult(null);
+    setPatchCopied(false);
+    setPatchAdopted(false);
     setRunState("idle");
     setRunError("");
     setRunErrorCode("");
@@ -125,6 +134,9 @@ export function CommercialDashboard() {
       setSelectedId(null);
       setRun(null);
       setResult(null);
+      setBaselineResult(null);
+      setPatchCopied(false);
+      setPatchAdopted(false);
       setSubscription(null);
       setPlans([]);
       setPlansError("");
@@ -160,6 +172,17 @@ export function CommercialDashboard() {
     void loadProjects();
   }, [loadProjects]);
 
+  const syncWorkspaceSummary = useCallback(async () => {
+    try {
+      const summary = await listCommercialProjects();
+      setProjects(summary.projects);
+      setHistory(summary.history);
+      setUsage(summary.usage);
+    } catch {
+      // A completed report remains usable even if the non-critical summary refresh is unavailable.
+    }
+  }, []);
+
   const refreshRun = useCallback(async (runId: string) => {
     try {
       const current = await getCommercialRun(runId);
@@ -173,6 +196,7 @@ export function CommercialDashboard() {
           setRunErrorCode("");
           setRunErrorAction(null);
           launchKeyRef.current = null;
+          void syncWorkspaceSummary();
         } catch (resultError) {
           setRunState("error");
           setRunError(errorMessage(resultError));
@@ -201,7 +225,7 @@ export function CommercialDashboard() {
       setRunErrorAction("refresh-run");
       return null;
     }
-  }, []);
+  }, [syncWorkspaceSummary]);
 
   useEffect(() => {
     if (!run || (run.status !== "queued" && run.status !== "running") || runState === "error") return;
@@ -238,7 +262,10 @@ export function CommercialDashboard() {
     setRunError("");
     setRunErrorCode("");
     setRunErrorAction(null);
+    if (result) setBaselineResult(result);
     setResult(null);
+    setPatchCopied(false);
+    setPatchAdopted(false);
     try {
       const idempotencyKey = launchKeyRef.current ?? createCommercialIdempotencyKey();
       launchKeyRef.current = idempotencyKey;
@@ -283,6 +310,9 @@ export function CommercialDashboard() {
     const nextRun = { ...historyRun };
     setRun(nextRun);
     setResult(null);
+    setBaselineResult(null);
+    setPatchCopied(false);
+    setPatchAdopted(false);
     setRunError("");
     setRunErrorCode("");
     setRunErrorAction(null);
@@ -400,6 +430,21 @@ export function CommercialDashboard() {
     }
   }
 
+  async function handleBetaGrant() {
+    if (betaGrantLoading) return;
+    setBetaGrantLoading(true);
+    setBetaGrantMessage("");
+    try {
+      const grant = await grantCommercialBeta();
+      setBetaGrantMessage(`已发放 ${grant.runLimit} 次 Beta 额度。`);
+      await loadProjects();
+    } catch (grantError) {
+      setBetaGrantMessage(errorMessage(grantError));
+    } finally {
+      setBetaGrantLoading(false);
+    }
+  }
+
   function subscriptionLabel(value: CommercialSubscription | null): string {
     if (!value) return "未订阅";
     if ((value.status === "active" || value.status === "trialing") && value.currentPeriodEnd && new Date(value.currentPeriodEnd).getTime() > Date.now()) {
@@ -419,20 +464,45 @@ export function CommercialDashboard() {
   const selectedHistory = history.find((entry) => entry.projectId === selectedId)?.runs ?? [];
   const quotaFull = usage ? usage.consumed >= usage.limit : false;
   const betaAccessActive = usage?.accessMode === "beta" && !quotaFull;
+  const completedRuns = selectedHistory.filter((item) => item.status === "succeeded").length;
+  const latestRun = selectedHistory[0] ?? null;
+
+  async function copyPatch(markdown: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable");
+      await navigator.clipboard.writeText(markdown);
+      setPatchCopied(true);
+    } catch {
+      setPatchCopied(false);
+    }
+  }
 
   return (
-    <main className="commercial-dashboard" aria-labelledby="commercial-dashboard-title">
-      <header className="commercial-dashboard-header">
-        <div>
-          <p className="commercial-eyebrow">已认证工作区</p>
-          <h1 id="commercial-dashboard-title">AI 内容发布前审查工作台</h1>
-          <p className="commercial-dashboard-lede">按产品线与内容项目管理 GEO 审查、共享额度与交付报告。</p>
-        </div>
-        <button type="button" className="commercial-refresh-button" onClick={() => void loadProjects()} disabled={state === "loading"}>
-          <RefreshCw aria-hidden="true" />
-          刷新
-        </button>
-      </header>
+    <main className="commercial-workspace-shell" aria-labelledby="commercial-dashboard-title">
+      <aside className="commercial-workspace-sidebar" aria-label="工作区导航">
+        <div className="commercial-sidebar-brand"><span className="commercial-sidebar-mark"><Sparkles aria-hidden="true" /></span><span><strong>Evidra</strong><small>内容可信度工作区</small></span></div>
+        <nav>
+          <a className="is-active" href="#overview"><Home aria-hidden="true" />概览</a>
+          <a href="#projects"><FolderKanban aria-hidden="true" />项目</a>
+          <a href="#report"><BarChart3 aria-hidden="true" />审查报告</a>
+          <a href="#history"><FileClock aria-hidden="true" />运行记录</a>
+          <a href="#settings"><Settings2 aria-hidden="true" />额度与设置</a>
+        </nav>
+        <div className="commercial-sidebar-footer"><span className="commercial-sidebar-avatar">E</span><span><strong>Evidra</strong><small>面试演示工作区</small></span></div>
+      </aside>
+      <section className="commercial-workspace-main">
+        <header className="commercial-workspace-topbar">
+          <div><span className="commercial-context-label">当前工作区</span><strong>内容可信度审查</strong><span className="commercial-context-divider">/</span><span>{selectedProject?.name ?? "未选择项目"}</span></div>
+          <div className="commercial-workspace-top-actions"><span className="commercial-live-status"><span />服务正常</span><button type="button" className="commercial-refresh-button" onClick={() => void loadProjects()} disabled={state === "loading"}><RefreshCw aria-hidden="true" />刷新</button></div>
+        </header>
+        <div className="commercial-dashboard" id="overview">
+          <header className="commercial-dashboard-header">
+            <div>
+              <p className="commercial-eyebrow">Workspace overview</p>
+              <h1 id="commercial-dashboard-title">AI 内容发布前审查工作台</h1>
+              <p className="commercial-dashboard-lede">从内容提交到证据诊断，再到修改后复查，所有工作集中在一个项目里完成。按产品线与内容项目管理 GEO 审查、共享额度与交付报告。</p>
+            </div>
+          </header>
 
       {error ? (
         <section className="commercial-dashboard-alert" role="alert">
@@ -445,7 +515,9 @@ export function CommercialDashboard() {
       ) : null}
 
       {billingMessage ? <section className="commercial-dashboard-info" role="status">{billingMessage}</section> : null}
-      <section className="commercial-billing-panel" aria-labelledby="commercial-billing-title" aria-busy={state === "loading" || checkouting !== null}>
+      <details className="commercial-billing-panel commercial-settings-collapsed" id="settings" aria-labelledby="commercial-billing-title">
+        <summary><span><Settings2 aria-hidden="true" />额度与设置</span><small>面试演示模式下默认折叠</small></summary>
+        <div className="commercial-billing-panel-body" aria-busy={state === "loading" || checkouting !== null}>
         <div className="commercial-billing-summary">
           <div><p className="commercial-eyebrow">Workspace usage</p><h2 id="commercial-billing-title">{betaMode ? "邀请制 Beta 额度" : "套餐与共享额度"}</h2></div>
           <div className="commercial-billing-status"><strong>{betaMode ? betaAccessActive ? "Beta 授权有效" : "等待 Beta 授权" : subscriptionLabel(subscription)}</strong><span>{usage ? `已用 ${usage.consumed} / ${usage.limit} 次审查` : "额度待确认"}</span></div>
@@ -453,6 +525,7 @@ export function CommercialDashboard() {
         {billingError ? <p className="commercial-billing-error" role="alert">{billingError}</p> : null}
         {quotaFull ? <p className="commercial-billing-error">{betaMode ? "本次 Beta 授权额度已用完。" : plansError ? "当前工作区没有可用审查次数，支付入口尚未配置，暂不能购买。" : "当前工作区共享额度已用完，请选择可用套餐或等待支付状态更新。"}</p> : null}
         <p className="commercial-billing-muted">{betaMode ? "这是邀请制免费 Beta。额度由服务端授权并记录，授权到期后自动失效；不会创建支付订单。" : "面向 B2B SaaS 内容、增长与品牌团队；实际套餐名称、价格与额度以服务端当前配置为准。"}</p>
+        {betaMode && !betaAccessActive ? <div className="commercial-beta-grant-panel"><button type="button" onClick={() => void handleBetaGrant()} disabled={betaGrantLoading}>{betaGrantLoading ? "正在发放 Beta 额度" : "发放我的 Beta 额度"}</button>{betaGrantMessage ? <span role="status">{betaGrantMessage}</span> : null}</div> : null}
         {!betaMode ? <p className="commercial-billing-muted">套餐为一次性支付，不自动续费；付款成功并完成校验后才发放审查次数，失败或未生成完整报告不扣次数。</p> : null}
         {!betaMode && (state === "loading" && plans.length === 0 ? <div className="commercial-plan-skeleton" aria-label="正在加载支付宝套餐"><span /><span /><span /></div> : plans.length > 0 ? <div className="commercial-plan-list">{plans.map((plan) => {
           const planCopy: Record<string, { name: string; scene: string; unit: string; badge?: string }> = {
@@ -470,13 +543,20 @@ export function CommercialDashboard() {
             {portalLoading ? "打开中" : "管理订阅"}
           </button>
         ) : null}
-      </section>
+        </div>
+      </details>
 
       {!betaMode ? <AlipayOperatorPanel /> : null}
       <CommercialRunRecoveryPanel />
 
+      <section className="commercial-workspace-metrics" aria-label="工作区概览指标">
+        <div><span>当前项目</span><strong>{projects.length}</strong><small>个内容项目</small></div>
+        <div><span>已完成审查</span><strong>{completedRuns}</strong><small>次可查看报告</small></div>
+        <div><span>当前状态</span><strong>{latestRun?.status === "succeeded" ? "已就绪" : selectedProject ? "待分析" : "待选择"}</strong><small>{latestRun ? "最近运行已记录" : "先创建或选择项目"}</small></div>
+      </section>
+
       <div className="commercial-dashboard-grid">
-        <section className="commercial-projects-panel" aria-labelledby="commercial-projects-title">
+        <section className="commercial-projects-panel" id="projects" aria-labelledby="commercial-projects-title">
           <div className="commercial-panel-heading">
             <div>
               <p className="commercial-eyebrow">Workspace projects</p>
@@ -526,14 +606,14 @@ export function CommercialDashboard() {
           ) : null}
         </section>
 
-        <section className="commercial-project-detail" aria-labelledby="commercial-project-detail-title">
+        <section className="commercial-project-detail" id="report" aria-labelledby="commercial-project-detail-title">
           {selectedProject ? (
             <>
               <p className="commercial-eyebrow">Project detail</p>
               <h2 id="commercial-project-detail-title">{selectedProject.name}</h2>
               <p className="commercial-detail-meta">项目已绑定当前认证工作区。后续分析、运行记录和结果都会沿用服务端 ownership 检查。</p>
               <p className="commercial-detail-meta">当前页面会显示本次打开后的运行状态。刷新或返回后，如果没有可验证的历史运行记录，结果区域会保持真实空态；不会显示占位报告。</p>
-              <section className="commercial-run-history" aria-labelledby="commercial-run-history-title">
+              <section className="commercial-run-history" id="history" aria-labelledby="commercial-run-history-title">
                 <div className="commercial-history-heading">
                   <h3 id="commercial-run-history-title">最近运行</h3>
                   <span>最多显示 20 条</span>
@@ -561,13 +641,15 @@ export function CommercialDashboard() {
                 <label htmlFor="commercial-analysis-content">正文</label>
                 <textarea id="commercial-analysis-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={500_000} rows={8} required disabled={runState === "loading" || runState === "polling"} />
                 <button type="submit" disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>
-                  {runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : "开始分析"}
+                  {runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : result ? "重新分析" : "开始分析"}
                 </button>
                 {quotaFull ? <p className="commercial-form-hint">当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。</p> : null}
+                {result ? <p className="commercial-form-hint">修改正文后重新分析，可对比本次结果与上一次报告的变化。</p> : null}
               </form>
               {runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
               {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}>刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}>{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : <span className="commercial-history-unavailable">暂不可取消</span>}</div> : null}
-              {result ? <AnalysisResultView result={result} /> : null}
+              {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} /> : null}
+              {baselineResult && result ? <section className="commercial-recheck-summary" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">Recheck comparison</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
             </>
           ) : (
             <div className="commercial-dashboard-empty commercial-dashboard-empty-detail">
@@ -579,6 +661,8 @@ export function CommercialDashboard() {
         </section>
       </div>
       <nav className="commercial-legal-links" aria-label="商业支持与法律"><Link href="/terms">服务条款</Link><Link href="/privacy">隐私说明</Link><Link href="/support">支持与联系</Link></nav>
+        </div>
+      </section>
     </main>
   );
 }
@@ -591,15 +675,52 @@ function AlipayOperatorPanel() {
   return <section className="commercial-operator-panel" aria-labelledby="commercial-operator-title"><button type="button" onClick={() => void load()} disabled={status === "loading"}>{status === "loading" ? "正在检查权限" : "支付运营管理"}</button>{open ? <div><h2 id="commercial-operator-title">支付宝运营审核</h2><p>退款与对账仅创建内部审核请求，不会直接调用支付机构。</p>{message ? <p role={status === "error" ? "alert" : "status"}>{message}</p> : null}{status === "ready" ? <form onSubmit={submit}><label htmlFor="operator-reference">内部支付引用</label><input id="operator-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={128} required /><select aria-label="运营类型" value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="refund_review">退款审核</option><option value="reconciliation">对账任务</option></select><button type="submit">创建审核请求</button></form> : null}{status === "ready" && items.length === 0 ? <p>暂无运营审核请求。</p> : null}{items.length ? <ul>{items.map((item) => <li key={item.id}><strong>{item.type === "refund_review" ? "退款审核" : "对账任务"}</strong><span>{item.status}</span></li>)}</ul> : null}</div> : null}</section>;
 }
 
-function AnalysisResultView({ result }: { result: CommercialAnalysisResult }) {
+function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, onAdoptPatch }: { result: CommercialAnalysisResult; patchCopied: boolean; patchAdopted: boolean; onCopyPatch: () => void; onAdoptPatch: () => void }) {
+  const scoreLabel = result.score >= 80 ? "发布准备充分" : result.score >= 60 ? "建议补充后发布" : "建议优先复核";
+  const issueLabel = result.diagnostics.issueCount ? `${result.diagnostics.issueCount} 项待处理` : "未发现待处理项";
+  const issueDescription = result.diagnostics.issueCount ? "需要人工判断" : "可进入人工确认";
+  const sourceLabel = result.source === "model" ? "模型诊断" : "结构化诊断";
+
   return <section className="commercial-analysis-result" aria-labelledby="commercial-analysis-result-title">
-    <h3 id="commercial-analysis-result-title">分析结果</h3>
-    <p className="commercial-result-score">总分 {result.score}</p>
-    <h4>问题（5）</h4>
-    <ol>{result.analysis.questions.questions.map((question) => <li key={question}>{question}</li>)}</ol>
-    <h4>诊断</h4>
-    <p>{result.diagnostics.issueCount ? `发现 ${result.diagnostics.issueCount} 项需要关注的问题。` : "未发现需要关注的问题。"}</p>
-    <h4>Patch 建议</h4>
-    <pre>{result.analysis.patch.markdown}</pre>
+    <header className="commercial-result-header">
+      <div>
+        <p className="commercial-eyebrow">Review report</p>
+        <h3 id="commercial-analysis-result-title">分析结果</h3>
+        <p className="commercial-result-summary">先处理高风险信息缺口，再决定是否进入发布流程。</p>
+      </div>
+      <span className={`commercial-result-source is-${result.source}`}>{sourceLabel}</span>
+    </header>
+
+    <div className="commercial-result-overview">
+      <div className="commercial-score-card">
+        <span>可信度评分</span>
+        <strong>总分 {result.score}</strong>
+        <small>{scoreLabel}</small>
+      </div>
+      <ul className="commercial-result-signals" aria-label="报告摘要">
+        <li><FileSearch aria-hidden="true" /><span><strong>{result.analysis.questions.questions.length} 个</strong>读者关键问题</span></li>
+        <li><ClipboardCheck aria-hidden="true" /><span><strong>{issueLabel}</strong>{issueDescription}</span></li>
+        <li><Lightbulb aria-hidden="true" /><span><strong>Patch 已生成</strong>可作为编辑提纲</span></li>
+      </ul>
+    </div>
+
+    <details className="commercial-result-section" open>
+      <summary><span>读者问题</span><small>{result.analysis.questions.questions.length} 个待验证问题</small></summary>
+      <ol>{result.analysis.questions.questions.map((question) => <li key={question}>{question}</li>)}</ol>
+    </details>
+
+    <section className="commercial-result-section commercial-result-diagnosis" aria-labelledby="commercial-result-diagnosis-title">
+      <div className="commercial-result-section-heading">
+        <h4 id="commercial-result-diagnosis-title">诊断结论</h4>
+        <CheckCircle2 aria-hidden="true" />
+      </div>
+      <p>{result.diagnostics.issueCount ? `发现 ${result.diagnostics.issueCount} 项需要关注的问题。请核对原文是否能直接回答上述读者问题，并补充可追溯的事实依据。` : "当前未发现需要关注的问题。发布前仍建议由作者确认事实时效和适用范围。"}</p>
+    </section>
+
+    <details className="commercial-result-section commercial-result-patch" open>
+      <summary><span>Patch 建议</span><small>仅提供编辑方向，不会自动改写原文</small></summary>
+      <div className="commercial-patch-actions"><button type="button" onClick={onCopyPatch}>{patchCopied ? "已复制" : "复制 Patch"}</button><button type="button" className={patchAdopted ? "is-adopted" : ""} onClick={onAdoptPatch}>{patchAdopted ? "已加入修改清单" : "加入修改清单"}</button></div>
+      <pre>{result.analysis.patch.markdown}</pre>
+    </details>
   </section>;
 }

@@ -11,7 +11,7 @@ function stableError(code) {
 }
 
 export function validateMigrationEnvironment(env = process.env) {
-  const databaseUrl = env.DATABASE_URL?.trim() || "";
+  const databaseUrl = env.NEON_DATABASE_URL?.trim() || env.DATABASE_URL?.trim() || "";
   if (!databaseUrl) return { ok: false, code: "DATABASE_URL_REQUIRED" };
   try {
     const protocol = new URL(databaseUrl).protocol;
