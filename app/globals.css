@@ -2767,6 +2767,15 @@ h1, h2, h3, p { letter-spacing: 0; }
 .commercial-workspace-metrics > div { display: grid; gap: 5px; border: 1px solid var(--geo-border); border-radius: 8px; background: var(--geo-surface); padding: 15px 16px; }
 .commercial-workspace-metrics span, .commercial-workspace-metrics small { color: var(--geo-text-muted); font-size: 11px; }
 .commercial-workspace-metrics strong { color: var(--geo-text-heading); font-size: 21px; line-height: 1.1; }
+.commercial-workflow-strip { display: grid; grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr); align-items: center; gap: 8px; margin: 0 0 20px; border: 1px solid var(--geo-border); border-radius: 8px; background: var(--geo-surface); padding: 12px 14px; }
+.commercial-workflow-step { display: flex; min-width: 0; align-items: center; gap: 9px; }
+.commercial-workflow-step > span { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 6px; background: var(--geo-surface-inset); color: var(--geo-text-muted); font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.commercial-workflow-step > div { display: grid; min-width: 0; gap: 2px; }
+.commercial-workflow-step strong { overflow: hidden; color: var(--geo-text-heading); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.commercial-workflow-step small { overflow: hidden; color: var(--geo-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.commercial-workflow-step.is-current > span { background: var(--geo-primary-soft); color: var(--geo-primary); }
+.commercial-workflow-step.is-complete > span { background: var(--geo-status-success-soft); color: var(--geo-status-success); }
+.commercial-workflow-connector { height: 1px; background: var(--geo-border-strong); }
 .commercial-settings-collapsed { padding: 0; }
 .commercial-settings-collapsed summary { display: flex; min-height: 50px; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; padding: 0 18px; color: var(--geo-text-heading); font-size: 13px; font-weight: 700; }
 .commercial-settings-collapsed summary::-webkit-details-marker { display: none; }
@@ -2806,6 +2815,8 @@ h1, h2, h3, p { letter-spacing: 0; }
   .commercial-workspace-topbar > div:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .commercial-context-label, .commercial-context-divider, .commercial-live-status { display: none; }
   .commercial-workspace-metrics { grid-template-columns: 1fr; }
+  .commercial-workflow-strip { grid-template-columns: 1fr; gap: 9px; padding: 12px; }
+  .commercial-workflow-connector { width: 1px; height: 10px; margin-left: 14px; }
   .commercial-recheck-summary { grid-template-columns: 1fr; }
   .commercial-recheck-score { justify-items: start; text-align: left; }
 }

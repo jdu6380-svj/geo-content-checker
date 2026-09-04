@@ -555,6 +555,14 @@ export function CommercialDashboard() {
         <div><span>当前状态</span><strong>{latestRun?.status === "succeeded" ? "已就绪" : selectedProject ? "待分析" : "待选择"}</strong><small>{latestRun ? "最近运行已记录" : "先创建或选择项目"}</small></div>
       </section>
 
+      <section className="commercial-workflow-strip" aria-label="当前审查流程">
+        <div className="commercial-workflow-step is-complete"><span>01</span><div><strong>选择项目</strong><small>{selectedProject ? selectedProject.name : "先创建一个内容项目"}</small></div></div>
+        <span className="commercial-workflow-connector" aria-hidden="true" />
+        <div className={`commercial-workflow-step ${selectedProject ? "is-current" : ""} ${title.trim() && content.trim() ? "is-complete" : ""}`}><span>02</span><div><strong>提交内容</strong><small>{title.trim() && content.trim() ? "标题与正文已准备" : "填写标题和正文"}</small></div></div>
+        <span className="commercial-workflow-connector" aria-hidden="true" />
+        <div className={`commercial-workflow-step ${result ? "is-complete" : runState === "loading" || runState === "polling" ? "is-current" : ""}`}><span>03</span><div><strong>查看报告</strong><small>{result ? "报告已生成，可复查" : "分析完成后显示评分与 Patch"}</small></div></div>
+      </section>
+
       <div className="commercial-dashboard-grid">
         <section className="commercial-projects-panel" id="projects" aria-labelledby="commercial-projects-title">
           <div className="commercial-panel-heading">

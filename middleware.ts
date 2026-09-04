@@ -19,6 +19,9 @@ const clerkConfigured = Boolean(
 
 export default clerkConfigured
   ? clerkMiddleware(async (auth, request) => {
+      if (new URL(request.url).pathname === "/") {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
       if (commercialRoute(request)) await auth.protect();
     })
   : function failClosedCommercialMiddleware(request: Request) {
