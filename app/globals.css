@@ -2411,7 +2411,10 @@ h1, h2, h3, p { letter-spacing: 0; }
 }
 
 .commercial-refresh-button svg,
-.commercial-project-form button svg { width: 16px; height: 16px; }
+.commercial-project-form button svg,
+.commercial-analysis-form > button svg,
+.commercial-detail-status button svg,
+.commercial-patch-actions button svg { width: 16px; height: 16px; flex: 0 0 auto; }
 
 .commercial-billing-panel,
 .commercial-projects-panel,
@@ -2589,6 +2592,9 @@ h1, h2, h3, p { letter-spacing: 0; }
 .commercial-analysis-form > button { justify-self: start; margin-top: 4px; }
 
 .commercial-detail-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   justify-content: flex-start;
   margin-top: 16px;
   border: 1px solid var(--geo-border);
@@ -2600,6 +2606,10 @@ h1, h2, h3, p { letter-spacing: 0; }
 }
 
 .commercial-detail-status button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 32px;
   border-color: var(--geo-border);
   background: var(--geo-surface);
@@ -2619,6 +2629,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   margin-top: 18px;
   border-top: 1px solid var(--geo-border);
   padding-top: 18px;
+  animation: commercial-result-enter 220ms ease-out both;
 }
 
 .commercial-result-header,
@@ -2766,6 +2777,7 @@ h1, h2, h3, p { letter-spacing: 0; }
 .commercial-billing-panel-body { padding: 20px; }
 .commercial-patch-actions { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--geo-border); padding: 10px 14px; }
 .commercial-patch-actions button { min-height: 32px; border: 1px solid var(--geo-border); border-radius: 6px; background: var(--geo-surface); padding: 0 10px; color: var(--geo-text-body); font-size: 12px; font-weight: 700; }
+.commercial-patch-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .commercial-patch-actions button:hover { border-color: var(--geo-primary); color: var(--geo-primary); }
 .commercial-patch-actions button.is-adopted { border-color: var(--geo-status-success-border); background: var(--geo-status-success-soft); color: var(--geo-status-success); }
 .commercial-recheck-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; border: 1px solid var(--geo-status-success-border); border-radius: 8px; background: var(--geo-status-success-soft); padding: 14px; }
@@ -2920,6 +2932,12 @@ h1, h2, h3, p { letter-spacing: 0; }
   outline: 3px solid var(--geo-focus-ring);
   outline-offset: 2px;
 }
+.commercial-dashboard button:disabled { cursor: not-allowed; opacity: .58; }
+.commercial-dashboard button.is-loading svg,
+.commercial-refresh-button.is-loading svg { animation: commercial-spin 850ms linear infinite; }
+.commercial-result-section summary:focus-visible { outline: 3px solid var(--geo-focus-ring); outline-offset: -3px; }
+@keyframes commercial-spin { to { transform: rotate(360deg); } }
+@keyframes commercial-result-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) {
   .commercial-dashboard button,
   .commercial-dashboard a {
@@ -2929,6 +2947,9 @@ h1, h2, h3, p { letter-spacing: 0; }
   .commercial-plan-card,
   .commercial-operator-panel { transform: none !important; transition: none !important; }
   .commercial-plan-skeleton span { animation: none !important; opacity: .75; }
+  .commercial-dashboard button.is-loading svg,
+  .commercial-refresh-button.is-loading svg,
+  .commercial-analysis-result { animation: none !important; }
 }
 
 /* D.0.8.1 visual simplification */

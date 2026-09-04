@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CheckCircle2, ClipboardCheck, FileClock, FileSearch, FolderKanban, Home, Lightbulb, Plus, RefreshCw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
+import { BarChart3, CheckCircle2, ClipboardCheck, ClipboardCopy, FileClock, FileSearch, FolderKanban, Home, Lightbulb, ListPlus, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CommercialRunRecoveryPanel } from "@/components/commercial-run-recovery-panel";
@@ -493,7 +493,7 @@ export function CommercialDashboard() {
       <section className="commercial-workspace-main">
         <header className="commercial-workspace-topbar">
           <div><span className="commercial-context-label">当前工作区</span><strong>内容可信度审查</strong><span className="commercial-context-divider">/</span><span>{selectedProject?.name ?? "未选择项目"}</span></div>
-          <div className="commercial-workspace-top-actions"><span className="commercial-live-status"><span />服务正常</span><button type="button" className="commercial-refresh-button" onClick={() => void loadProjects()} disabled={state === "loading"}><RefreshCw aria-hidden="true" />刷新</button></div>
+          <div className="commercial-workspace-top-actions"><span className="commercial-live-status"><span />服务正常</span><button type="button" className={`commercial-refresh-button ${state === "loading" ? "is-loading" : ""}`} onClick={() => void loadProjects()} disabled={state === "loading"}><RefreshCw aria-hidden="true" />{state === "loading" ? "刷新中" : "刷新"}</button></div>
         </header>
         <div className="commercial-dashboard" id="overview">
           <header className="commercial-dashboard-header">
@@ -640,14 +640,15 @@ export function CommercialDashboard() {
                 <input id="commercial-analysis-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} required disabled={runState === "loading" || runState === "polling"} />
                 <label htmlFor="commercial-analysis-content">正文</label>
                 <textarea id="commercial-analysis-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={500_000} rows={8} required disabled={runState === "loading" || runState === "polling"} />
-                <button type="submit" disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>
+                <button type="submit" className={runState === "loading" || runState === "polling" ? "is-loading" : ""} aria-busy={runState === "loading" || runState === "polling"} disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>
+                  {runState === "loading" || runState === "polling" ? <LoaderCircle aria-hidden="true" /> : result ? <RotateCcw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
                   {runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : result ? "重新分析" : "开始分析"}
                 </button>
                 {quotaFull ? <p className="commercial-form-hint">当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。</p> : null}
                 {result ? <p className="commercial-form-hint">修改正文后重新分析，可对比本次结果与上一次报告的变化。</p> : null}
               </form>
               {runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
-              {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}>刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}>{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : <span className="commercial-history-unavailable">暂不可取消</span>}</div> : null}
+              {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status" role="status" aria-live="polite"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}><RefreshCw aria-hidden="true" />刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}><RotateCcw aria-hidden="true" />{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : <span className="commercial-history-unavailable">暂不可取消</span>}</div> : null}
               {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} /> : null}
               {baselineResult && result ? <section className="commercial-recheck-summary" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">Recheck comparison</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
             </>
@@ -719,7 +720,7 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
 
     <details className="commercial-result-section commercial-result-patch" open>
       <summary><span>Patch 建议</span><small>仅提供编辑方向，不会自动改写原文</small></summary>
-      <div className="commercial-patch-actions"><button type="button" onClick={onCopyPatch}>{patchCopied ? "已复制" : "复制 Patch"}</button><button type="button" className={patchAdopted ? "is-adopted" : ""} onClick={onAdoptPatch}>{patchAdopted ? "已加入修改清单" : "加入修改清单"}</button></div>
+      <div className="commercial-patch-actions"><button type="button" onClick={onCopyPatch}><ClipboardCopy aria-hidden="true" />{patchCopied ? "已复制" : "复制 Patch"}</button><button type="button" className={patchAdopted ? "is-adopted" : ""} onClick={onAdoptPatch}><ListPlus aria-hidden="true" />{patchAdopted ? "已加入修改清单" : "加入修改清单"}</button></div>
       <pre>{result.analysis.patch.markdown}</pre>
     </details>
   </section>;
