@@ -49,7 +49,7 @@ export type CommercialAnalysisResult = {
   analysis: {
     scoring: { totalScore: number; dimensions: Record<string, unknown> };
     questions: { questions: string[] };
-    diagnostics: Array<Record<string, unknown>>;
+    diagnostics: import("@/lib/schemas/geo").DiagnosticResult[];
     patch: { mode: string; markdown: string; actions: Array<Record<string, unknown>> };
   };
 };

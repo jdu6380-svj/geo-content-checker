@@ -708,17 +708,31 @@ function AlipayOperatorPanel() {
 
 function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, onAdoptPatch, onEditContent, onRecheck }: { result: CommercialAnalysisResult; patchCopied: boolean; patchAdopted: boolean; onCopyPatch: () => void; onAdoptPatch: () => void; onEditContent: () => void; onRecheck: () => void }) {
   const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low">("all");
+  const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
   const scoreLabel = result.score >= 80 ? "发布准备充分" : result.score >= 60 ? "建议补充后发布" : "建议优先复核";
   const issueLabel = result.diagnostics.issueCount ? `${result.diagnostics.issueCount} 项待处理` : "未发现待处理项";
   const issueDescription = result.diagnostics.issueCount ? "需要人工判断" : "可进入人工确认";
   const sourceLabel = result.source === "model" ? "模型诊断" : "结构化诊断";
   const issueCount = result.diagnostics.issueCount;
-  const riskItems = Array.from({ length: issueCount }, (_, index) => ({
-    id: `${result.contentDigest}-${index}`,
-    level: index === 0 ? "high" : index % 2 === 0 ? "medium" : "low",
-    label: index === 0 ? "关键事实缺口" : index % 2 === 0 ? "上下文不完整" : "证据可追溯性不足",
-    detail: index === 0 ? "读者问题尚未被正文直接回答" : "建议补充范围、来源或适用条件",
-  } as const));
+  const riskItems = result.analysis.diagnostics
+    .map((diagnostic, index) => {
+      const evidenceStatus = diagnostic.evidenceStatus ?? (index === 0 ? "missing" : "invalid");
+      const missingInfo = Array.isArray(diagnostic.missingInfo) ? diagnostic.missingInfo : [];
+      const evidence = Array.isArray(diagnostic.evidence) ? diagnostic.evidence : [];
+      return {
+        id: `${result.contentDigest}-${index}`,
+        level: diagnostic.riskLevel ?? (index === 0 ? "high" : index % 2 === 0 ? "medium" : "low"),
+        label: diagnostic.question || `第 ${index + 1} 项读者问题`,
+        detail: evidenceStatus === "invalid"
+          ? "已有引用无法支持结论，需要重新核对"
+          : missingInfo[0] || diagnostic.recommendation || "建议补充范围、来源或适用条件",
+        evidence,
+        missingInfo,
+        recommendation: diagnostic.recommendation || "回到正文补充可核验依据。",
+        evidenceStatus,
+      };
+    })
+    .filter((item) => item.evidenceStatus !== "valid");
   const visibleRiskItems = riskItems.filter((item) => riskFilter === "all" || item.level === riskFilter);
 
   return <section className="commercial-analysis-result" aria-labelledby="commercial-analysis-result-title">
@@ -760,7 +774,26 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
       <div className="evidence-risk-filters" role="toolbar" aria-label="风险筛选">
         {(["all", "high", "medium", "low"] as const).map((filter) => <button key={filter} type="button" className={riskFilter === filter ? "is-active" : ""} onClick={() => setRiskFilter(filter)}>{filter === "all" ? "全部" : filter === "high" ? "高风险" : filter === "medium" ? "中风险" : "低风险"}<span>{filter === "all" ? issueCount : riskItems.filter((item) => item.level === filter).length}</span></button>)}
       </div>
-      {visibleRiskItems.length ? <ul className="evidence-risk-list">{visibleRiskItems.map((item) => <li key={item.id} className={`is-${item.level}`}><span className="evidence-risk-marker" aria-hidden="true" /><div><strong>{item.label}</strong><small>{item.detail}</small></div><button type="button" className="evidence-risk-open">查看证据 <span aria-hidden="true">↗</span></button></li>)}</ul> : <div className="evidence-risk-clear"><CheckCircle2 aria-hidden="true" /><span>当前筛选没有待处理问题，仍建议人工确认事实时效。</span></div>}
+      {visibleRiskItems.length ? <ul className="evidence-risk-list">{visibleRiskItems.map((item) => {
+        const expanded = expandedRiskId === item.id;
+        const detailId = `evidence-risk-detail-${item.id}`;
+        return <li key={item.id} className={`is-${item.level} ${expanded ? "is-expanded" : ""}`}>
+          <span className="evidence-risk-marker" aria-hidden="true" />
+          <div><strong>{item.label}</strong><small>{item.detail}</small></div>
+          <button
+            type="button"
+            className="evidence-risk-open"
+            aria-expanded={expanded}
+            aria-controls={detailId}
+            onClick={() => setExpandedRiskId((current) => current === item.id ? null : item.id)}
+          >{expanded ? "收起证据" : "查看证据"} <span aria-hidden="true">{expanded ? "↙" : "↗"}</span></button>
+          {expanded ? <div id={detailId} className="evidence-risk-detail">
+            <div><span>证据状态</span><strong>{item.evidence.length ? "已有逐字引用" : "缺少逐字引用"}</strong></div>
+            <div><span>原文依据</span>{item.evidence.length ? <ul>{item.evidence.map((evidence) => <li key={`${evidence.paragraphId}-${evidence.quote}`}><b>{evidence.paragraphId}</b><p>“{evidence.quote}”</p></li>)}</ul> : <p>当前正文没有可直接核验的依据。</p>}</div>
+            <div><span>下一动作</span><p>{item.missingInfo[0] || item.recommendation}</p></div>
+          </div> : null}
+        </li>;
+      })}</ul> : <div className="evidence-risk-clear"><CheckCircle2 aria-hidden="true" /><span>当前筛选没有待处理问题，仍建议人工确认事实时效。</span></div>}
     </section>
 
     <details className="commercial-result-section" open>
