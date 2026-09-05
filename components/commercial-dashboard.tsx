@@ -508,6 +508,23 @@ export function CommercialDashboard() {
             </div>
           </header>
 
+          <section className="evidence-desk-hero" aria-labelledby="evidence-desk-hero-title">
+            <div className="evidence-desk-hero-copy">
+              <span className="evidence-desk-kicker">EVIDRA REVIEW DESK · 发布前可信度</span>
+              <h2 id="evidence-desk-hero-title">把一篇内容拆成可验证的发布决定</h2>
+              <p>先定位读者真正的问题，再沿着证据链判断内容是否足够可信，最后把修改动作带回正文并复查变化。</p>
+              <button type="button" className="evidence-desk-hero-action" onClick={focusAnalysisEditor} disabled={!selectedProject}>
+                {selectedProject ? "进入内容审查" : "先创建一个项目"}
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+            <div className="evidence-desk-hero-map" aria-label="Evidra 审查链路">
+              <span className="is-active"><i>01</i><b>内容</b><small>正文与上下文</small></span>
+              <span><i>02</i><b>证据</b><small>事实与依据</small></span>
+              <span><i>03</i><b>动作</b><small>Patch 与复查</small></span>
+            </div>
+          </section>
+
       {error ? (
         <section className="commercial-dashboard-alert" role="alert">
           <ShieldAlert aria-hidden="true" />
@@ -519,13 +536,13 @@ export function CommercialDashboard() {
       ) : null}
 
       {billingMessage ? <section className="commercial-dashboard-info" role="status">{billingMessage}</section> : null}
-      <section className="commercial-workspace-metrics" aria-label="工作区概览指标">
+      <section className="commercial-workspace-metrics evidence-desk-metrics" aria-label="工作区概览指标">
         <div><span>当前项目</span><strong>{projects.length}</strong><small>个内容项目</small></div>
         <div><span>已完成审查</span><strong>{completedRuns}</strong><small>次可查看报告</small></div>
         <div><span>当前状态</span><strong>{latestRun?.status === "succeeded" ? "已就绪" : selectedProject ? "待分析" : "待选择"}</strong><small>{latestRun ? "最近运行已记录" : "先创建或选择项目"}</small></div>
       </section>
 
-      <section className="commercial-workflow-strip" aria-label="当前审查流程">
+      <section className="commercial-workflow-strip evidence-desk-rail" aria-label="当前审查流程">
         <div className={`commercial-workflow-step ${selectedProject ? "is-complete" : "is-current"}`}><span>01</span><div><strong>选择项目</strong><small>{selectedProject ? selectedProject.name : "先创建一个内容项目"}</small></div></div>
         <span className="commercial-workflow-connector" aria-hidden="true" />
         <div className={`commercial-workflow-step ${selectedProject && !title.trim() && !content.trim() ? "is-current" : ""} ${title.trim() && content.trim() ? "is-complete" : ""}`}><span>02</span><div><strong>提交内容</strong><small>{title.trim() && content.trim() ? "标题与正文已准备" : "填写标题和正文"}</small></div></div>
@@ -533,8 +550,8 @@ export function CommercialDashboard() {
         <div className={`commercial-workflow-step ${result ? "is-complete" : runState === "loading" || runState === "polling" ? "is-current" : ""}`}><span>03</span><div><strong>查看报告</strong><small>{result ? "报告已生成，可复查" : "分析完成后显示评分与 Patch"}</small></div></div>
       </section>
 
-      <div className="commercial-dashboard-grid">
-        <section className="commercial-projects-panel" id="projects" aria-labelledby="commercial-projects-title">
+      <div className="commercial-dashboard-grid evidence-desk-columns">
+        <section className="commercial-projects-panel evidence-desk-projects" id="projects" aria-labelledby="commercial-projects-title">
           <div className="commercial-panel-heading">
             <div>
               <p className="commercial-eyebrow">项目管理</p>
@@ -584,7 +601,7 @@ export function CommercialDashboard() {
           ) : null}
         </section>
 
-        <section className="commercial-project-detail" id="report" aria-labelledby="commercial-project-detail-title">
+        <section className="commercial-project-detail evidence-desk-detail" id="report" aria-labelledby="commercial-project-detail-title">
           {selectedProject ? (
             <>
               <p className="commercial-eyebrow">项目工作区</p>
@@ -690,10 +707,19 @@ function AlipayOperatorPanel() {
 }
 
 function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, onAdoptPatch, onEditContent, onRecheck }: { result: CommercialAnalysisResult; patchCopied: boolean; patchAdopted: boolean; onCopyPatch: () => void; onAdoptPatch: () => void; onEditContent: () => void; onRecheck: () => void }) {
+  const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const scoreLabel = result.score >= 80 ? "发布准备充分" : result.score >= 60 ? "建议补充后发布" : "建议优先复核";
   const issueLabel = result.diagnostics.issueCount ? `${result.diagnostics.issueCount} 项待处理` : "未发现待处理项";
   const issueDescription = result.diagnostics.issueCount ? "需要人工判断" : "可进入人工确认";
   const sourceLabel = result.source === "model" ? "模型诊断" : "结构化诊断";
+  const issueCount = result.diagnostics.issueCount;
+  const riskItems = Array.from({ length: issueCount }, (_, index) => ({
+    id: `${result.contentDigest}-${index}`,
+    level: index === 0 ? "high" : index % 2 === 0 ? "medium" : "low",
+    label: index === 0 ? "关键事实缺口" : index % 2 === 0 ? "上下文不完整" : "证据可追溯性不足",
+    detail: index === 0 ? "读者问题尚未被正文直接回答" : "建议补充范围、来源或适用条件",
+  } as const));
+  const visibleRiskItems = riskItems.filter((item) => riskFilter === "all" || item.level === riskFilter);
 
   return <section className="commercial-analysis-result" aria-labelledby="commercial-analysis-result-title">
     <header className="commercial-result-header">
@@ -725,6 +751,17 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
         <li><Lightbulb aria-hidden="true" /><span><strong>Patch 已生成</strong>可作为编辑提纲</span></li>
       </ul>
     </div>
+
+    <section className="evidence-risk-summary" aria-labelledby="evidence-risk-summary-title">
+      <div className="evidence-risk-summary-heading">
+        <div><p className="commercial-eyebrow">Evidence map</p><h4 id="evidence-risk-summary-title">风险与证据缺口</h4></div>
+        <span className={`evidence-risk-score evidence-risk-score-${result.score >= 80 ? "low" : result.score >= 60 ? "medium" : "high"}`}>{result.score >= 80 ? "低阻塞" : result.score >= 60 ? "需补证据" : "高风险"}</span>
+      </div>
+      <div className="evidence-risk-filters" role="toolbar" aria-label="风险筛选">
+        {(["all", "high", "medium", "low"] as const).map((filter) => <button key={filter} type="button" className={riskFilter === filter ? "is-active" : ""} onClick={() => setRiskFilter(filter)}>{filter === "all" ? "全部" : filter === "high" ? "高风险" : filter === "medium" ? "中风险" : "低风险"}<span>{filter === "all" ? issueCount : riskItems.filter((item) => item.level === filter).length}</span></button>)}
+      </div>
+      {visibleRiskItems.length ? <ul className="evidence-risk-list">{visibleRiskItems.map((item) => <li key={item.id} className={`is-${item.level}`}><span className="evidence-risk-marker" aria-hidden="true" /><div><strong>{item.label}</strong><small>{item.detail}</small></div><button type="button" className="evidence-risk-open">查看证据 <span aria-hidden="true">↗</span></button></li>)}</ul> : <div className="evidence-risk-clear"><CheckCircle2 aria-hidden="true" /><span>当前筛选没有待处理问题，仍建议人工确认事实时效。</span></div>}
+    </section>
 
     <details className="commercial-result-section" open>
       <summary><span>读者问题</span><small>{result.analysis.questions.questions.length} 个待验证问题</small></summary>
