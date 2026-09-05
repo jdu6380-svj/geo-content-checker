@@ -10,6 +10,7 @@ import {
 import { InMemoryCommercialRepository, type CommercialRepository } from "./repository";
 import { getCommercialDatabaseUrl } from "./neon-client";
 import { getNeonCommercialRepository } from "./neon-repository";
+import { isInterviewMode } from "./interview-mode";
 
 export type CommercialServiceConfig = {
   repository: CommercialRepository;
@@ -128,6 +129,12 @@ export function getLocalCommercialService(): CommercialService | null {
 }
 
 export function getConfiguredCommercialService(): CommercialService | null {
+  if (isInterviewMode()) {
+    const limit = readPositiveInteger(process.env.COMMERCIAL_RUN_LIMIT) ?? 30;
+    const key = `interview:${limit}`;
+    if (!localService || localService.key !== key) localService = { key, service: new CommercialService({ repository: new InMemoryCommercialRepository(limit) }) };
+    return localService.service;
+  }
   if (process.env.NODE_ENV === "production" && process.env.COMMERCIAL_DATA_ADAPTER !== "neon") return null;
   if (process.env.COMMERCIAL_DATA_ADAPTER === "memory") return getLocalCommercialService();
   if (process.env.COMMERCIAL_DATA_ADAPTER !== "neon") return null;

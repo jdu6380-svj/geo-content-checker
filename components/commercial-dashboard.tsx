@@ -46,7 +46,7 @@ function isWorkspaceBoundaryError(error: unknown): boolean {
 }
 
 export function CommercialDashboard() {
-  const betaMode = process.env.NEXT_PUBLIC_EVIDRA_BETA_MODE?.trim() === "true";
+  const betaMode = process.env.NEXT_PUBLIC_EVIDRA_BETA_MODE?.trim() === "true" || process.env.NEXT_PUBLIC_EVIDRA_INTERVIEW_MODE?.trim() === "true";
   const [state, setState] = useState<DashboardState>("loading");
   const [projects, setProjects] = useState<CommercialProject[]>([]);
   const [history, setHistory] = useState<import("@/lib/client/commercial-api").CommercialProjectHistory[]>([]);

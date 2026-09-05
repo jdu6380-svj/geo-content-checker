@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { isInterviewMode } from "@/lib/server/commercial/interview-mode";
 
 const commercialRoute = createRouteMatcher([
   "/api/commercial(.*)",
@@ -22,9 +23,10 @@ export default clerkConfigured
       if (new URL(request.url).pathname === "/") {
         return NextResponse.redirect(new URL("/dashboard", request.url));
       }
-      if (commercialRoute(request)) await auth.protect();
+      if (commercialRoute(request) && !isInterviewMode()) await auth.protect();
     })
   : function failClosedCommercialMiddleware(request: Request) {
+      if (isInterviewMode()) return NextResponse.next();
       const pathname = new URL(request.url).pathname;
       if (
         pathname.startsWith("/api/commercial") ||

@@ -1,5 +1,6 @@
 import { CommercialDashboard } from "@/components/commercial-dashboard";
 import Link from "next/link";
+import { isInterviewMode } from "@/lib/server/commercial/interview-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export default function DashboardPage() {
     process.env.COMMERCIAL_AUTH_ADAPTER?.trim() && process.env.COMMERCIAL_DATA_ADAPTER?.trim(),
   );
 
-  if (!clerkConfigured || !commercialConfigured) {
+  if ((!clerkConfigured || !commercialConfigured) && !isInterviewMode()) {
     return (
       <main className="commercial-dashboard commercial-dashboard-locked" aria-labelledby="commercial-dashboard-locked-title">
         <section className="commercial-dashboard-locked-panel">

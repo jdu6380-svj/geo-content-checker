@@ -11,6 +11,7 @@ import {
   resolveTrustedWorkspaceId,
   type CommercialClerkOrganizationIdentity,
 } from "./workspace-onboarding";
+import { INTERVIEW_SUBJECT_ID, INTERVIEW_WORKSPACE_ID, isInterviewMode } from "./interview-mode";
 
 export function resolveLocalCommercialActor(request: Request): CommercialActor {
   if (process.env.NODE_ENV === "production" || process.env.COMMERCIAL_AUTH_ADAPTER !== "local") {
@@ -27,6 +28,7 @@ export function resolveLocalCommercialActor(request: Request): CommercialActor {
 }
 
 export async function resolveCommercialActor(request: Request): Promise<CommercialActor> {
+  if (isInterviewMode()) return { subjectId: INTERVIEW_SUBJECT_ID, workspaceId: INTERVIEW_WORKSPACE_ID, role: "owner" };
   if (process.env.COMMERCIAL_AUTH_ADAPTER === "local") return resolveLocalCommercialActor(request);
   const identity = await resolveCommercialClerkOrganizationIdentity();
   if (!identity.orgId) throw new CommercialWorkspaceRequiredError();
