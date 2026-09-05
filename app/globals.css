@@ -2632,6 +2632,15 @@ h1, h2, h3, p { letter-spacing: 0; }
   padding-top: 18px;
   animation: commercial-result-enter 220ms ease-out both;
 }
+.commercial-result-next-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 14px 0; border: 1px solid #e2dcff; border-radius: 9px; background: #faf9ff; padding: 13px 14px; }
+.commercial-result-next-actions > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.commercial-result-next-actions strong { color: var(--geo-text-heading); font-size: 13px; }
+.commercial-result-next-actions span { color: var(--geo-text-muted); font-size: 11px; line-height: 1.5; }
+.commercial-result-next-action-buttons { display: flex; flex: 0 0 auto; gap: 8px; }
+.commercial-result-next-action-buttons button { display: inline-flex; min-height: 36px; align-items: center; gap: 6px; border: 1px solid var(--geo-primary); border-radius: 7px; background: var(--geo-primary); padding: 0 11px; color: var(--geo-on-primary); font-size: 12px; font-weight: 720; }
+.commercial-result-next-action-buttons button:first-child { background: var(--geo-surface); color: var(--geo-primary); }
+.commercial-result-next-action-buttons button:hover { transform: translateY(-1px); box-shadow: 0 5px 12px rgba(108, 92, 231, .18); }
+.commercial-result-next-action-buttons svg { width: 15px; height: 15px; }
 
 .commercial-result-header,
 .commercial-result-section-heading {
@@ -2712,6 +2721,9 @@ h1, h2, h3, p { letter-spacing: 0; }
   .commercial-billing-panel,
   .commercial-projects-panel,
   .commercial-project-detail { padding: 16px; }
+  .commercial-result-next-actions { align-items: stretch; flex-direction: column; }
+  .commercial-result-next-action-buttons { display: grid; grid-template-columns: 1fr 1fr; }
+  .commercial-result-next-action-buttons button { justify-content: center; }
 }
 
 /* Commercial dashboard interaction baseline. */

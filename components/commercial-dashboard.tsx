@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CheckCircle2, ClipboardCheck, ClipboardCopy, FileSearch, FolderKanban, Home, Lightbulb, ListPlus, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
+import { BarChart3, CheckCircle2, ClipboardCheck, ClipboardCopy, FileSearch, FileText, FolderKanban, Home, Lightbulb, ListPlus, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CommercialRunRecoveryPanel } from "@/components/commercial-run-recovery-panel";
@@ -477,6 +477,12 @@ export function CommercialDashboard() {
     }
   }
 
+  function focusAnalysisEditor() {
+    const editor = document.getElementById("commercial-analysis-content");
+    editor?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => editor?.focus(), 250);
+  }
+
   return (
     <main className="commercial-workspace-shell" aria-labelledby="commercial-dashboard-title">
       <aside className="commercial-workspace-sidebar" aria-label="工作区导航">
@@ -625,7 +631,7 @@ export function CommercialDashboard() {
               </section>
               {runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
               {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status" role="status" aria-live="polite"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}><RefreshCw aria-hidden="true" />刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}><RotateCcw aria-hidden="true" />{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : <span className="commercial-history-unavailable">暂不可取消</span>}</div> : null}
-              {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} /> : null}
+              {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} onEditContent={focusAnalysisEditor} onRecheck={() => void handleAnalyze({ preventDefault() {} } as FormEvent<HTMLFormElement>)} /> : null}
               {baselineResult && result ? <section className="commercial-recheck-summary" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">修改后复查</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
             </>
           ) : (
@@ -684,7 +690,7 @@ function AlipayOperatorPanel() {
   return <section className="commercial-operator-panel" aria-labelledby="commercial-operator-title"><button type="button" onClick={() => void load()} disabled={status === "loading"}>{status === "loading" ? "正在检查权限" : "支付运营管理"}</button>{open ? <div><h2 id="commercial-operator-title">支付宝运营审核</h2><p>退款与对账仅创建内部审核请求，不会直接调用支付机构。</p>{message ? <p role={status === "error" ? "alert" : "status"}>{message}</p> : null}{status === "ready" ? <form onSubmit={submit}><label htmlFor="operator-reference">内部支付引用</label><input id="operator-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={128} required /><select aria-label="运营类型" value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="refund_review">退款审核</option><option value="reconciliation">对账任务</option></select><button type="submit">创建审核请求</button></form> : null}{status === "ready" && items.length === 0 ? <p>暂无运营审核请求。</p> : null}{items.length ? <ul>{items.map((item) => <li key={item.id}><strong>{item.type === "refund_review" ? "退款审核" : "对账任务"}</strong><span>{item.status}</span></li>)}</ul> : null}</div> : null}</section>;
 }
 
-function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, onAdoptPatch }: { result: CommercialAnalysisResult; patchCopied: boolean; patchAdopted: boolean; onCopyPatch: () => void; onAdoptPatch: () => void }) {
+function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, onAdoptPatch, onEditContent, onRecheck }: { result: CommercialAnalysisResult; patchCopied: boolean; patchAdopted: boolean; onCopyPatch: () => void; onAdoptPatch: () => void; onEditContent: () => void; onRecheck: () => void }) {
   const scoreLabel = result.score >= 80 ? "发布准备充分" : result.score >= 60 ? "建议补充后发布" : "建议优先复核";
   const issueLabel = result.diagnostics.issueCount ? `${result.diagnostics.issueCount} 项待处理` : "未发现待处理项";
   const issueDescription = result.diagnostics.issueCount ? "需要人工判断" : "可进入人工确认";
@@ -699,6 +705,14 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
       </div>
       <span className={`commercial-result-source is-${result.source}`}>{sourceLabel}</span>
     </header>
+
+    <div className="commercial-result-next-actions" aria-label="报告后续操作">
+      <div><strong>{patchAdopted ? "修改清单已准备" : "下一步：处理修改建议"}</strong><span>{patchAdopted ? "完成正文修改后，重新审查即可对比前后变化。" : "先复制或加入清单，再回到正文完成人工修改。"}</span></div>
+      <div className="commercial-result-next-action-buttons">
+        <button type="button" onClick={onEditContent}><FileText aria-hidden="true" />修改正文</button>
+        <button type="button" onClick={onRecheck}><RefreshCw aria-hidden="true" />重新审查</button>
+      </div>
+    </div>
 
     <div className="commercial-result-overview">
       <div className="commercial-score-card">
