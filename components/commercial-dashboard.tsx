@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CheckCircle2, ClipboardCheck, ClipboardCopy, FileClock, FileSearch, FolderKanban, Home, Lightbulb, ListPlus, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
+import { BarChart3, CheckCircle2, ClipboardCheck, ClipboardCopy, FileSearch, FolderKanban, Home, Lightbulb, ListPlus, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CommercialRunRecoveryPanel } from "@/components/commercial-run-recovery-panel";
@@ -482,10 +482,9 @@ export function CommercialDashboard() {
       <aside className="commercial-workspace-sidebar" aria-label="工作区导航">
         <div className="commercial-sidebar-brand"><span className="commercial-sidebar-mark"><Sparkles aria-hidden="true" /></span><span><strong>Evidra</strong><small>内容可信度工作区</small></span></div>
         <nav>
-          <a className="is-active" href="#overview"><Home aria-hidden="true" />概览</a>
+          <a className="is-active" href="#overview"><Home aria-hidden="true" />工作台</a>
           <a href="#projects"><FolderKanban aria-hidden="true" />项目</a>
-          <a href="#report"><BarChart3 aria-hidden="true" />审查报告</a>
-          <a href="#history"><FileClock aria-hidden="true" />运行记录</a>
+          <a href="#report"><BarChart3 aria-hidden="true" />报告与记录</a>
           <a href="#settings"><Settings2 aria-hidden="true" />额度与设置</a>
         </nav>
         <div className="commercial-sidebar-footer"><span className="commercial-sidebar-avatar">E</span><span><strong>Evidra</strong><small>面试演示工作区</small></span></div>
@@ -515,40 +514,6 @@ export function CommercialDashboard() {
       ) : null}
 
       {billingMessage ? <section className="commercial-dashboard-info" role="status">{billingMessage}</section> : null}
-      <details className="commercial-billing-panel commercial-settings-collapsed" id="settings" aria-labelledby="commercial-billing-title">
-        <summary><span><Settings2 aria-hidden="true" />额度与设置</span><small>面试演示模式下默认折叠</small></summary>
-        <div className="commercial-billing-panel-body" aria-busy={state === "loading" || checkouting !== null}>
-        <div className="commercial-billing-summary">
-          <div><p className="commercial-eyebrow">Workspace usage</p><h2 id="commercial-billing-title">{betaMode ? "邀请制 Beta 额度" : "套餐与共享额度"}</h2></div>
-          <div className="commercial-billing-status"><strong>{betaMode ? betaAccessActive ? "Beta 授权有效" : "等待 Beta 授权" : subscriptionLabel(subscription)}</strong><span>{usage ? `已用 ${usage.consumed} / ${usage.limit} 次审查` : "额度待确认"}</span></div>
-        </div>
-        {billingError ? <p className="commercial-billing-error" role="alert">{billingError}</p> : null}
-        {quotaFull ? <p className="commercial-billing-error">{betaMode ? "本次 Beta 授权额度已用完。" : plansError ? "当前工作区没有可用审查次数，支付入口尚未配置，暂不能购买。" : "当前工作区共享额度已用完，请选择可用套餐或等待支付状态更新。"}</p> : null}
-        <p className="commercial-billing-muted">{betaMode ? "这是邀请制免费 Beta。额度由服务端授权并记录，授权到期后自动失效；不会创建支付订单。" : "面向 B2B SaaS 内容、增长与品牌团队；实际套餐名称、价格与额度以服务端当前配置为准。"}</p>
-        {betaMode && !betaAccessActive ? <div className="commercial-beta-grant-panel"><button type="button" onClick={() => void handleBetaGrant()} disabled={betaGrantLoading}>{betaGrantLoading ? "正在发放 Beta 额度" : "发放我的 Beta 额度"}</button>{betaGrantMessage ? <span role="status">{betaGrantMessage}</span> : null}</div> : null}
-        {!betaMode ? <p className="commercial-billing-muted">套餐为一次性支付，不自动续费；付款成功并完成校验后才发放审查次数，失败或未生成完整报告不扣次数。</p> : null}
-        {!betaMode && (state === "loading" && plans.length === 0 ? <div className="commercial-plan-skeleton" aria-label="正在加载支付宝套餐"><span /><span /><span /></div> : plans.length > 0 ? <div className="commercial-plan-list">{plans.map((plan) => {
-          const planCopy: Record<string, { name: string; scene: string; unit: string; badge?: string }> = {
-            new_user: { name: "Starter", scene: "一篇内容的审查与复查", unit: "30 天有效" },
-            growth: { name: "Growth", scene: "内容团队日常发布前审查", unit: "12 个月有效", badge: "推荐起步方案" },
-            team: { name: "Team", scene: "工作区共享额度", unit: "12 个月有效" },
-            agency: { name: "Scale", scene: "高频发布、多项目、多产品线", unit: "12 个月有效" },
-          };
-          const copy = planCopy[plan.key] ?? { name: plan.key, scene: "发布前内容审查", unit: "以服务端规则为准" };
-          const unitPrice = plan.runLimit > 0 ? (Number(plan.amount) / plan.runLimit).toFixed(2) : null;
-          return <article key={plan.key} className="commercial-plan-card"><strong>{copy.name}</strong>{copy.badge ? <em>{copy.badge}</em> : null}<span>¥{plan.amount} · {plan.runLimit} 次发布前审查</span><small>{copy.scene} · {copy.unit}{unitPrice ? ` · 每次约 ¥${unitPrice}` : ""}</small><button type="button" onClick={() => void handleCheckout(plan.key)} disabled={checkouting !== null || portalLoading}>{checkouting === plan.key ? "正在打开支付宝" : `购买 ${plan.runLimit} 次审查 ¥${plan.amount}`}</button></article>;
-        })}</div> : <p className="commercial-billing-muted">{plansError ? `${plansError}当前不能购买套餐。` : "支付宝套餐暂不可用，请稍后重试。"}</p>)}
-        {!betaMode && subscription && (subscription.status === "active" || subscription.status === "trialing") && subscription.currentPeriodEnd && new Date(subscription.currentPeriodEnd).getTime() > Date.now() ? (
-          <button type="button" className="commercial-portal-button" onClick={() => void handlePortal()} disabled={portalLoading || checkouting !== null}>
-            {portalLoading ? "打开中" : "管理订阅"}
-          </button>
-        ) : null}
-        </div>
-      </details>
-
-      {!betaMode ? <AlipayOperatorPanel /> : null}
-      <CommercialRunRecoveryPanel />
-
       <section className="commercial-workspace-metrics" aria-label="工作区概览指标">
         <div><span>当前项目</span><strong>{projects.length}</strong><small>个内容项目</small></div>
         <div><span>已完成审查</span><strong>{completedRuns}</strong><small>次可查看报告</small></div>
@@ -621,6 +586,10 @@ export function CommercialDashboard() {
               <h2 id="commercial-project-detail-title">{selectedProject.name}</h2>
               <p className="commercial-detail-meta">项目已绑定当前认证工作区。后续分析、运行记录和结果都会沿用服务端 ownership 检查。</p>
               <p className="commercial-detail-meta">当前页面会显示本次打开后的运行状态。刷新或返回后，如果没有可验证的历史运行记录，结果区域会保持真实空态；不会显示占位报告。</p>
+              <div className="commercial-analysis-heading">
+                <div><p className="commercial-eyebrow">Step 2 · Submit content</p><h3>提交待审内容</h3></div>
+                <span>标题与正文</span>
+              </div>
               <section className="commercial-run-history" id="history" aria-labelledby="commercial-run-history-title">
                 <div className="commercial-history-heading">
                   <h3 id="commercial-run-history-title">最近运行</h3>
@@ -664,10 +633,42 @@ export function CommercialDashboard() {
             <div className="commercial-dashboard-empty commercial-dashboard-empty-detail">
               <FolderKanban aria-hidden="true" />
               <h2 id="commercial-project-detail-title">选择一个项目</h2>
-              <p>项目详情会显示在这里。</p>
+              <p>先在左侧创建或选择一个项目，右侧就会出现内容审查编辑器。</p>
             </div>
           )}
         </section>
+      </div>
+      <div className="commercial-secondary-tools">
+        <details className="commercial-billing-panel commercial-settings-collapsed" aria-labelledby="commercial-billing-title">
+          <summary><span><Settings2 aria-hidden="true" />额度与设置</span><small>面试演示模式下默认折叠</small></summary>
+          <div className="commercial-billing-panel-body" aria-busy={state === "loading" || checkouting !== null}>
+            <div className="commercial-billing-summary">
+              <div><p className="commercial-eyebrow">Workspace usage</p><h2 id="commercial-billing-title">{betaMode ? "邀请制 Beta 额度" : "套餐与共享额度"}</h2></div>
+              <div className="commercial-billing-status"><strong>{betaMode ? betaAccessActive ? "Beta 授权有效" : "等待 Beta 授权" : subscriptionLabel(subscription)}</strong><span>{usage ? `已用 ${usage.consumed} / ${usage.limit} 次审查` : "额度待确认"}</span></div>
+            </div>
+            {billingError ? <p className="commercial-billing-error" role="alert">{billingError}</p> : null}
+            {quotaFull ? <p className="commercial-billing-error">{betaMode ? "本次 Beta 授权额度已用完。" : plansError ? "当前工作区没有可用审查次数，支付入口尚未配置，暂不能购买。" : "当前工作区共享额度已用完，请选择可用套餐或等待支付状态更新。"}</p> : null}
+            <p className="commercial-billing-muted">{betaMode ? "这是邀请制免费 Beta。额度由服务端授权并记录，授权到期后自动失效；不会创建支付订单。" : "面向 B2B SaaS 内容、增长与品牌团队；实际套餐名称、价格与额度以服务端当前配置为准。"}</p>
+            {betaMode && !betaAccessActive ? <div className="commercial-beta-grant-panel"><button type="button" onClick={() => void handleBetaGrant()} disabled={betaGrantLoading}>{betaGrantLoading ? "正在发放 Beta 额度" : "发放我的 Beta 额度"}</button>{betaGrantMessage ? <span role="status">{betaGrantMessage}</span> : null}</div> : null}
+            {!betaMode ? <p className="commercial-billing-muted">套餐为一次性支付，不自动续费；付款成功并完成校验后才发放审查次数，失败或未生成完整报告不扣次数。</p> : null}
+            {!betaMode && (state === "loading" && plans.length === 0 ? <div className="commercial-plan-skeleton" aria-label="正在加载支付宝套餐"><span /><span /><span /></div> : plans.length > 0 ? <div className="commercial-plan-list">{plans.map((plan) => {
+              const planCopy: Record<string, { name: string; scene: string; unit: string; badge?: string }> = {
+                new_user: { name: "Starter", scene: "一篇内容的审查与复查", unit: "30 天有效" },
+                growth: { name: "Growth", scene: "内容团队日常发布前审查", unit: "12 个月有效", badge: "推荐起步方案" },
+                team: { name: "Team", scene: "工作区共享额度", unit: "12 个月有效" },
+                agency: { name: "Scale", scene: "高频发布、多项目、多产品线", unit: "12 个月有效" },
+              };
+              const copy = planCopy[plan.key] ?? { name: plan.key, scene: "发布前内容审查", unit: "以服务端规则为准" };
+              const unitPrice = plan.runLimit > 0 ? (Number(plan.amount) / plan.runLimit).toFixed(2) : null;
+              return <article key={plan.key} className="commercial-plan-card"><strong>{copy.name}</strong>{copy.badge ? <em>{copy.badge}</em> : null}<span>¥{plan.amount} · {plan.runLimit} 次发布前审查</span><small>{copy.scene} · {copy.unit}{unitPrice ? ` · 每次约 ¥${unitPrice}` : ""}</small><button type="button" onClick={() => void handleCheckout(plan.key)} disabled={checkouting !== null || portalLoading}>{checkouting === plan.key ? "正在打开支付宝" : `购买 ${plan.runLimit} 次审查 ¥${plan.amount}`}</button></article>;
+            })}</div> : <p className="commercial-billing-muted">{plansError ? `${plansError}当前不能购买套餐。` : "支付宝套餐暂不可用，请稍后重试。"}</p>)}
+            {!betaMode && subscription && (subscription.status === "active" || subscription.status === "trialing") && subscription.currentPeriodEnd && new Date(subscription.currentPeriodEnd).getTime() > Date.now() ? (
+              <button type="button" className="commercial-portal-button" onClick={() => void handlePortal()} disabled={portalLoading || checkouting !== null}>{portalLoading ? "打开中" : "管理订阅"}</button>
+            ) : null}
+          </div>
+        </details>
+        {!betaMode ? <AlipayOperatorPanel /> : null}
+        <CommercialRunRecoveryPanel />
       </div>
       <nav className="commercial-legal-links" aria-label="商业支持与法律"><Link href="/terms">服务条款</Link><Link href="/privacy">隐私说明</Link><Link href="/support">支持与联系</Link></nav>
         </div>
