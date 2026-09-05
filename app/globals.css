@@ -2829,6 +2829,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   .commercial-workspace-sidebar { position: static; min-height: auto; border-right: 0; border-bottom: 1px solid var(--geo-border); padding: 12px 14px; }
   .commercial-sidebar-brand { padding: 0 4px 12px; }
   .commercial-workspace-sidebar nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .commercial-workspace-shell.is-interview-mode .commercial-workspace-sidebar nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .commercial-workspace-sidebar nav a { min-height: 36px; justify-content: center; padding: 0 4px; font-size: 11px; }
   .commercial-workspace-sidebar nav a svg { width: 15px; height: 15px; }
   .commercial-sidebar-footer { display: none; }
@@ -2837,6 +2838,7 @@ h1, h2, h3, p { letter-spacing: 0; }
 }
 @media (max-width: 560px) {
   .commercial-workspace-sidebar nav { grid-template-columns: repeat(4, minmax(52px, 1fr)); overflow-x: auto; }
+  .commercial-workspace-shell.is-interview-mode .commercial-workspace-sidebar nav { grid-template-columns: repeat(3, minmax(78px, 1fr)); }
   .commercial-workspace-sidebar nav a { flex-direction: column; gap: 2px; height: 48px; }
   .commercial-workspace-topbar { min-height: 54px; padding-inline: 12px; }
   .commercial-workspace-topbar > div:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

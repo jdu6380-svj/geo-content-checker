@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe("CommercialDashboard", () => {
-  it("shows invite-only Beta access without loading or rendering payment controls", async () => {
+  it("shows the focused interview workspace without commercial controls", async () => {
     vi.stubEnv("NEXT_PUBLIC_EVIDRA_BETA_MODE", "true");
     const fetchMock = vi.fn().mockResolvedValueOnce(response({
       projects: [],
@@ -34,11 +34,15 @@ describe("CommercialDashboard", () => {
 
     render(<CommercialDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "邀请制 Beta 额度" })).toBeTruthy();
-    expect(screen.getByText("Beta 授权有效")).toBeTruthy();
-    expect(screen.getByText(/不会创建支付订单/)).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "AI 内容发布前审查工作台" })).toBeTruthy();
+    expect(screen.getByText("面试演示模式")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("工作台");
+    expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("项目");
+    expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("报告与记录");
     expect(screen.queryByText(/购买 .* 次审查/)).toBeNull();
     expect(screen.queryByRole("button", { name: "支付运营管理" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "运行故障恢复" })).toBeNull();
+    expect(screen.queryByText("额度与设置")).toBeNull();
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/commercial/projects"]);
   });
 
@@ -53,7 +57,7 @@ describe("CommercialDashboard", () => {
     render(<CommercialDashboard />);
     expect(await screen.findByText("还没有项目")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "AI 内容发布前审查工作台" })).toBeTruthy();
-    expect(screen.getByText(/按产品线与内容项目管理 GEO 审查、共享额度与交付报告/)).toBeTruthy();
+    expect(screen.getByText(/按项目管理审查记录，并在同一工作区完成修改与复查/)).toBeTruthy();
     expect(screen.getByText(/实际套餐名称、价格与额度以服务端当前配置为准/)).toBeTruthy();
     expect(screen.getByText(/一次性支付，不自动续费/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("新建项目"), { target: { value: "内容审查项目" } });

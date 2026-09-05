@@ -484,28 +484,27 @@ export function CommercialDashboard() {
   }
 
   return (
-    <main className="commercial-workspace-shell" aria-labelledby="commercial-dashboard-title">
+    <main className={`commercial-workspace-shell ${betaMode ? "is-interview-mode" : ""}`} aria-labelledby="commercial-dashboard-title">
       <aside className="commercial-workspace-sidebar" aria-label="工作区导航">
         <div className="commercial-sidebar-brand"><span className="commercial-sidebar-mark"><Sparkles aria-hidden="true" /></span><span><strong>Evidra</strong><small>内容可信度工作区</small></span></div>
-        <nav>
+        <nav aria-label="主工作区导航">
           <a className="is-active" href="#overview"><Home aria-hidden="true" />工作台</a>
           <a href="#projects"><FolderKanban aria-hidden="true" />项目</a>
           <a href="#report"><BarChart3 aria-hidden="true" />报告与记录</a>
-          <a href="#settings"><Settings2 aria-hidden="true" />额度与设置</a>
         </nav>
         <div className="commercial-sidebar-footer"><span className="commercial-sidebar-avatar">E</span><span><strong>Evidra</strong><small>面试演示工作区</small></span></div>
       </aside>
       <section className="commercial-workspace-main">
         <header className="commercial-workspace-topbar">
           <div><span className="commercial-context-label">当前工作区</span><strong>内容可信度审查</strong><span className="commercial-context-divider">/</span><span>{selectedProject?.name ?? "未选择项目"}</span></div>
-          <div className="commercial-workspace-top-actions"><span className="commercial-live-status"><span />服务正常</span><button type="button" className={`commercial-refresh-button ${state === "loading" ? "is-loading" : ""}`} onClick={() => void loadProjects()} disabled={state === "loading"}><RefreshCw aria-hidden="true" />{state === "loading" ? "刷新中" : "刷新"}</button></div>
+          <div className="commercial-workspace-top-actions"><span className="commercial-live-status"><span />{betaMode ? "面试演示模式" : "服务正常"}</span><button type="button" className={`commercial-refresh-button ${state === "loading" ? "is-loading" : ""}`} onClick={() => void loadProjects()} disabled={state === "loading"}><RefreshCw aria-hidden="true" />{state === "loading" ? "刷新中" : "刷新"}</button></div>
         </header>
         <div className="commercial-dashboard" id="overview">
           <header className="commercial-dashboard-header">
             <div>
               <p className="commercial-eyebrow">工作区总览</p>
               <h1 id="commercial-dashboard-title">AI 内容发布前审查工作台</h1>
-              <p className="commercial-dashboard-lede">从内容提交到证据诊断，再到修改后复查，所有工作集中在一个项目里完成。按产品线与内容项目管理 GEO 审查、共享额度与交付报告。</p>
+              <p className="commercial-dashboard-lede">从内容提交到证据诊断，再到修改后复查，所有工作集中在一个项目里完成。按项目管理审查记录，并在同一工作区完成修改与复查。</p>
             </div>
           </header>
 
@@ -527,9 +526,9 @@ export function CommercialDashboard() {
       </section>
 
       <section className="commercial-workflow-strip" aria-label="当前审查流程">
-        <div className="commercial-workflow-step is-complete"><span>01</span><div><strong>选择项目</strong><small>{selectedProject ? selectedProject.name : "先创建一个内容项目"}</small></div></div>
+        <div className={`commercial-workflow-step ${selectedProject ? "is-complete" : "is-current"}`}><span>01</span><div><strong>选择项目</strong><small>{selectedProject ? selectedProject.name : "先创建一个内容项目"}</small></div></div>
         <span className="commercial-workflow-connector" aria-hidden="true" />
-        <div className={`commercial-workflow-step ${selectedProject ? "is-current" : ""} ${title.trim() && content.trim() ? "is-complete" : ""}`}><span>02</span><div><strong>提交内容</strong><small>{title.trim() && content.trim() ? "标题与正文已准备" : "填写标题和正文"}</small></div></div>
+        <div className={`commercial-workflow-step ${selectedProject && !title.trim() && !content.trim() ? "is-current" : ""} ${title.trim() && content.trim() ? "is-complete" : ""}`}><span>02</span><div><strong>提交内容</strong><small>{title.trim() && content.trim() ? "标题与正文已准备" : "填写标题和正文"}</small></div></div>
         <span className="commercial-workflow-connector" aria-hidden="true" />
         <div className={`commercial-workflow-step ${result ? "is-complete" : runState === "loading" || runState === "polling" ? "is-current" : ""}`}><span>03</span><div><strong>查看报告</strong><small>{result ? "报告已生成，可复查" : "分析完成后显示评分与 Patch"}</small></div></div>
       </section>
@@ -590,7 +589,7 @@ export function CommercialDashboard() {
             <>
               <p className="commercial-eyebrow">项目工作区</p>
               <h2 id="commercial-project-detail-title">{selectedProject.name}</h2>
-              <p className="commercial-detail-meta">已绑定当前认证工作区，分析、运行记录和结果都会沿用服务端归属校验。当前页面会显示本次打开后的运行状态；没有可验证的历史记录时，结果区保持真实空态。</p>
+              <p className="commercial-detail-meta">{betaMode ? "这是隔离的面试演示工作区，数据仅用于本次演示。" : "分析、运行记录和结果都会沿用服务端归属校验。"} 当前页面会显示本次打开后的运行状态；没有可验证的历史记录时，结果区保持真实空态。</p>
               <div className="commercial-analysis-heading commercial-next-action">
                 <div><p className="commercial-eyebrow">第二步 · 提交内容</p><h3>提交待审内容</h3><p className="commercial-analysis-supporting-copy">填写标题和正文，Evidra 会生成评分、证据诊断与修改建议。</p></div>
                 <span>标题与正文</span>
@@ -643,7 +642,7 @@ export function CommercialDashboard() {
           )}
         </section>
       </div>
-      <div className="commercial-secondary-tools">
+      {!betaMode ? <div className="commercial-secondary-tools">
         <details className="commercial-billing-panel commercial-settings-collapsed" aria-labelledby="commercial-billing-title">
           <summary><span><Settings2 aria-hidden="true" />额度与设置</span><small>面试演示模式下默认折叠</small></summary>
           <div className="commercial-billing-panel-body" aria-busy={state === "loading" || checkouting !== null}>
@@ -672,9 +671,9 @@ export function CommercialDashboard() {
             ) : null}
           </div>
         </details>
-        {!betaMode ? <AlipayOperatorPanel /> : null}
+        <AlipayOperatorPanel />
         <CommercialRunRecoveryPanel />
-      </div>
+      </div> : null}
       <nav className="commercial-legal-links" aria-label="商业支持与法律"><Link href="/terms">服务条款</Link><Link href="/privacy">隐私说明</Link><Link href="/support">支持与联系</Link></nav>
         </div>
       </section>
