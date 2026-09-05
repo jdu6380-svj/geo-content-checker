@@ -242,3 +242,35 @@
 4. 完成桌面与 390px 响应式；
 5. 运行 lint、typecheck、测试、build；
 6. 重新采集桌面、移动和主要交互状态截图，并记录仍存在的问题。
+
+## 验收截图
+
+旧版基线：
+
+- [桌面空工作区（旧版）](../output/visual-audit/baseline/desktop-empty-before.png)
+- [390px 空工作区（旧版）](../output/visual-audit/baseline/mobile-empty-before.png)
+
+Evidence Desk 重设计：
+
+- [桌面空工作区（新版）](../output/visual-audit/redesign/01-home-empty-desktop-after.png)
+- [桌面创建审查（新版）](../output/visual-audit/redesign/02-create-project-desktop-after.png)
+- [桌面分析中（新版）](../output/visual-audit/redesign/03-analysis-loading-desktop-after.png)
+- [桌面报告总览（新版）](../output/visual-audit/redesign/04-report-desktop-after.png)
+- [桌面风险筛选（新版）](../output/visual-audit/redesign/05-report-filter-desktop-after.png)
+- [390px 报告总览（新版）](../output/visual-audit/redesign/06-report-mobile-after.png)
+
+## 前后变化摘要
+
+- 首屏从“项目管理卡片”改为“内容 → 证据 → 动作”的审查主线，新增 Evidence Desk hero 和阶段地图。
+- 指标、流程和项目区不再使用同一层级的普通白卡；流程被提升为深色阶段轨道，当前阶段更明显。
+- 报告页增加风险与证据缺口面板、风险筛选和问题级查看证据入口。
+- 结果页将评分、读者问题、诊断、Patch 和复查动作按决策顺序组织；移动端改为单列阅读流。
+- 分析中截图确认“提交中”状态与表单禁用状态可见，报告截图确认风险筛选按钮和完成态可见。
+
+## 仍存在的问题清单
+
+1. 当前真实 Preview 的环境变量没有启用面试模式，访问新部署时仍可能先进入 Clerk 登录页；这属于部署配置问题，不是本轮 UI 代码问题。面试演示应将 Preview 环境的 `VERCEL_ENV=preview` 与面试模式配置一起验收。
+2. “查看证据”目前是视觉入口，尚未连接到正文高亮或证据详情抽屉；下一轮可以把诊断对象中的 quote、段落 ID 和缺失信息绑定到正文侧栏。
+3. 报告风险项目前使用稳定的展示层映射，后续应直接使用服务端诊断的 `riskLevel` / `evidenceStatus` 字段，避免展示层重复推断。
+4. 真实模型执行态的阶段进度仍依赖后端运行事件；当前截图中的分析中状态展示了前端反馈，但没有接入逐阶段事件流。
+5. 390px 报告页内容较长，已经可读，但后续可以增加移动端“摘要 / 风险 / 问题 / Patch”锚点导航，减少滚动成本。
