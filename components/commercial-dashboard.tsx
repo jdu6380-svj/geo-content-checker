@@ -497,7 +497,7 @@ export function CommercialDashboard() {
         <div className="commercial-dashboard" id="overview">
           <header className="commercial-dashboard-header">
             <div>
-              <p className="commercial-eyebrow">Workspace overview</p>
+              <p className="commercial-eyebrow">工作区总览</p>
               <h1 id="commercial-dashboard-title">AI 内容发布前审查工作台</h1>
               <p className="commercial-dashboard-lede">从内容提交到证据诊断，再到修改后复查，所有工作集中在一个项目里完成。按产品线与内容项目管理 GEO 审查、共享额度与交付报告。</p>
             </div>
@@ -532,7 +532,7 @@ export function CommercialDashboard() {
         <section className="commercial-projects-panel" id="projects" aria-labelledby="commercial-projects-title">
           <div className="commercial-panel-heading">
             <div>
-              <p className="commercial-eyebrow">Workspace projects</p>
+              <p className="commercial-eyebrow">项目管理</p>
               <h2 id="commercial-projects-title">我的项目</h2>
             </div>
             {usage ? <span className={`commercial-quota ${quotaFull ? "is-full" : ""}`}>{usage.consumed}/{usage.limit} 次审查</span> : null}
@@ -582,14 +582,25 @@ export function CommercialDashboard() {
         <section className="commercial-project-detail" id="report" aria-labelledby="commercial-project-detail-title">
           {selectedProject ? (
             <>
-              <p className="commercial-eyebrow">Project detail</p>
+              <p className="commercial-eyebrow">项目工作区</p>
               <h2 id="commercial-project-detail-title">{selectedProject.name}</h2>
-              <p className="commercial-detail-meta">项目已绑定当前认证工作区。后续分析、运行记录和结果都会沿用服务端 ownership 检查。</p>
-              <p className="commercial-detail-meta">当前页面会显示本次打开后的运行状态。刷新或返回后，如果没有可验证的历史运行记录，结果区域会保持真实空态；不会显示占位报告。</p>
-              <div className="commercial-analysis-heading">
-                <div><p className="commercial-eyebrow">Step 2 · Submit content</p><h3>提交待审内容</h3></div>
+              <p className="commercial-detail-meta">已绑定当前认证工作区，分析、运行记录和结果都会沿用服务端归属校验。当前页面会显示本次打开后的运行状态；没有可验证的历史记录时，结果区保持真实空态。</p>
+              <div className="commercial-analysis-heading commercial-next-action">
+                <div><p className="commercial-eyebrow">第二步 · 提交内容</p><h3>提交待审内容</h3><p className="commercial-analysis-supporting-copy">填写标题和正文，Evidra 会生成评分、证据诊断与修改建议。</p></div>
                 <span>标题与正文</span>
               </div>
+              <form className="commercial-analysis-form" onSubmit={handleAnalyze}>
+                <label htmlFor="commercial-analysis-title">标题</label>
+                <input id="commercial-analysis-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} required disabled={runState === "loading" || runState === "polling"} />
+                <label htmlFor="commercial-analysis-content">正文</label>
+                <textarea id="commercial-analysis-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={500_000} rows={8} required disabled={runState === "loading" || runState === "polling"} />
+                <button type="submit" className={runState === "loading" || runState === "polling" ? "is-loading" : ""} aria-busy={runState === "loading" || runState === "polling"} disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>
+                  {runState === "loading" || runState === "polling" ? <LoaderCircle aria-hidden="true" /> : result ? <RotateCcw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+                  {runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : result ? "重新分析" : "开始分析"}
+                </button>
+                {quotaFull ? <p className="commercial-form-hint">当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。</p> : null}
+                {result ? <p className="commercial-form-hint">修改正文后重新分析，可对比本次结果与上一次报告的变化。</p> : null}
+              </form>
               <section className="commercial-run-history" id="history" aria-labelledby="commercial-run-history-title">
                 <div className="commercial-history-heading">
                   <h3 id="commercial-run-history-title">最近运行</h3>
@@ -612,22 +623,10 @@ export function CommercialDashboard() {
                   </ul>
                 )}
               </section>
-              <form className="commercial-analysis-form" onSubmit={handleAnalyze}>
-                <label htmlFor="commercial-analysis-title">标题</label>
-                <input id="commercial-analysis-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} required disabled={runState === "loading" || runState === "polling"} />
-                <label htmlFor="commercial-analysis-content">正文</label>
-                <textarea id="commercial-analysis-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={500_000} rows={8} required disabled={runState === "loading" || runState === "polling"} />
-                <button type="submit" className={runState === "loading" || runState === "polling" ? "is-loading" : ""} aria-busy={runState === "loading" || runState === "polling"} disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>
-                  {runState === "loading" || runState === "polling" ? <LoaderCircle aria-hidden="true" /> : result ? <RotateCcw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
-                  {runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : result ? "重新分析" : "开始分析"}
-                </button>
-                {quotaFull ? <p className="commercial-form-hint">当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。</p> : null}
-                {result ? <p className="commercial-form-hint">修改正文后重新分析，可对比本次结果与上一次报告的变化。</p> : null}
-              </form>
               {runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
               {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status" role="status" aria-live="polite"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}><RefreshCw aria-hidden="true" />刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}><RotateCcw aria-hidden="true" />{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : <span className="commercial-history-unavailable">暂不可取消</span>}</div> : null}
               {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} /> : null}
-              {baselineResult && result ? <section className="commercial-recheck-summary" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">Recheck comparison</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
+              {baselineResult && result ? <section className="commercial-recheck-summary" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">修改后复查</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
             </>
           ) : (
             <div className="commercial-dashboard-empty commercial-dashboard-empty-detail">
@@ -643,7 +642,7 @@ export function CommercialDashboard() {
           <summary><span><Settings2 aria-hidden="true" />额度与设置</span><small>面试演示模式下默认折叠</small></summary>
           <div className="commercial-billing-panel-body" aria-busy={state === "loading" || checkouting !== null}>
             <div className="commercial-billing-summary">
-              <div><p className="commercial-eyebrow">Workspace usage</p><h2 id="commercial-billing-title">{betaMode ? "邀请制 Beta 额度" : "套餐与共享额度"}</h2></div>
+              <div><p className="commercial-eyebrow">额度概览</p><h2 id="commercial-billing-title">{betaMode ? "邀请制 Beta 额度" : "套餐与共享额度"}</h2></div>
               <div className="commercial-billing-status"><strong>{betaMode ? betaAccessActive ? "Beta 授权有效" : "等待 Beta 授权" : subscriptionLabel(subscription)}</strong><span>{usage ? `已用 ${usage.consumed} / ${usage.limit} 次审查` : "额度待确认"}</span></div>
             </div>
             {billingError ? <p className="commercial-billing-error" role="alert">{billingError}</p> : null}
@@ -694,7 +693,7 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
   return <section className="commercial-analysis-result" aria-labelledby="commercial-analysis-result-title">
     <header className="commercial-result-header">
       <div>
-        <p className="commercial-eyebrow">Review report</p>
+        <p className="commercial-eyebrow">审查报告</p>
         <h3 id="commercial-analysis-result-title">分析结果</h3>
         <p className="commercial-result-summary">先处理高风险信息缺口，再决定是否进入发布流程。</p>
       </div>
