@@ -275,6 +275,7 @@
 }
 
 .phase-header-action { gap: 8px; padding: 0 12px; }
+.phase-header-action span { white-space: nowrap; }
 .phase-header-action svg { width: 18px; height: 18px; stroke-width: 1.9; }
 
 .phase-header-action:hover,
@@ -12577,5 +12578,130 @@ body {
   .phase-modal-backdrop,
   .phase-invite-modal {
     animation: none;
+  }
+}
+
+/* UI optimization pass: make the review path visible and immediately actionable. */
+.phase-header-workflow {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+}
+
+.phase-header-workflow .workspace-header-command {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: center;
+}
+
+.phase-header-workflow .workspace-stage-nav {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.phase-header-workflow .workspace-mobile-nav {
+  display: none;
+}
+
+.phase-rich-toolbar {
+  border-bottom: 1px solid #ececf2;
+  background: #fbfbfd;
+  padding: 6px 8px;
+}
+
+.phase-rich-toolbar button {
+  width: 34px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #70798b;
+}
+
+.phase-rich-toolbar button:hover,
+.phase-rich-toolbar button:focus-visible {
+  border-color: #dcd6ff;
+  background: #f1eeff;
+  color: var(--phase-purple);
+}
+
+.phase-rich-editor > footer {
+  min-height: 56px;
+  gap: 14px;
+  padding: 10px 14px;
+}
+
+.phase-rich-editor > footer > span {
+  min-width: 0;
+  color: #7c8494;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.phase-rich-editor > footer > span small {
+  color: #a0a7b5;
+}
+
+.phase-rich-editor > footer > span.is-over-limit {
+  color: #c43a42;
+}
+
+.phase-rich-editor > footer .phase-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+  transform: none;
+}
+
+@media (max-width: 1100px) and (min-width: 901px) {
+  .phase-header-greeting {
+    display: none;
+  }
+
+  .phase-header-main {
+    padding-left: 22px;
+  }
+
+  .phase-header-workflow .workspace-stage-button {
+    min-width: 88px;
+    padding-inline: 8px;
+  }
+
+  .phase-header-workflow .workspace-stage-label {
+    gap: 4px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 900px) {
+  .phase-header-workflow {
+    display: contents;
+  }
+
+  .phase-header-workflow .workspace-header-command {
+    display: none;
+  }
+
+  /* The mobile workflow is rendered beside the header command, so it must
+     remain visible when the desktop command is hidden. */
+  .phase-header-workflow .workspace-mobile-nav {
+    display: grid;
+  }
+}
+
+@media (max-width: 620px) {
+  .phase-rich-toolbar {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .phase-rich-editor > footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .phase-rich-editor > footer .phase-primary-button {
+    width: 100%;
+    justify-content: center;
   }
 }

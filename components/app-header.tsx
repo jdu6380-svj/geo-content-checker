@@ -84,6 +84,8 @@ export function AppHeader({
               <span><strong>AI 内容发布前审查</strong> · 当前工作区</span>
             </div>
 
+            <div className="phase-header-workflow">{navigation}</div>
+
             <div className="phase-header-actions">
               {analysisStarted ? (
                 <button type="button" className="phase-header-action" onClick={confirmNewAnalysis}>
@@ -121,8 +123,6 @@ export function AppHeader({
               </button>
             </div>
           </div>
-
-          <div className="phase-header-hidden-nav" aria-hidden="true">{navigation}</div>
 
           {layer === "notifications" ? (
             <section className="phase-header-popover phase-notification-popover" aria-label="审查提醒" tabIndex={-1} autoFocus>

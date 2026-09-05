@@ -123,7 +123,8 @@ export function EditorWorkspace({
   onDraftChange,
   onLoadSample,
 }: EditorWorkspaceProps) {
-  const [mode, setMode] = useState<EditorMode>("upload");
+  // Start with the shortest path to a review. Upload remains available as an explicit alternative.
+  const [mode, setMode] = useState<EditorMode>("paste");
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -208,12 +209,65 @@ export function EditorWorkspace({
   const titleLength = draft.title.length;
   const inputOverLimit = remaining < 0;
 
+  function applyToolbarFormat(label: (typeof TOOLBAR_ITEMS)[number]["label"]) {
+    const textarea = contentRef.current;
+    if (!textarea) return;
+
+    const value = textarea.value;
+    const start = textarea.selectionStart ?? value.length;
+    const end = textarea.selectionEnd ?? start;
+    const selected = value.slice(start, end);
+    const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const lineEndIndex = value.indexOf("\n", end);
+    const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+    const line = value.slice(lineStart, lineEnd);
+    let replacement = selected;
+    let replacementStart = start;
+    let replacementEnd = end;
+
+    if (label === "标题") {
+      replacement = line.startsWith("## ") ? line.slice(3) : `## ${line}`;
+      replacementStart = lineStart;
+      replacementEnd = lineEnd;
+    } else if (label === "粗体") {
+      replacement = `**${selected || "重点内容"}**`;
+      replacementEnd = start + replacement.length;
+    } else if (label === "斜体") {
+      replacement = `*${selected || "强调内容"}*`;
+      replacementEnd = start + replacement.length;
+    } else if (label === "代码") {
+      replacement = `\`${selected || "术语"}\``;
+      replacementEnd = start + replacement.length;
+    } else if (label === "列表") {
+      replacement = line.startsWith("- ") ? line.slice(2) : `- ${line}`;
+      replacementStart = lineStart;
+      replacementEnd = lineEnd;
+    } else if (label === "引用") {
+      replacement = line.startsWith("> ") ? line.slice(2) : `> ${line}`;
+      replacementStart = lineStart;
+      replacementEnd = lineEnd;
+    } else if (label === "链接") {
+      replacement = `[${selected || "链接文字"}](https://)`;
+      replacementEnd = start + replacement.length;
+    } else if (label === "图片") {
+      replacement = `![${selected || "图片说明"}](https://)`;
+      replacementEnd = start + replacement.length;
+    }
+
+    const nextValue = `${value.slice(0, replacementStart)}${replacement}${value.slice(replacementEnd)}`;
+    onDraftChange("content", nextValue);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(replacementStart, replacementStart + replacement.length);
+    });
+  }
+
   return (
     <section className="editor-workspace phase-one-editor">
       <div className="phase-editor-page-heading">
         <p className="phase-editor-kicker">内容可信度审查</p>
         <h1>{recheckContext ? "重新验证修改后的文章" : "开始一次内容可信度审查"}</h1>
-        <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "Evidra 基于 Evidence First 原则，帮助你识别内容风险，提升观点可信度。"}</p>
+        <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "从一篇文章开始，Evidra 会按问题、证据与结构给出可执行的发布前判断。"}</p>
       </div>
 
       {recheckContext ? (
@@ -347,7 +401,11 @@ export function EditorWorkspace({
                   <div className="phase-field-heading"><label htmlFor="article-content">正文</label></div>
                   <div className="phase-rich-editor">
                     <div className="phase-rich-toolbar" aria-label="正文格式工具">
-                      {TOOLBAR_ITEMS.map(({ label, icon: Icon }) => <button key={label} type="button" aria-label={label}><Icon aria-hidden="true" /></button>)}
+                      {TOOLBAR_ITEMS.map(({ label, icon: Icon }) => (
+                        <button key={label} type="button" aria-label={label} title={label} onClick={() => applyToolbarFormat(label)}>
+                          <Icon aria-hidden="true" />
+                        </button>
+                      ))}
                     </div>
                     <textarea
                       id="article-content"
@@ -358,8 +416,13 @@ export function EditorWorkspace({
                       aria-invalid={Boolean(fieldErrors.content)}
                     />
                     <footer>
-                      <span>字数统计：{contentLength.toLocaleString()} 字</span>
-                      <button type="submit" className="phase-primary-button">开始分析 <ArrowRight aria-hidden="true" /></button>
+                      <span className={inputOverLimit ? "is-over-limit" : ""}>
+                        字数统计：{contentLength.toLocaleString()} 字
+                        {remaining >= 0 ? <small> · 还可输入 {remaining.toLocaleString()} 字</small> : null}
+                      </span>
+                      <button type="submit" className="phase-primary-button" disabled={inputOverLimit || !draft.title.trim() || !contentText.trim()}>
+                        开始分析 <ArrowRight aria-hidden="true" />
+                      </button>
                     </footer>
                   </div>
                   {fieldErrors.content ? <small className="phase-field-error">{fieldErrors.content}</small> : null}
