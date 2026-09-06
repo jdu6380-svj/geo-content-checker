@@ -16,6 +16,16 @@ function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+async function waitForProject(name = project.name) {
+  const matches = await screen.findAllByText(name, { selector: "strong" });
+  return matches[0];
+}
+
+async function openPasteInput() {
+  fireEvent.click(screen.getByRole("tab", { name: /粘贴正文/ }));
+  return screen.findByLabelText("文章标题");
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -34,10 +44,9 @@ describe("CommercialDashboard", () => {
 
     render(<CommercialDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "AI 内容发布前审查工作台" })).toBeTruthy();
-    expect(screen.getByText("面试演示模式")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("工作台");
-    expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("项目");
+    expect(await screen.findByRole("heading", { name: "开始一次内容可信度审查" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("首页");
+    expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("我的审查");
     expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("报告与记录");
     expect(screen.queryByText(/购买 .* 次审查/)).toBeNull();
     expect(screen.queryByRole("button", { name: "支付运营管理" })).toBeNull();
@@ -55,13 +64,13 @@ describe("CommercialDashboard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CommercialDashboard />);
-    expect(await screen.findByText("还没有项目")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "AI 内容发布前审查工作台" })).toBeTruthy();
-    expect(screen.getByText(/按项目管理审查记录，并在同一工作区完成修改与复查/)).toBeTruthy();
+    expect(await screen.findByText(/还没有使用记录/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "开始一次内容可信度审查" })).toBeTruthy();
     expect(screen.getByText(/实际套餐名称、价格与额度以服务端当前配置为准/)).toBeTruthy();
     expect(screen.getByText(/一次性支付，不自动续费/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("新建项目"), { target: { value: "内容审查项目" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    fireEvent.click(screen.getByRole("tab", { name: /粘贴正文/ }));
+    fireEvent.change(screen.getByLabelText("先创建一个审查项目"), { target: { value: "内容审查项目" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建项目" }));
 
     expect((await screen.findAllByText("内容审查项目")).length).toBeGreaterThanOrEqual(2);
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -98,7 +107,7 @@ describe("CommercialDashboard", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("请先登录后访问工作台");
-    expect(screen.queryByRole("heading", { name: "内容审查项目" })).toBeNull();
+    expect(screen.queryByText("内容审查项目", { selector: "strong" })).toBeNull();
     expect(screen.getByRole("link", { name: "重新登录" }).getAttribute("href")).toBe("/sign-in?redirect_url=%2Fdashboard");
     expect(screen.queryByText("private session detail")).toBeNull();
   });
@@ -111,9 +120,10 @@ describe("CommercialDashboard", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "内容审查项目" })).toBeTruthy();
+    await waitForProject();
     expect(screen.getByText("支付服务尚未配置。当前不能购买套餐。")).toBeTruthy();
     expect(screen.getByText("当前工作区没有可用审查次数，支付入口尚未配置，暂不能购买。")).toBeTruthy();
+    await openPasteInput();
     expect(screen.getByRole("button", { name: "开始分析" }).getAttribute("disabled")).not.toBeNull();
     expect(screen.queryByText("provider detail")).toBeNull();
   });
@@ -127,9 +137,10 @@ describe("CommercialDashboard", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
 
-    await screen.findByText("还没有项目");
-    fireEvent.change(screen.getByLabelText("新建项目"), { target: { value: "内容审查项目" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    await screen.findByText(/还没有使用记录/);
+    fireEvent.click(screen.getByRole("tab", { name: /粘贴正文/ }));
+    fireEvent.change(screen.getByLabelText("先创建一个审查项目"), { target: { value: "内容审查项目" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建项目" }));
 
     expect(await screen.findByText("请先登录后访问工作台。", { exact: true })).toBeTruthy();
     expect(screen.getByRole("link", { name: "重新登录" }).getAttribute("href")).toBe("/sign-in?redirect_url=%2Fdashboard");
@@ -144,7 +155,7 @@ describe("CommercialDashboard", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "内容审查项目" })).toBeTruthy();
+    await waitForProject();
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/commercial/projects",
       "/api/alipay/plans",
@@ -156,14 +167,12 @@ describe("CommercialDashboard", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ projects: [project], usage: { workspaceId: "workspace_1", consumed: 1, limit: 1 } })));
     render(<CommercialDashboard />);
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "内容审查项目" })).toBeTruthy());
-    expect(screen.getByText("1/1 次审查")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("新建项目"), { target: { value: "下一个内容项目" } });
-    expect((screen.getByRole("button", { name: "创建" }) as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByLabelText("标题")).toBeTruthy();
+    await waitForProject();
+    expect(screen.getByText("已用 1 / 1 次审查")).toBeTruthy();
+    await openPasteInput();
+    expect(screen.getByLabelText("文章标题")).toBeTruthy();
     expect((screen.getByRole("button", { name: "开始分析" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/项目仍可创建，获得服务端确认的额度后即可提交审查/)).toBeTruthy();
-    expect(screen.getByText(/当前页面会显示本次打开后的运行状态/)).toBeTruthy();
     expect(screen.queryByText("分析结果")).toBeNull();
   });
 
@@ -196,9 +205,10 @@ describe("CommercialDashboard", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "测试正文" } });
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.change(screen.getByLabelText("文章标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "测试正文" } });
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     expect(await screen.findByText("总分 82")).toBeTruthy();
     expect(screen.getByText("问题一")).toBeTruthy();
@@ -263,9 +273,10 @@ describe("CommercialDashboard", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
 
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "初始正文" } });
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.change(screen.getByLabelText("文章标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "初始正文" } });
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     expect(await screen.findByText("总分 62")).toBeTruthy();
 
@@ -275,7 +286,7 @@ describe("CommercialDashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "加入修改清单" }));
     expect(screen.getByRole("button", { name: "已加入修改清单" })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "补充来源后的正文" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "补充来源后的正文" } });
     fireEvent.click(screen.getByRole("button", { name: "重新分析" }));
     expect(await screen.findByText("总分 84")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "复查结果" })).toBeTruthy();
@@ -311,7 +322,7 @@ describe("CommercialDashboard", () => {
       .mockResolvedValueOnce(response(result));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
+    await waitForProject();
     expect(screen.getByRole("heading", { name: "最近运行" })).toBeTruthy();
     expect(screen.getByText("已完成")).toBeTruthy();
     expect(screen.getByText("2026年8月29日")).toBeTruthy();
@@ -338,7 +349,7 @@ describe("CommercialDashboard", () => {
       .mockResolvedValueOnce(response({ run: { id: "run_queued_history", workspaceId: "workspace_1", projectId: "project_1", status: "running", createdBy: "user_1", createdAt: "2026-08-29T12:00:00.000Z" } }));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
+    await waitForProject();
     expect(screen.getByText("排队中")).toBeTruthy();
     expect(screen.getByText("未完成")).toBeTruthy();
     expect(screen.getByText("已取消")).toBeTruthy();
@@ -360,9 +371,10 @@ describe("CommercialDashboard", () => {
       .mockResolvedValueOnce(response({ run: { id: "run_2", workspaceId: "workspace_1", projectId: "project_1", status: "failed", createdBy: "user_1", createdAt: project.createdAt, failureCode: "EXECUTION_RETRYABLE" } }));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "测试正文" } });
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.change(screen.getByLabelText("文章标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "测试正文" } });
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     expect(await screen.findByText("分析服务暂时不可用，请稍后重试。", { exact: true })).toBeTruthy();
     expect(screen.getByRole("button", { name: "重试分析" })).toBeTruthy();
@@ -388,9 +400,10 @@ describe("CommercialDashboard", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "测试正文" } });
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.change(screen.getByLabelText("文章标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "测试正文" } });
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     expect(await screen.findByText("请求超时，请检查网络后重试。", { exact: true })).toBeTruthy();
     expect(screen.getByRole("button", { name: "重新读取报告" })).toBeTruthy();
@@ -413,9 +426,10 @@ describe("CommercialDashboard", () => {
       .mockResolvedValueOnce(response({ error: "UNAUTHENTICATED", message: "private auth detail" }, 401));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "测试正文" } });
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.change(screen.getByLabelText("文章标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "测试正文" } });
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     expect(await screen.findByText("请先登录后访问工作台。", { exact: true })).toBeTruthy();
     expect(screen.getByRole("link", { name: "重新登录" }).getAttribute("href")).toBe("/sign-in?redirect_url=%2Fdashboard");
@@ -442,9 +456,10 @@ describe("CommercialDashboard", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "测试正文" } });
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.change(screen.getByLabelText("文章标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "测试正文" } });
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     expect(await screen.findByText("请求超时，请检查网络后重试。", { exact: true })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "重试分析" }));
@@ -475,13 +490,14 @@ describe("CommercialDashboard", () => {
       .mockResolvedValueOnce(response(result));
     vi.stubGlobal("fetch", fetchMock);
     render(<CommercialDashboard />);
-    await screen.findByRole("heading", { name: "内容审查项目" });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "测试标题" } });
-    fireEvent.change(screen.getByLabelText("正文"), { target: { value: "测试正文" } });
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.change(screen.getByLabelText("文章标题"), { target: { value: "测试标题" } });
+    fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "测试正文" } });
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     expect(await screen.findByText("总分 82")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /第二个项目/ }));
-    expect(await screen.findByRole("heading", { name: "第二个项目" })).toBeTruthy();
+    expect((await screen.findAllByText("第二个项目", { selector: "strong" }))[0]).toBeTruthy();
     expect(screen.queryByText("总分 82")).toBeNull();
     expect(screen.queryByText("建议内容")).toBeNull();
   });

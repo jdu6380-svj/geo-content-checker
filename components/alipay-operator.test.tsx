@@ -28,6 +28,6 @@ describe("Alipay operator boundary", () => {
 
   it("renders loading, empty and permission error states without provider details", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response({ projects: [], usage: { workspaceId: "workspace_1", consumed: 0, limit: 20 } })).mockResolvedValueOnce(response({ subscription: null })).mockResolvedValueOnce(response({ plans: [] })).mockResolvedValueOnce(response({ error: "FORBIDDEN" }, 403));
-    vi.stubGlobal("fetch", fetchMock); render(<CommercialDashboard />); await screen.findByText("还没有项目"); fireEvent.click(screen.getByRole("button", { name: "支付运营管理" })); expect((await screen.findByRole("alert")).textContent).toContain("仅工作区所有者");
+    vi.stubGlobal("fetch", fetchMock); render(<CommercialDashboard />); await screen.findByText(/还没有使用记录/); fireEvent.click(screen.getByRole("button", { name: "支付运营管理" })); expect((await screen.findByRole("alert")).textContent).toContain("仅工作区所有者");
   });
 });

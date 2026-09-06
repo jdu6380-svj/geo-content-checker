@@ -153,6 +153,7 @@ describe("CommercialDashboard queued cancellation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CommercialDashboard />);
+    fireEvent.click(screen.getByRole("tab", { name: /粘贴正文/ }));
     expect(await screen.findByText("排队中")).toBeTruthy();
     expect(screen.getByText("正在分析，暂不可取消")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "取消本次分析" })).toHaveLength(1);
