@@ -330,7 +330,7 @@ Evidence Desk 重设计：
 
 ## 仍存在的问题清单
 
-1. 当前 Preview 仍由 Vercel 访问保护层包裹；如果从未登录的浏览器打开，会先看到 Vercel 保护页，而不是 Evidra 页面。最新提交 `5b399d8` 已成功推送，部署 `geo-content-checker-awu1rcu3p.vercel.app` 已处于 READY。
+1. 当前 Preview 仍由 Vercel 访问保护层包裹；如果从未登录的浏览器打开，会先看到 Vercel 保护页，而不是 Evidra 页面。最新提交 `15e8f0c` 已成功推送，部署 `geo-content-checker-e8mr85aww.vercel.app` 已处于 READY。
 2. 真实模型执行态的阶段进度仍依赖后端运行事件；前端已提供排队、分析中、取消、失败和重试反馈，但尚未接入逐阶段事件流。
 3. 390px 报告页内容较长，已经可读；后续可以增加移动端“摘要 / 风险 / 问题 / Patch”锚点导航，减少滚动成本。
-4. 现有 Vitest 中仍有 17 个旧 UI 展示断言失败，集中在旧标题、旧空态和旧“排队中”结构；核心 API、状态机和安全边界测试仍通过。后续应更新这些展示断言，而不是把旧后台文案塞回新视觉结构。
+4. 当前本地质量门禁已通过：Vitest 181/181、TypeScript、ESLint、Next.js build 与 `git diff --check` 均通过。后续若继续做视觉重构，应同步维护展示断言，避免把旧后台文案重新带回当前工作台。
