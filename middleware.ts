@@ -26,8 +26,11 @@ export default clerkConfigured
       if (commercialRoute(request) && !isInterviewMode()) await auth.protect();
     })
   : function failClosedCommercialMiddleware(request: Request) {
-      if (isInterviewMode()) return NextResponse.next();
-      const pathname = new URL(request.url).pathname;
+    if (isInterviewMode()) return NextResponse.next();
+    const pathname = new URL(request.url).pathname;
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
       if (
         pathname.startsWith("/api/commercial") ||
         pathname.startsWith("/api/stripe/checkout") ||

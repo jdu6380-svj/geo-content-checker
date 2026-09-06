@@ -678,12 +678,13 @@
 .evidra-sidebar-brand strong { color: var(--evidra-ink); font-size: 19px; letter-spacing: -.04em; }
 .evidra-sidebar-brand small { color: var(--evidra-body); font-size: 10px; }
 .evidra-sidebar-nav { gap: 4px !important; }
-.evidra-sidebar-nav a { position: relative; min-height: 42px !important; gap: 12px !important; border-radius: 10px !important; padding: 0 12px !important; color: #697187 !important; font-size: 13px !important; font-weight: 700 !important; }
-.evidra-sidebar-nav a svg { width: 18px !important; height: 18px !important; color: #788096 !important; }
-.evidra-sidebar-nav a:hover { background: #faf9ff !important; color: var(--evidra-purple) !important; }
-.evidra-sidebar-nav a.is-active { background: var(--evidra-purple-soft) !important; color: var(--evidra-purple) !important; box-shadow: none !important; }
-.evidra-sidebar-nav a.is-active::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 3px; background: var(--evidra-purple); }
-.evidra-sidebar-nav a.is-active svg { color: var(--evidra-purple) !important; }
+.evidra-sidebar-nav button, .evidra-sidebar-nav a { position: relative; min-height: 42px !important; gap: 12px !important; border: 0; border-radius: 10px !important; padding: 0 12px !important; color: #697187 !important; background: transparent; font: inherit; font-size: 13px !important; font-weight: 700 !important; text-align: left; text-decoration: none; cursor: pointer; }
+.evidra-sidebar-nav button svg, .evidra-sidebar-nav a svg { width: 18px !important; height: 18px !important; color: #788096 !important; }
+.evidra-sidebar-nav button:hover:not(:disabled), .evidra-sidebar-nav a:hover { background: #faf9ff !important; color: var(--evidra-purple) !important; }
+.evidra-sidebar-nav button.is-active, .evidra-sidebar-nav a.is-active { background: var(--evidra-purple-soft) !important; color: var(--evidra-purple) !important; box-shadow: none !important; }
+.evidra-sidebar-nav button.is-active::before, .evidra-sidebar-nav a.is-active::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 3px; background: var(--evidra-purple); }
+.evidra-sidebar-nav button.is-active svg, .evidra-sidebar-nav a.is-active svg { color: var(--evidra-purple) !important; }
+.evidra-sidebar-nav button:disabled { cursor: not-allowed; opacity: .42; }
 .evidra-nav-label { margin: 24px 10px 6px; color: #a2a8b8; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .evidra-sidebar-footer { margin: auto -2px 0; border-top: 1px solid var(--evidra-line); padding: 18px 10px 4px; }
 .evidra-sidebar-footer strong { color: var(--evidra-ink); font-size: 12px; }
@@ -795,7 +796,7 @@
   .evidra-sidebar-brand { padding: 0 4px 10px; }
   .evidra-sidebar-nav { display: flex !important; overflow-x: auto; gap: 4px !important; }
   .evidra-nav-label, .evidra-sidebar-footer { display: none; }
-  .evidra-sidebar-nav a { flex: 0 0 auto; min-height: 38px !important; padding: 0 11px !important; }
+  .evidra-sidebar-nav button, .evidra-sidebar-nav a { flex: 0 0 auto; min-height: 38px !important; padding: 0 11px !important; }
   .evidra-dashboard { width: min(100% - 32px, 720px) !important; }
   .evidra-home-grid { grid-template-columns: 1fr; }
   .evidra-home-secondary { grid-template-columns: 1fr 1fr; align-items: start; }

@@ -501,6 +501,10 @@ export function CommercialDashboard() {
     window.setTimeout(() => creator?.focus(), 250);
   }
 
+  function scrollToWorkspaceSection(sectionId: string) {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function handleFilePick(file: File | undefined) {
     if (!file) return;
     setFileMessage("");
@@ -541,14 +545,14 @@ export function CommercialDashboard() {
       <aside className="commercial-workspace-sidebar evidra-sidebar" aria-label="工作区导航">
         <div className="commercial-sidebar-brand evidra-sidebar-brand"><span className="commercial-sidebar-mark"><Sparkles aria-hidden="true" /></span><span><strong>Evidra</strong><small>内容可信度审查</small></span></div>
         <nav aria-label="主工作区导航" className="evidra-sidebar-nav">
-          <a className="is-active" href="#overview"><Home aria-hidden="true" />首页</a>
+          <button type="button" className="is-active" onClick={() => scrollToWorkspaceSection("overview")}><Home aria-hidden="true" />首页</button>
           <span className="evidra-nav-label">工作空间</span>
-          <a href="#review"><FileSearch aria-hidden="true" />我的审查</a>
-          <a href="#drafts"><FolderKanban aria-hidden="true" />草稿箱</a>
-          <a href="#report"><BarChart3 aria-hidden="true" />报告与记录</a>
+          <button type="button" onClick={() => { setInputMode("paste"); scrollToWorkspaceSection("review"); }}><FileSearch aria-hidden="true" />我的审查</button>
+          <button type="button" onClick={() => scrollToWorkspaceSection("drafts")}><FolderKanban aria-hidden="true" />最近使用</button>
+          <button type="button" onClick={() => scrollToWorkspaceSection("report")}><BarChart3 aria-hidden="true" />报告与记录</button>
           <span className="evidra-nav-label">工具</span>
-          <a href="#patch"><WandSparkles aria-hidden="true" />AI 修改建议</a>
-          <a href="#recheck"><RotateCcw aria-hidden="true" />重新验证</a>
+          <button type="button" onClick={() => scrollToWorkspaceSection("patch")} disabled={!result}><WandSparkles aria-hidden="true" />AI 修改建议</button>
+          <button type="button" onClick={() => scrollToWorkspaceSection("recheck")} disabled={!baselineResult}><RotateCcw aria-hidden="true" />重新验证</button>
           <span className="evidra-nav-label">支持</span>
           <a href="/support"><ShieldAlert aria-hidden="true" />帮助中心</a>
         </nav>
