@@ -13,6 +13,7 @@ import {
   type CommercialActor,
 } from "./domain";
 import { getNeonPaymentEventStore } from "./neon-billing-store";
+import { isInterviewMode } from "./interview-mode";
 
 export interface PaymentAdapter {
   createCheckoutSession(input: {
@@ -537,7 +538,11 @@ export function getConfiguredBlobAdapter(): VercelBlobStorageAdapter | null {
     .update([token, process.env.COMMERCIAL_DATA_ADAPTER ?? "", process.env.COMMERCIAL_STORAGE_ADAPTER ?? ""].join("\0"))
     .digest("hex");
   if (!blobAdapter || blobAdapter.key !== key) {
-    const lookup = process.env.COMMERCIAL_DATA_ADAPTER === "neon"
+    // Preview is the interview surface and intentionally uses the in-memory
+    // commercial repository. Do not ask Neon to verify a run that was never
+    // persisted there; the private Blob path still scopes the result to the
+    // fixed interview workspace and run id.
+    const lookup = !isInterviewMode() && process.env.COMMERCIAL_DATA_ADAPTER === "neon"
       ? async (runId: string) => (await import("./neon-repository")).getNeonCommercialRepository()?.getRunWorkspace(runId) ?? null
       : undefined;
     blobAdapter = { key, adapter: new VercelBlobStorageAdapter(token, { put, get }, lookup) };
