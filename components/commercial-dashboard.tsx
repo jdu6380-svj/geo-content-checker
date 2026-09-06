@@ -483,6 +483,12 @@ export function CommercialDashboard() {
     window.setTimeout(() => editor?.focus(), 250);
   }
 
+  function focusProjectCreator() {
+    const creator = document.getElementById("commercial-project-name");
+    creator?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => creator?.focus(), 250);
+  }
+
   return (
     <main className={`commercial-workspace-shell ${betaMode ? "is-interview-mode" : ""}`} aria-labelledby="commercial-dashboard-title">
       <aside className="commercial-workspace-sidebar" aria-label="工作区导航">
@@ -513,8 +519,8 @@ export function CommercialDashboard() {
               <span className="evidence-desk-kicker">EVIDRA REVIEW DESK · 发布前可信度</span>
               <h2 id="evidence-desk-hero-title">把一篇内容拆成可验证的发布决定</h2>
               <p>先定位读者真正的问题，再沿着证据链判断内容是否足够可信，最后把修改动作带回正文并复查变化。</p>
-              <button type="button" className="evidence-desk-hero-action" onClick={focusAnalysisEditor} disabled={!selectedProject}>
-                {selectedProject ? "进入内容审查" : "先创建一个项目"}
+              <button type="button" className="evidence-desk-hero-action" onClick={selectedProject ? focusAnalysisEditor : focusProjectCreator}>
+                {selectedProject ? "进入内容审查" : "开始一次内容审查"}
                 <span aria-hidden="true">→</span>
               </button>
             </div>
@@ -653,8 +659,10 @@ export function CommercialDashboard() {
           ) : (
             <div className="commercial-dashboard-empty commercial-dashboard-empty-detail">
               <FolderKanban aria-hidden="true" />
-              <h2 id="commercial-project-detail-title">选择一个项目</h2>
-              <p>先在左侧创建或选择一个项目，右侧就会出现内容审查编辑器。</p>
+              <p className="commercial-eyebrow">工作区还没有审查对象</p>
+              <h2 id="commercial-project-detail-title">开始一次内容可信度审查</h2>
+              <p>创建项目后，在这里粘贴标题和正文，Evidra 会沿着问题、证据与修改建议生成完整报告。</p>
+              <button type="button" className="commercial-empty-action" onClick={focusProjectCreator}>创建第一个项目 <span aria-hidden="true">→</span></button>
             </div>
           )}
         </section>

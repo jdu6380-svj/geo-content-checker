@@ -243,6 +243,12 @@
 5. 运行 lint、typecheck、测试、build；
 6. 重新采集桌面、移动和主要交互状态截图，并记录仍存在的问题。
 
+## 本轮选定参考图
+
+用户最终确认采用浅色 Evidra 首页方向：白/浅灰工作区、紫色主操作、浅色左侧导航、中央内容审查入口、右侧审查链路和可继续进入的工作记录。
+
+- [用户选定浅色参考图](../output/visual-audit/redesign-light/reference/evidra-light-selected.png)
+
 ## 验收截图
 
 旧版基线：
@@ -251,6 +257,9 @@
 - [390px 空工作区（旧版）](../output/visual-audit/baseline/mobile-empty-before.png)
 
 Evidence Desk 重设计：
+
+- [桌面空工作区（浅色最终版）](../output/visual-audit/redesign-light/desktop-dashboard-final.png)
+- [390px 首页（浅色最终版）](../output/visual-audit/redesign-light/mobile-390-dashboard-final.png)
 
 - [桌面空工作区（新版）](../output/visual-audit/redesign/01-home-empty-desktop-after.png)
 - [桌面创建审查（新版）](../output/visual-audit/redesign/02-create-project-desktop-after.png)
@@ -262,7 +271,9 @@ Evidence Desk 重设计：
 ## 前后变化摘要
 
 - 首屏从“项目管理卡片”改为“内容 → 证据 → 动作”的审查主线，新增 Evidence Desk hero 和阶段地图。
-- 指标、流程和项目区不再使用同一层级的普通白卡；流程被提升为深色阶段轨道，当前阶段更明显。
+- 指标、流程和项目区统一为浅色纸张卡片；当前阶段使用紫色底和状态徽记突出，不再出现与选定方向冲突的深色流程轨道。
+- 空工作区的主按钮改为“开始一次内容审查”，没有项目时会滚动到项目创建区；右侧空态增加“创建第一个项目”真实动作。
+- 项目工作区改为“主审查区 + 右侧项目/记录栏”的结构，首屏阅读顺序更接近参考图的“开始审查 → 查看指南 → 继续最近记录”。
 - 报告页增加风险与证据缺口面板、风险筛选和问题级查看证据入口。
 - “查看证据”已从无动作按钮改为可展开的真实证据详情：展示证据状态、逐字引用和下一动作，并在异常测试数据下保持安全降级。
 - 结果页将评分、读者问题、诊断、Patch 和复查动作按决策顺序组织；移动端改为单列阅读流。
@@ -273,4 +284,4 @@ Evidence Desk 重设计：
 1. 当前真实 Preview 的环境变量没有启用面试模式，访问新部署时仍可能先进入 Clerk 登录页；这属于部署配置问题，不是本轮 UI 代码问题。面试演示应将 Preview 环境的 `VERCEL_ENV=preview` 与面试模式配置一起验收。
 2. 真实模型执行态的阶段进度仍依赖后端运行事件；当前截图中的分析中状态展示了前端反馈，但没有接入逐阶段事件流。
 3. 390px 报告页内容较长，已经可读，但后续可以增加移动端“摘要 / 风险 / 问题 / Patch”锚点导航，减少滚动成本。
-4. 当前 GitHub 推送在本机连接阶段超时，最新的证据详情修复已提交到本地 `97e4eef`，尚未反映到远端 Preview；旧版 Evidence Desk Preview 仍可用于查看上一轮整体重设计截图。
+4. 当前 GitHub 推送在本机连接阶段超时；本轮浅色视觉覆盖和首页空态动作仍在本地工作树，尚未反映到远端 Preview。部署前需要重新推送并检查 Preview 环境变量。
