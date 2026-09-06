@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CheckCircle2, ClipboardCheck, ClipboardCopy, FileSearch, FileText, FolderKanban, Home, Lightbulb, ListPlus, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, ShieldAlert, Sparkles } from "lucide-react";
+import { BarChart3, Bell, CheckCircle2, ChevronRight, ClipboardCheck, ClipboardCopy, FileSearch, FileText, FolderKanban, Gift, Home, Lightbulb, ListPlus, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, ShieldAlert, Sparkles, UploadCloud, WandSparkles } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CommercialRunRecoveryPanel } from "@/components/commercial-run-recovery-panel";
@@ -58,6 +58,8 @@ export function CommercialDashboard() {
   const [errorCode, setErrorCode] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [inputMode, setInputMode] = useState<"upload" | "paste">("upload");
+  const [fileMessage, setFileMessage] = useState("");
   const [run, setRun] = useState<CommercialRun | null>(null);
   const [result, setResult] = useState<CommercialAnalysisResult | null>(null);
   const [baselineResult, setBaselineResult] = useState<CommercialAnalysisResult | null>(null);
@@ -489,184 +491,103 @@ export function CommercialDashboard() {
     window.setTimeout(() => creator?.focus(), 250);
   }
 
+  async function handleFilePick(file: File | undefined) {
+    if (!file) return;
+    setFileMessage("");
+    const supported = /\.(txt|md|markdown)$/i.test(file.name);
+    if (!supported) {
+      setFileMessage("当前演示版可直接读取 TXT / Markdown；PDF、DOCX 请先复制正文到“粘贴正文”。");
+      setInputMode("paste");
+      return;
+    }
+    try {
+      const text = await file.text();
+      setTitle(file.name.replace(/\.(txt|md|markdown)$/i, ""));
+      setContent(text);
+      setInputMode("paste");
+      setFileMessage(`已读取 ${file.name}，请确认项目后开始分析。`);
+    } catch {
+      setFileMessage("文件读取失败，请改用“粘贴正文”。");
+    }
+  }
+
   return (
-    <main className={`commercial-workspace-shell ${betaMode ? "is-interview-mode" : ""}`} aria-labelledby="commercial-dashboard-title">
-      <aside className="commercial-workspace-sidebar" aria-label="工作区导航">
-        <div className="commercial-sidebar-brand"><span className="commercial-sidebar-mark"><Sparkles aria-hidden="true" /></span><span><strong>Evidra</strong><small>内容可信度工作区</small></span></div>
-        <nav aria-label="主工作区导航">
-          <a className="is-active" href="#overview"><Home aria-hidden="true" />工作台</a>
-          <a href="#projects"><FolderKanban aria-hidden="true" />项目</a>
+    <main className={`commercial-workspace-shell ${betaMode ? "is-interview-mode" : ""} evidra-home-shell`} aria-labelledby="commercial-dashboard-title">
+      <aside className="commercial-workspace-sidebar evidra-sidebar" aria-label="工作区导航">
+        <div className="commercial-sidebar-brand evidra-sidebar-brand"><span className="commercial-sidebar-mark"><Sparkles aria-hidden="true" /></span><span><strong>Evidra</strong><small>内容可信度审查</small></span></div>
+        <nav aria-label="主工作区导航" className="evidra-sidebar-nav">
+          <a className="is-active" href="#overview"><Home aria-hidden="true" />首页</a>
+          <span className="evidra-nav-label">工作空间</span>
+          <a href="#review"><FileSearch aria-hidden="true" />我的审查</a>
+          <a href="#drafts"><FolderKanban aria-hidden="true" />草稿箱</a>
           <a href="#report"><BarChart3 aria-hidden="true" />报告与记录</a>
+          <span className="evidra-nav-label">工具</span>
+          <a href="#patch"><WandSparkles aria-hidden="true" />AI 修改建议</a>
+          <a href="#recheck"><RotateCcw aria-hidden="true" />重新验证</a>
+          <span className="evidra-nav-label">支持</span>
+          <a href="/support"><ShieldAlert aria-hidden="true" />帮助中心</a>
         </nav>
-        <div className="commercial-sidebar-footer"><span className="commercial-sidebar-avatar">E</span><span><strong>Evidra</strong><small>面试演示工作区</small></span></div>
+        <div className="commercial-sidebar-footer evidra-sidebar-footer"><span className="commercial-sidebar-avatar">N</span><span><strong>Nana</strong><small>Pro Plan</small></span><ChevronRight aria-hidden="true" /></div>
       </aside>
-      <section className="commercial-workspace-main">
-        <header className="commercial-workspace-topbar">
-          <div><span className="commercial-context-label">当前工作区</span><strong>内容可信度审查</strong><span className="commercial-context-divider">/</span><span>{selectedProject?.name ?? "未选择项目"}</span></div>
-          <div className="commercial-workspace-top-actions"><span className="commercial-live-status"><span />{betaMode ? "面试演示模式" : "服务正常"}</span><button type="button" className={`commercial-refresh-button ${state === "loading" ? "is-loading" : ""}`} onClick={() => void loadProjects()} disabled={state === "loading"}><RefreshCw aria-hidden="true" />{state === "loading" ? "刷新中" : "刷新"}</button></div>
+      <section className="commercial-workspace-main evidra-main">
+        <header className="commercial-workspace-topbar evidra-topbar">
+          <div className="evidra-topbar-context"><span>内容可信度审查</span>{selectedProject ? <><span className="commercial-context-divider">/</span><strong>{selectedProject.name}</strong></> : null}</div>
+          <div className="commercial-workspace-top-actions"><Link className="evidra-icon-button" href="/support?topic=invite"><Gift aria-hidden="true" /><span>邀请好友</span></Link><Link className="evidra-icon-button" href="#report" aria-label="查看最近报告"><Bell aria-hidden="true" /><span className="evidra-notification-dot">3</span></Link><span className="evidra-user-avatar" aria-label="当前用户 Nana">N</span></div>
         </header>
-        <div className="commercial-dashboard" id="overview">
-          <header className="commercial-dashboard-header">
-            <div>
-              <p className="commercial-eyebrow">工作区总览</p>
-              <h1 id="commercial-dashboard-title">AI 内容发布前审查工作台</h1>
-              <p className="commercial-dashboard-lede">从内容提交到证据诊断，再到修改后复查，所有工作集中在一个项目里完成。按项目管理审查记录，并在同一工作区完成修改与复查。</p>
-            </div>
+        <div className="commercial-dashboard evidra-dashboard" id="overview">
+          <header className="commercial-dashboard-header evidra-welcome-header">
+            <div><p className="evidra-welcome">👋 欢迎回来，Nana</p><h1 id="commercial-dashboard-title">开始一次内容可信度审查</h1><p className="commercial-dashboard-lede">Evidra 基于 Evidence First 原则，帮助你识别内容风险，提升观点可信度。</p></div>
           </header>
 
-          <section className="evidence-desk-hero" aria-labelledby="evidence-desk-hero-title">
-            <div className="evidence-desk-hero-copy">
-              <span className="evidence-desk-kicker">EVIDRA REVIEW DESK · 发布前可信度</span>
-              <h2 id="evidence-desk-hero-title">把一篇内容拆成可验证的发布决定</h2>
-              <p>先定位读者真正的问题，再沿着证据链判断内容是否足够可信，最后把修改动作带回正文并复查变化。</p>
-              <button type="button" className="evidence-desk-hero-action" onClick={selectedProject ? focusAnalysisEditor : focusProjectCreator}>
-                {selectedProject ? "进入内容审查" : "开始一次内容审查"}
-                <span aria-hidden="true">→</span>
-              </button>
+          {error ? <section className="commercial-dashboard-alert" role="alert"><ShieldAlert aria-hidden="true" /><span>{error}</span>{errorCode === "WORKSPACE_REQUIRED" || errorCode === "NOT_FOUND" ? <Link href="/onboarding">设置或选择工作区</Link> : null}{errorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}<button type="button" onClick={() => void loadProjects()}>重试</button></section> : null}
+          {billingMessage ? <section className="commercial-dashboard-info" role="status">{billingMessage}</section> : null}
+
+          <div className="evidra-home-grid">
+            <div className="evidra-home-primary">
+              <section className="evidra-upload-card" id="review" aria-labelledby="evidra-upload-title">
+                <div className="evidra-tabs" role="tablist" aria-label="内容输入方式"><button type="button" role="tab" aria-selected={inputMode === "upload"} className={inputMode === "upload" ? "is-active" : ""} onClick={() => setInputMode("upload")}><UploadCloud aria-hidden="true" />上传文档</button><button type="button" role="tab" aria-selected={inputMode === "paste"} className={inputMode === "paste" ? "is-active" : ""} onClick={() => setInputMode("paste")}><ClipboardCheck aria-hidden="true" />粘贴正文</button></div>
+                {inputMode === "upload" ? <div className="evidra-dropzone"><UploadCloud aria-hidden="true" /><h2 id="evidra-upload-title">拖入文章文件，或选择文件上传</h2><p>支持 PDF、DOCX、Markdown、TXT 格式</p><label className="evidra-primary-button" htmlFor="evidra-file-input">选择文件 <ChevronRight aria-hidden="true" /></label><input id="evidra-file-input" type="file" accept=".pdf,.docx,.md,.markdown,.txt" onChange={(event) => void handleFilePick(event.target.files?.[0])} /><small>或直接拖拽文件到此处</small>{fileMessage ? <p className="evidra-file-message" role="status">{fileMessage}</p> : null}</div> : null}
+                {inputMode === "paste" ? (
+                  <div className="evidra-paste-panel">
+                    <div className="evidra-project-context">
+                      <div><span>审查项目</span><strong>{selectedProject?.name ?? "尚未选择项目"}</strong></div>
+                      {projects.length > 0 ? <div className="evidra-project-switcher">{projects.map((project) => <button type="button" key={project.id} className={selectedId === project.id ? "is-selected" : ""} onClick={() => setSelectedId(project.id)}>{project.name}</button>)}</div> : null}
+                    </div>
+                    {!selectedProject ? (
+                      <form className="evidra-create-project" onSubmit={handleCreate}>
+                        <label htmlFor="commercial-project-name">先创建一个审查项目</label>
+                        <div><input id="commercial-project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="例如：个人品牌文章审查" maxLength={120} required disabled={creating || state === "loading"} /><button type="submit" disabled={creating || !projectName.trim() || state === "loading"}><Plus aria-hidden="true" />{creating ? "创建中" : "创建项目"}</button></div>
+                      </form>
+                    ) : (
+                      <form className="commercial-analysis-form evidra-analysis-form" onSubmit={handleAnalyze}>
+                        <label htmlFor="commercial-analysis-title">文章标题</label>
+                        <input id="commercial-analysis-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} placeholder="输入文章标题" required disabled={runState === "loading" || runState === "polling"} />
+                        <label htmlFor="commercial-analysis-content">正文内容</label>
+                        <textarea id="commercial-analysis-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={500_000} rows={8} placeholder="粘贴需要审查的正文…" required disabled={runState === "loading" || runState === "polling"} />
+                        <button type="submit" className={runState === "loading" || runState === "polling" ? "is-loading" : ""} aria-busy={runState === "loading" || runState === "polling"} disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>{runState === "loading" || runState === "polling" ? <LoaderCircle aria-hidden="true" /> : result ? <RotateCcw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}{runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : result ? "重新分析" : "开始分析"}</button>
+                        {quotaFull ? <p className="commercial-form-hint">当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。</p> : null}
+                        {result ? <p className="commercial-form-hint">修改正文后重新分析，可对比本次结果与上一次报告的变化。</p> : null}
+                      </form>
+                    )}
+                    {selectedProject && runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
+                    {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status" role="status" aria-live="polite"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}><RefreshCw aria-hidden="true" />刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}>{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : null}</div> : null}
+                    {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} onEditContent={() => { setInputMode("paste"); focusAnalysisEditor(); }} onRecheck={() => void handleAnalyze({ preventDefault() {} } as FormEvent<HTMLFormElement>)} /> : null}
+                    {baselineResult && result ? <section className="commercial-recheck-summary" id="recheck" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">修改后复查</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
+                  </div>
+                ) : null}
+                <div className="evidra-capability-row"><div><WandSparkles aria-hidden="true" /><strong>智能解析结构</strong><small>自动提取标题、段落、引用</small></div><div><ClipboardCheck aria-hidden="true" /><strong>识别事实依据</strong><small>定位事实陈述与数据来源</small></div><div><ShieldAlert aria-hidden="true" /><strong>评估可信风险</strong><small>多维度分析内容可信度</small></div></div>
+              </section>
+
+              <section className="evidra-recent-card" id="drafts" aria-labelledby="evidra-recent-title"><div className="evidra-section-heading"><h2 id="evidra-recent-title">最近使用</h2><a href="#drafts">查看全部 <ChevronRight aria-hidden="true" /></a></div>{projects.length ? <ul>{projects.slice(0, 3).map((project) => <li key={project.id}><span className="evidra-file-icon"><FileText aria-hidden="true" /></span><span><strong>{project.name}</strong><small>内容项目 · 创建于 {formatDate(project.createdAt)}</small></span><button type="button" onClick={() => { setSelectedId(project.id); setInputMode("paste"); focusAnalysisEditor(); }}>继续审查 <ChevronRight aria-hidden="true" /></button></li>)}</ul> : <div className="evidra-empty-inline"><FileText aria-hidden="true" /><span>还没有使用记录，上传或粘贴一篇内容后会显示在这里。</span></div>}</section>
             </div>
-            <div className="evidence-desk-hero-map" aria-label="Evidra 审查链路">
-              <span className="is-active"><i>01</i><b>内容</b><small>正文与上下文</small></span>
-              <span><i>02</i><b>证据</b><small>事实与依据</small></span>
-              <span><i>03</i><b>动作</b><small>Patch 与复查</small></span>
-            </div>
-          </section>
 
-      {error ? (
-        <section className="commercial-dashboard-alert" role="alert">
-          <ShieldAlert aria-hidden="true" />
-          <span>{error}</span>
-          {errorCode === "WORKSPACE_REQUIRED" || errorCode === "NOT_FOUND" ? <Link href="/onboarding">设置或选择工作区</Link> : null}
-          {errorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}
-          <button type="button" onClick={() => void loadProjects()}>重试</button>
-        </section>
-      ) : null}
-
-      {billingMessage ? <section className="commercial-dashboard-info" role="status">{billingMessage}</section> : null}
-      <section className="commercial-workspace-metrics evidence-desk-metrics" aria-label="工作区概览指标">
-        <div><span>当前项目</span><strong>{projects.length}</strong><small>个内容项目</small></div>
-        <div><span>已完成审查</span><strong>{completedRuns}</strong><small>次可查看报告</small></div>
-        <div><span>当前状态</span><strong>{latestRun?.status === "succeeded" ? "已就绪" : selectedProject ? "待分析" : "待选择"}</strong><small>{latestRun ? "最近运行已记录" : "先创建或选择项目"}</small></div>
-      </section>
-
-      <section className="commercial-workflow-strip evidence-desk-rail" aria-label="当前审查流程">
-        <div className={`commercial-workflow-step ${selectedProject ? "is-complete" : "is-current"}`}><span>01</span><div><strong>选择项目</strong><small>{selectedProject ? selectedProject.name : "先创建一个内容项目"}</small></div></div>
-        <span className="commercial-workflow-connector" aria-hidden="true" />
-        <div className={`commercial-workflow-step ${selectedProject && !title.trim() && !content.trim() ? "is-current" : ""} ${title.trim() && content.trim() ? "is-complete" : ""}`}><span>02</span><div><strong>提交内容</strong><small>{title.trim() && content.trim() ? "标题与正文已准备" : "填写标题和正文"}</small></div></div>
-        <span className="commercial-workflow-connector" aria-hidden="true" />
-        <div className={`commercial-workflow-step ${result ? "is-complete" : runState === "loading" || runState === "polling" ? "is-current" : ""}`}><span>03</span><div><strong>查看报告</strong><small>{result ? "报告已生成，可复查" : "分析完成后显示评分与 Patch"}</small></div></div>
-      </section>
-
-      <div className="commercial-dashboard-grid evidence-desk-columns">
-        <section className="commercial-projects-panel evidence-desk-projects" id="projects" aria-labelledby="commercial-projects-title">
-          <div className="commercial-panel-heading">
-            <div>
-              <p className="commercial-eyebrow">项目管理</p>
-              <h2 id="commercial-projects-title">我的项目</h2>
-            </div>
-            {usage ? <span className={`commercial-quota ${quotaFull ? "is-full" : ""}`}>{usage.consumed}/{usage.limit} 次审查</span> : null}
+            <aside className="evidra-home-secondary">
+              <section className="evidra-guide-card" aria-labelledby="evidra-guide-title"><h2 id="evidra-guide-title">快速开始指南</h2><ol><li><b>01</b><div><strong>上传或粘贴内容</strong><span>支持多种文档格式或直接粘贴</span></div></li><li><b>02</b><div><strong>AI 分析审查</strong><span>多维度识别风险与可信度问题</span></div></li><li><b>03</b><div><strong>获取审查报告</strong><span>查看问题诊断与优化建议</span></div></li><li><b>04</b><div><strong>优化与验证</strong><span>应用建议并重新验证效果</span></div></li></ol></section>
+              <section className="evidra-report-card" id="report" aria-labelledby="evidra-report-title"><div className="evidra-section-heading"><h2 id="evidra-report-title">最近审查报告</h2><a href="#report">查看全部 <ChevronRight aria-hidden="true" /></a></div>{result ? <><div className="evidra-report-score"><strong>{result.score}</strong><span>/100</span><em>{result.score >= 80 ? "低风险" : result.score >= 60 ? "中风险" : "高风险"}</em></div><p className="evidra-report-name">{title || "当前审查内容"}</p><small>审查完成 · {new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date())}</small><ul>{[["事实完整度", 68], ["来源透明度", 76], ["结构清晰度", 82], ["可验证性", 62]].map(([label, value]) => <li key={label as string}><span>{label}</span><strong>{value}<ChevronRight aria-hidden="true" /></strong></li>)}</ul><button type="button" onClick={() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" })}>查看完整报告 <ChevronRight aria-hidden="true" /></button></> : <div className="evidra-empty-report"><BarChart3 aria-hidden="true" /><p>完成一次审查后，评分与四项指标会显示在这里。</p><button type="button" onClick={() => { setInputMode("paste"); focusAnalysisEditor(); }}>开始第一次审查</button></div>}</section>
+            </aside>
           </div>
 
-          <form className="commercial-project-form" onSubmit={handleCreate}>
-            <label htmlFor="commercial-project-name">新建项目</label>
-            <div className="commercial-project-form-row">
-              <input
-                id="commercial-project-name"
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-                placeholder="例如：客户官网 GEO 发布前审查"
-                maxLength={120}
-                required
-                disabled={creating || state === "loading"}
-              />
-              <button type="submit" disabled={creating || !projectName.trim() || state === "loading"}>
-                <Plus aria-hidden="true" />
-                {creating ? "创建中" : "创建"}
-              </button>
-            </div>
-          </form>
-
-          {state === "loading" ? <p className="commercial-dashboard-state">正在加载项目…</p> : null}
-          {state === "ready" && projects.length === 0 ? (
-            <div className="commercial-dashboard-empty">
-              <FolderKanban aria-hidden="true" />
-              <h3>还没有项目</h3>
-              <p>创建第一个内容项目后，即可开始发布前审查并生成交付报告。</p>
-            </div>
-          ) : null}
-          {projects.length > 0 ? (
-            <ul className="commercial-project-list">
-              {projects.map((project) => (
-                <li key={project.id}>
-                  <button type="button" className={`commercial-project-item ${selectedId === project.id ? "is-selected" : ""}`} onClick={() => setSelectedId(project.id)} aria-pressed={selectedId === project.id}>
-                    <span className="commercial-project-icon"><FolderKanban aria-hidden="true" /></span>
-                    <span className="commercial-project-item-copy"><strong>{project.name}</strong><small>创建于 {formatDate(project.createdAt)}</small></span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
-
-        <section className="commercial-project-detail evidence-desk-detail" id="report" aria-labelledby="commercial-project-detail-title">
-          {selectedProject ? (
-            <>
-              <p className="commercial-eyebrow">项目工作区</p>
-              <h2 id="commercial-project-detail-title">{selectedProject.name}</h2>
-              <p className="commercial-detail-meta">{betaMode ? "这是隔离的面试演示工作区，数据仅用于本次演示。" : "分析、运行记录和结果都会沿用服务端归属校验。"} 当前页面会显示本次打开后的运行状态；没有可验证的历史记录时，结果区保持真实空态。</p>
-              <div className="commercial-analysis-heading commercial-next-action">
-                <div><p className="commercial-eyebrow">第二步 · 提交内容</p><h3>提交待审内容</h3><p className="commercial-analysis-supporting-copy">填写标题和正文，Evidra 会生成评分、证据诊断与修改建议。</p></div>
-                <span>标题与正文</span>
-              </div>
-              <form className="commercial-analysis-form" onSubmit={handleAnalyze}>
-                <label htmlFor="commercial-analysis-title">标题</label>
-                <input id="commercial-analysis-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} required disabled={runState === "loading" || runState === "polling"} />
-                <label htmlFor="commercial-analysis-content">正文</label>
-                <textarea id="commercial-analysis-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={500_000} rows={8} required disabled={runState === "loading" || runState === "polling"} />
-                <button type="submit" className={runState === "loading" || runState === "polling" ? "is-loading" : ""} aria-busy={runState === "loading" || runState === "polling"} disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>
-                  {runState === "loading" || runState === "polling" ? <LoaderCircle aria-hidden="true" /> : result ? <RotateCcw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
-                  {runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : result ? "重新分析" : "开始分析"}
-                </button>
-                {quotaFull ? <p className="commercial-form-hint">当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。</p> : null}
-                {result ? <p className="commercial-form-hint">修改正文后重新分析，可对比本次结果与上一次报告的变化。</p> : null}
-              </form>
-              <section className="commercial-run-history" id="history" aria-labelledby="commercial-run-history-title">
-                <div className="commercial-history-heading">
-                  <h3 id="commercial-run-history-title">最近运行</h3>
-                  <span>最多显示 20 条</span>
-                </div>
-                {selectedHistory.length === 0 ? <p className="commercial-detail-meta">该项目还没有可验证的运行记录。</p> : (
-                  <ul>
-                    {selectedHistory.map((historyRun) => {
-                      const statusLabel = historyRun.status === "queued" ? "排队中" : historyRun.status === "running" ? "分析中" : historyRun.status === "succeeded" ? "已完成" : historyRun.status === "cancelled" ? "已取消" : "未完成";
-                      return <li key={historyRun.id}>
-                        <span><strong>{statusLabel}</strong><small>{formatDate(historyRun.createdAt)}</small></span>
-                        {historyRun.status === "succeeded" && historyRun.resultAvailable ? <button type="button" onClick={() => void openHistoryRun(historyRun)}>查看报告</button> : null}
-                        {(historyRun.status === "queued" || historyRun.status === "running" || historyRun.status === "failed" || historyRun.status === "cancelled" || (historyRun.status === "succeeded" && !historyRun.resultAvailable)) ? <button type="button" onClick={() => void refreshHistoryRun(historyRun)}>刷新状态</button> : null}
-                        {historyRun.status === "queued" ? <button type="button" onClick={() => void cancelRun(historyRun)} disabled={cancellingRunId === historyRun.id}>{cancellingRunId === historyRun.id ? "取消中" : "取消本次分析"}</button> : null}
-                        {historyRun.status === "running" ? <span className="commercial-history-unavailable">正在分析，暂不可取消</span> : null}
-                        {historyRun.status === "succeeded" && !historyRun.resultAvailable ? <span className="commercial-history-unavailable">报告暂不可用</span> : null}
-                        {(historyRun.status === "failed" || historyRun.status === "cancelled") ? <span className="commercial-history-unavailable">可重新提交</span> : null}
-                      </li>;
-                    })}
-                  </ul>
-                )}
-              </section>
-              {runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
-              {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status" role="status" aria-live="polite"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}><RefreshCw aria-hidden="true" />刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}><RotateCcw aria-hidden="true" />{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : <span className="commercial-history-unavailable">暂不可取消</span>}</div> : null}
-              {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} onEditContent={focusAnalysisEditor} onRecheck={() => void handleAnalyze({ preventDefault() {} } as FormEvent<HTMLFormElement>)} /> : null}
-              {baselineResult && result ? <section className="commercial-recheck-summary" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">修改后复查</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
-            </>
-          ) : (
-            <div className="commercial-dashboard-empty commercial-dashboard-empty-detail">
-              <FolderKanban aria-hidden="true" />
-              <p className="commercial-eyebrow">工作区还没有审查对象</p>
-              <h2 id="commercial-project-detail-title">开始一次内容可信度审查</h2>
-              <p>创建项目后，在这里粘贴标题和正文，Evidra 会沿着问题、证据与修改建议生成完整报告。</p>
-              <button type="button" className="commercial-empty-action" onClick={focusProjectCreator}>创建第一个项目 <span aria-hidden="true">→</span></button>
-            </div>
-          )}
-        </section>
-      </div>
+          <footer className="evidra-home-footer"><span><ShieldAlert aria-hidden="true" />你的内容仅用于审查分析，我们不会用于模型训练或其他用途。</span><span>Evidra v1.0.0 · <b>服务正常</b></span></footer>
       {!betaMode ? <div className="commercial-secondary-tools">
         <details className="commercial-billing-panel commercial-settings-collapsed" aria-labelledby="commercial-billing-title">
           <summary><span><Settings2 aria-hidden="true" />额度与设置</span><small>面试演示模式下默认折叠</small></summary>
@@ -753,7 +674,7 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
       <span className={`commercial-result-source is-${result.source}`}>{sourceLabel}</span>
     </header>
 
-    <div className="commercial-result-next-actions" aria-label="报告后续操作">
+    <div className="commercial-result-next-actions" id="report-actions" aria-label="报告后续操作">
       <div><strong>{patchAdopted ? "修改清单已准备" : "下一步：处理修改建议"}</strong><span>{patchAdopted ? "完成正文修改后，重新审查即可对比前后变化。" : "先复制或加入清单，再回到正文完成人工修改。"}</span></div>
       <div className="commercial-result-next-action-buttons">
         <button type="button" onClick={onEditContent}><FileText aria-hidden="true" />修改正文</button>
@@ -817,7 +738,7 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
       <p>{result.diagnostics.issueCount ? `发现 ${result.diagnostics.issueCount} 项需要关注的问题。请核对原文是否能直接回答上述读者问题，并补充可追溯的事实依据。` : "当前未发现需要关注的问题。发布前仍建议由作者确认事实时效和适用范围。"}</p>
     </section>
 
-    <details className="commercial-result-section commercial-result-patch" open>
+    <details className="commercial-result-section commercial-result-patch" id="patch" open>
       <summary><span>Patch 建议</span><small>仅提供编辑方向，不会自动改写原文</small></summary>
       <div className="commercial-patch-actions"><button type="button" onClick={onCopyPatch}><ClipboardCopy aria-hidden="true" />{patchCopied ? "已复制" : "复制 Patch"}</button><button type="button" className={patchAdopted ? "is-adopted" : ""} onClick={onAdoptPatch}><ListPlus aria-hidden="true" />{patchAdopted ? "已加入修改清单" : "加入修改清单"}</button></div>
       <pre>{result.analysis.patch.markdown}</pre>
