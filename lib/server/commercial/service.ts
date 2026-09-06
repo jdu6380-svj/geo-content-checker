@@ -11,6 +11,7 @@ import { InMemoryCommercialRepository, type CommercialRepository } from "./repos
 import { getCommercialDatabaseUrl } from "./neon-client";
 import { getNeonCommercialRepository } from "./neon-repository";
 import { isInterviewMode } from "./interview-mode";
+import { getInterviewRedisCommercialRepository } from "./interview-redis-repository";
 
 export type CommercialServiceConfig = {
   repository: CommercialRepository;
@@ -131,8 +132,10 @@ export function getLocalCommercialService(): CommercialService | null {
 export function getConfiguredCommercialService(): CommercialService | null {
   if (isInterviewMode()) {
     const limit = readPositiveInteger(process.env.COMMERCIAL_RUN_LIMIT) ?? 30;
-    const key = `interview:${limit}`;
-    if (!localService || localService.key !== key) localService = { key, service: new CommercialService({ repository: new InMemoryCommercialRepository(limit) }) };
+    const repository = getInterviewRedisCommercialRepository(limit) ?? new InMemoryCommercialRepository(limit);
+    const persistence = repository instanceof InMemoryCommercialRepository ? "memory" : "redis";
+    const key = `interview:${persistence}:${limit}`;
+    if (!localService || localService.key !== key) localService = { key, service: new CommercialService({ repository }) };
     return localService.service;
   }
   if (process.env.NODE_ENV === "production" && process.env.COMMERCIAL_DATA_ADAPTER !== "neon") return null;
