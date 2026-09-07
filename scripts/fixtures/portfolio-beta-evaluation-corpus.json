@@ -1,0 +1,267 @@
+{
+  "schemaVersion": "evidra-portfolio-beta-eval-v1",
+  "updatedAt": "2026-09-07",
+  "description": "20 条完全合成的 Portfolio Beta 人工评测样本，不代表真实用户、组织或业务成果。",
+  "items": [
+    {
+      "id": "PB-EVAL-001",
+      "contentType": "public_account",
+      "riskTier": "low",
+      "title": "小团队上线 AI 客服前的四周验证计划",
+      "content": "一家 20 人左右的团队可以用四周完成第一轮 AI 客服验证。第一周整理高频问题与已授权知识库；第二周由业务负责人审核答案；第三周只让少量客服在内部环境试用；第四周复盘转人工率和错误来源。\n\n该计划只适用于已有知识库维护人、能够人工复核答案的团队。它不是行业统一周期，也不能保证减少多少成本；是否扩大使用范围应以内部测试数据和隐私评估为准。",
+      "reference": {
+        "primaryIssueCode": "evidence_complete",
+        "mustDetect": ["evidence_complete"],
+        "acceptableEvidenceStatuses": ["valid"],
+        "patchRequirementCodes": ["preserve_caveat", "no_material_change"]
+      }
+    },
+    {
+      "id": "PB-EVAL-002",
+      "contentType": "public_account",
+      "riskTier": "high",
+      "title": "所有品牌都必须立刻转向 GEO",
+      "content": "GEO 已经完全取代 SEO。所有品牌如果三个月内不重写全部内容，就会从 AI 搜索结果中消失。业内公认，采用 GEO 的公司流量至少增长 300%，而且这个结论适用于任何国家、行业和团队规模。\n\n因此企业应该立即停止传统搜索优化，把全部预算转移到 AI 内容生成与问答页面。没有必要继续观察渠道结构或验证用户是否真的通过 AI 搜索完成购买。",
+      "reference": {
+        "primaryIssueCode": "source_missing",
+        "mustDetect": ["source_missing", "scope_overgeneralized"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["add_source", "add_scope"]
+      }
+    },
+    {
+      "id": "PB-EVAL-003",
+      "contentType": "public_account",
+      "riskTier": "high",
+      "title": "短视频完播率提升实验复盘",
+      "content": "本次实验覆盖 800 条视频。摘要写明新开场让平均完播率从 21% 提升到 34%，正文表格却记录对照组为 26%、实验组为 31%。文章随后称完播率提升了 62%，但没有解释使用的是绝对百分点还是相对增幅。\n\n实验期间账号数量、发布时间和视频长度均有变化。当前材料没有给出原始数据链接，也没有说明最终采用哪一组数字。",
+      "reference": {
+        "primaryIssueCode": "numerical_conflict",
+        "mustDetect": ["numerical_conflict", "methodology_missing"],
+        "acceptableEvidenceStatuses": ["invalid"],
+        "patchRequirementCodes": ["reconcile_numbers", "add_methodology"]
+      }
+    },
+    {
+      "id": "PB-EVAL-004",
+      "contentType": "public_account",
+      "riskTier": "medium",
+      "title": "2022 年远程办公调查还能指导今天吗",
+      "content": "一份 2022 年发布的调查显示，受访者中有 58% 希望每周至少两天远程办公。文章据此建议 2026 年所有科技公司取消固定办公室，并将该比例描述为当前员工的普遍选择。\n\n调查样本来自三个城市的 1,200 名软件从业者。文章没有补充最近四年的变化，也没有说明该结果能否外推到制造、零售或一线服务岗位。",
+      "reference": {
+        "primaryIssueCode": "stale_or_undated",
+        "mustDetect": ["stale_or_undated", "scope_overgeneralized"],
+        "acceptableEvidenceStatuses": ["invalid", "missing"],
+        "patchRequirementCodes": ["add_date", "add_scope"]
+      }
+    },
+    {
+      "id": "PB-EVAL-005",
+      "contentType": "public_account",
+      "riskTier": "high",
+      "title": "使用 AI 写作工具一定会提高成交率",
+      "content": "我们观察到使用 AI 写作工具的销售团队平均成交率更高，因此可以确认 AI 写作直接导致成交增长。两组团队同时采用了不同的客户分配方式、销售培训和折扣策略，但这些差异不会影响结论。\n\n文章没有提供实验设计或控制变量，只展示了两个季度的相关性数据，并建议所有团队据此采购同一种工具。",
+      "reference": {
+        "primaryIssueCode": "causation_overreach",
+        "mustDetect": ["causation_overreach", "methodology_missing"],
+        "acceptableEvidenceStatuses": ["invalid"],
+        "patchRequirementCodes": ["soften_causality", "add_methodology"]
+      }
+    },
+    {
+      "id": "PB-EVAL-006",
+      "contentType": "public_account",
+      "riskTier": "medium",
+      "title": "用户访谈发现新手更喜欢自动模式",
+      "content": "最近的用户访谈显示，新手用户更喜欢自动模式，团队因此计划把手动设置全部隐藏。文章没有说明访谈人数、招募方式、用户经验或问题设计，只引用了“多数人觉得更轻松”的总结。\n\n材料也没有记录有多少用户仍需要手动控制，更没有将访谈发现与真实使用行为进行对照。",
+      "reference": {
+        "primaryIssueCode": "methodology_missing",
+        "mustDetect": ["methodology_missing", "scope_overgeneralized"],
+        "acceptableEvidenceStatuses": ["missing"],
+        "patchRequirementCodes": ["add_methodology", "add_scope"]
+      }
+    },
+    {
+      "id": "PB-EVAL-007",
+      "contentType": "public_account",
+      "riskTier": "medium",
+      "title": "今年主流模型价格对比",
+      "content": "文章列出三款模型的输入与输出价格，并据此判断模型 A 永远最便宜。表格没有标注查询日期、计费单位、缓存折扣、地区或批量调用条件，也没有说明价格是否含税。\n\n模型供应商可能调整价格和套餐，因此读者目前无法判断这份对比在什么时候、什么调用方式下成立。",
+      "reference": {
+        "primaryIssueCode": "stale_or_undated",
+        "mustDetect": ["stale_or_undated", "comparison_criteria_missing"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["add_date", "define_comparison"]
+      }
+    },
+    {
+      "id": "PB-EVAL-008",
+      "contentType": "blog_longform",
+      "riskTier": "high",
+      "title": "专家证明多智能体适合所有业务",
+      "content": "一位顶级 AI 专家表示，多智能体系统在所有业务中都优于单模型流程。文章没有提供专家姓名、公开发言、研究链接或具体测试环境，却把这句话作为采购复杂编排平台的主要依据。\n\n文中还声称专家已经在上百家公司验证该结论，但没有列出案例、任务定义、质量指标或成本对比。",
+      "reference": {
+        "primaryIssueCode": "source_unverifiable",
+        "mustDetect": ["source_unverifiable", "scope_overgeneralized"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["identify_source", "add_scope"]
+      }
+    },
+    {
+      "id": "PB-EVAL-009",
+      "contentType": "blog_longform",
+      "riskTier": "high",
+      "title": "我们是市场上最准确的内容审查工具",
+      "content": "我们的产品是市场上最准确、最快、最安全的内容审查工具，准确率远超所有竞争对手。文章没有定义准确率，也没有说明比较了哪些产品、使用什么数据集、由谁评分或测试了多少次。\n\n页面只展示一张没有来源的柱状图，并用“第一名”作为购买理由。不同产品支持的语言、内容类型和风险定义并不相同。",
+      "reference": {
+        "primaryIssueCode": "comparison_criteria_missing",
+        "mustDetect": ["comparison_criteria_missing", "source_missing"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["define_comparison", "add_source"]
+      }
+    },
+    {
+      "id": "PB-EVAL-010",
+      "contentType": "blog_longform",
+      "riskTier": "low",
+      "title": "内容审查试点的结果与限制",
+      "content": "某团队在 2026 年 6 月对 40 篇已公开文章进行内部试点。两名编辑分别标记事实陈述和来源缺口，出现分歧时由第三名编辑复核。试点中有 27 篇至少发现一项需要补充来源的问题。\n\n该结果只反映这一批文章和当前评分规则，不能代表所有行业。样本规模较小，且没有设置未使用工具的对照组；团队计划在扩大样本后再评估效率变化。",
+      "reference": {
+        "primaryIssueCode": "evidence_complete",
+        "mustDetect": ["evidence_complete"],
+        "acceptableEvidenceStatuses": ["valid"],
+        "patchRequirementCodes": ["preserve_caveat", "no_material_change"]
+      }
+    },
+    {
+      "id": "PB-EVAL-011",
+      "contentType": "blog_longform",
+      "riskTier": "medium",
+      "title": "客户案例：内容上线后咨询量增加",
+      "content": "某客户改写产品页面后，一个月内咨询量达到 86 条，团队认为新内容带来了明显增长。文章没有提供改写前的咨询量、同期广告投入、流量变化或季节性因素。\n\n案例能够说明改写后发生了什么，但缺少基线和其他解释，因此还不能量化内容改写本身的贡献。",
+      "reference": {
+        "primaryIssueCode": "baseline_missing",
+        "mustDetect": ["baseline_missing", "causation_overreach"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["add_baseline", "soften_causality"]
+      }
+    },
+    {
+      "id": "PB-EVAL-012",
+      "contentType": "blog_longform",
+      "riskTier": "low",
+      "title": "AI 搜索流量预测的三种情景",
+      "content": "本文以当前自然搜索访问量为基线，分别假设未来一年 AI 搜索入口贡献 5%、12% 和 20% 的新增访问。三个数值是用于预算讨论的情景，不是对真实市场份额的预测。\n\n结果会受到平台入口、用户习惯和统计口径影响。团队将每月更新实际数据；如果连续两个月偏离假设区间，就重新计算资源投入。",
+      "reference": {
+        "primaryIssueCode": "evidence_complete",
+        "mustDetect": ["evidence_complete"],
+        "acceptableEvidenceStatuses": ["valid"],
+        "patchRequirementCodes": ["preserve_caveat", "no_material_change"]
+      }
+    },
+    {
+      "id": "PB-EVAL-013",
+      "contentType": "blog_longform",
+      "riskTier": "high",
+      "title": "企业可以永久保存所有用户对话",
+      "content": "企业可以永久保存所有用户与 AI 的对话，只要在隐私政策中写一句用于产品改进即可。这个做法在任何国家都合法，也不需要区分未成年人、员工数据或客户机密。\n\n文章没有说明适用司法辖区、数据类型、保留期限、用户权利或企业的法律依据，却把单一做法作为全球通用结论。",
+      "reference": {
+        "primaryIssueCode": "jurisdiction_missing",
+        "mustDetect": ["jurisdiction_missing", "scope_overgeneralized"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["add_jurisdiction", "add_scope"]
+      }
+    },
+    {
+      "id": "PB-EVAL-014",
+      "contentType": "blog_longform",
+      "riskTier": "high",
+      "title": "每天使用这个应用可以治愈失眠",
+      "content": "每天使用这款冥想应用十分钟，就能治愈失眠并替代专业治疗。文章引用“用户普遍反馈睡得更好”，但没有临床研究、样本信息、对照组或不良反应说明。\n\n内容还建议正在服药的人自行停药，未提示咨询医生，也没有区分短期睡眠困难与需要专业诊断的持续症状。",
+      "reference": {
+        "primaryIssueCode": "high_stakes_unsupported",
+        "mustDetect": ["high_stakes_unsupported", "source_missing"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["add_source", "add_scope"]
+      }
+    },
+    {
+      "id": "PB-EVAL-015",
+      "contentType": "professional_article",
+      "riskTier": "high",
+      "title": "这个投资组合保证每年获得 20% 回报",
+      "content": "只要按照本文的资产配置执行，投资者就能保证每年获得 20% 回报，并且不会出现本金损失。文章用过去两年的上涨表现证明未来收益，没有披露波动、回撤、费用或适用人群。\n\n文中还要求读者立即借款加仓，把历史表现当作确定结果，也没有说明任何风险或数据来源。",
+      "reference": {
+        "primaryIssueCode": "guarantee_language",
+        "mustDetect": ["guarantee_language", "high_stakes_unsupported"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["remove_guarantee", "add_source"]
+      }
+    },
+    {
+      "id": "PB-EVAL-016",
+      "contentType": "professional_article",
+      "riskTier": "low",
+      "title": "2026 年团队 AI 工具使用调查摘要",
+      "content": "本调查于 2026 年 7 月进行，共回收 612 份有效问卷，受访者来自软件、专业服务和零售团队。问卷、筛选条件和汇总表已随报告发布。结果显示，38% 的受访团队每周使用生成式 AI 完成至少一项内容任务。\n\n该比例描述的是本次便利抽样，不能代表全部企业。不同岗位对“使用”的理解可能不同，报告未据此推断生产率或收入变化。",
+      "reference": {
+        "primaryIssueCode": "evidence_complete",
+        "mustDetect": ["evidence_complete"],
+        "acceptableEvidenceStatuses": ["valid"],
+        "patchRequirementCodes": ["preserve_caveat", "no_material_change"]
+      }
+    },
+    {
+      "id": "PB-EVAL-017",
+      "contentType": "professional_article",
+      "riskTier": "medium",
+      "title": "新工作流把审查时间降到 12 分钟",
+      "content": "团队采用新工作流后，单篇内容的平均审查时间为 12 分钟，因此宣布效率提升 70%。文章没有给出旧流程平均耗时、样本篇数、内容长度或参与编辑人数。\n\n当前数字可以作为新流程的运行结果，但缺少对照基线，无法验证提升比例，也无法判断是否适用于更长或风险更高的文章。",
+      "reference": {
+        "primaryIssueCode": "baseline_missing",
+        "mustDetect": ["baseline_missing", "scope_overgeneralized"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["add_baseline", "add_scope"]
+      }
+    },
+    {
+      "id": "PB-EVAL-018",
+      "contentType": "professional_article",
+      "riskTier": "high",
+      "title": "行业报告显示 90% 企业已经部署智能体",
+      "content": "文章称某行业报告显示 90% 的企业已经部署智能体，并据此判断市场已经成熟。全文没有报告名称、发布机构、日期或链接，搜索线索只有“最新权威研究”。\n\n文章也没有解释“部署”是内部试验、付费采购还是生产使用，更没有说明受访企业所在地区与规模。",
+      "reference": {
+        "primaryIssueCode": "source_unverifiable",
+        "mustDetect": ["source_unverifiable", "methodology_missing"],
+        "acceptableEvidenceStatuses": ["missing", "invalid"],
+        "patchRequirementCodes": ["identify_source", "add_methodology"]
+      }
+    },
+    {
+      "id": "PB-EVAL-019",
+      "contentType": "professional_article",
+      "riskTier": "high",
+      "title": "产品版本与安全能力说明",
+      "content": "页面顶部写明当前产品为 3.2 版，并声称该版本已经支持端到端加密；正文的更新记录却显示 3.2 版仍在灰度测试，加密能力计划在 3.3 版上线。\n\n常见问题区域又称所有版本都已默认开启加密。三个位置相互矛盾，且没有可核对的发布说明或生效日期。",
+      "reference": {
+        "primaryIssueCode": "conflicting_version",
+        "mustDetect": ["conflicting_version", "source_missing"],
+        "acceptableEvidenceStatuses": ["invalid"],
+        "patchRequirementCodes": ["reconcile_version", "add_source"]
+      }
+    },
+    {
+      "id": "PB-EVAL-020",
+      "contentType": "professional_article",
+      "riskTier": "low",
+      "title": "内部内容风险审查的决策记录",
+      "content": "团队在 2026 年 8 月审查了 25 篇准备发布的内容，由内容负责人和合规顾问分别判断来源完整性。记录显示 9 篇需要补充出处，4 篇需要缩小结论范围，其余文章只做文字修改。\n\n这是一轮内部流程记录，不代表工具准确率，也不能外推到其他团队。原始正文不进入统计表，分歧项保留匿名编号并由第三人复核。",
+      "reference": {
+        "primaryIssueCode": "evidence_complete",
+        "mustDetect": ["evidence_complete"],
+        "acceptableEvidenceStatuses": ["valid"],
+        "patchRequirementCodes": ["preserve_caveat", "no_material_change"]
+      }
+    }
+  ]
+}
