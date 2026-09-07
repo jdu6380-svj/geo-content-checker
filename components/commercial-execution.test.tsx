@@ -12,7 +12,6 @@ import {
   CommercialAnalysisOrchestrator,
   DeterministicCommercialExecutor,
   OpenAICompatibleCommercialExecutor,
-  PreviewResilientCommercialExecutor,
   type CommercialModelCall,
   getConfiguredCommercialExecutor,
   type CommercialAnalysisExecutor,
@@ -261,22 +260,6 @@ describe("commercial analysis orchestration", () => {
     await expect(new OpenAICompatibleCommercialExecutor(timedOut).execute({ title: "A", content: "Content" })).rejects.toBeInstanceOf(CommercialExecutionRetryableError);
   });
 
-  it("uses a clearly marked deterministic result for retryable Preview model failures only", async () => {
-    const unavailable: CommercialAnalysisExecutor = {
-      execute: async () => { throw new CommercialExecutionRetryableError(); },
-    };
-    const fallback = new DeterministicCommercialExecutor();
-    const executor = new PreviewResilientCommercialExecutor(unavailable, fallback);
-
-    await expect(executor.execute(input)).resolves.toMatchObject({ source: "deterministic" });
-
-    const invalidOutput: CommercialAnalysisExecutor = {
-      execute: async () => { throw new CommercialExecutionInvalidOutputError(); },
-    };
-    await expect(new PreviewResilientCommercialExecutor(invalidOutput, fallback).execute(input))
-      .rejects.toBeInstanceOf(CommercialExecutionInvalidOutputError);
-  });
-
   it("replays a completed idempotent launch without executing or writing twice", async () => {
     const { service, project } = await setup();
     const executor = new FakeExecutor();
@@ -394,6 +377,16 @@ describe("commercial analysis orchestration", () => {
     vi.stubEnv("OPENAI_MODEL", "test-model");
     expect(getConfiguredCommercialExecutor()).toBeNull();
     vi.stubEnv("OPENAI_BASE_URL", "https://provider.test");
+    expect(getConfiguredCommercialExecutor()).toBeInstanceOf(OpenAICompatibleCommercialExecutor);
+  });
+
+  it("keeps Preview model failures explicit instead of wrapping the configured executor with fallback", () => {
+    vi.stubEnv("COMMERCIAL_EXECUTOR", "openai-compatible");
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("OPENAI_MODEL", "test-model");
+    vi.stubEnv("OPENAI_BASE_URL", "https://provider.test");
+    vi.stubEnv("VERCEL_ENV", "preview");
+
     expect(getConfiguredCommercialExecutor()).toBeInstanceOf(OpenAICompatibleCommercialExecutor);
   });
 

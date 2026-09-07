@@ -242,29 +242,6 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
   }
 }
 
-/**
- * Preview remains useful when a third-party model endpoint is temporarily
- * unavailable. The returned result retains its deterministic source marker;
- * production never takes this path.
- */
-export class PreviewResilientCommercialExecutor implements CommercialAnalysisExecutor {
-  constructor(
-    private readonly modelExecutor: CommercialAnalysisExecutor = new OpenAICompatibleCommercialExecutor(),
-    private readonly fallbackExecutor: CommercialAnalysisExecutor = new DeterministicCommercialExecutor(),
-  ) {}
-
-  async execute(input: CommercialAnalysisInput): Promise<CommercialAnalysisResult> {
-    try {
-      return await this.modelExecutor.execute(input);
-    } catch (error) {
-      if (error instanceof CommercialExecutionRetryableError) {
-        return this.fallbackExecutor.execute(input);
-      }
-      throw error;
-    }
-  }
-}
-
 export function getConfiguredCommercialExecutor(): CommercialAnalysisExecutor | null {
   const mode = process.env.COMMERCIAL_EXECUTOR;
   if (process.env.NODE_ENV !== "production" && mode === "deterministic") return new DeterministicCommercialExecutor();
@@ -279,10 +256,10 @@ export function getConfiguredCommercialExecutor(): CommercialAnalysisExecutor | 
     ? Boolean(process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim())
     : Boolean(process.env.OPENAI_API_KEY?.trim());
   if (mode === "openai-compatible" && baseUrlIsHttps && hasCredentials && process.env.OPENAI_MODEL?.trim()) {
-    const executor = new OpenAICompatibleCommercialExecutor();
-    return process.env.VERCEL_ENV === "preview"
-      ? new PreviewResilientCommercialExecutor(executor)
-      : executor;
+    // Portfolio Beta must never present deterministic fallback output as a
+    // completed AI report. Provider failures remain explicit and retryable so
+    // evaluation evidence can only be collected from source=model results.
+    return new OpenAICompatibleCommercialExecutor();
   }
   return null;
 }
