@@ -97,6 +97,29 @@ describe("CommercialDashboard", () => {
     expect(fetchMock.mock.calls[3][1]).toMatchObject({ method: "POST", body: JSON.stringify({ name: "内容审查项目" }) });
   });
 
+  it("creates another project when the portfolio workspace already has one", async () => {
+    const secondProject = { ...project, id: "project_2", name: "第二个审查项目" };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({
+        projects: [project],
+        usage: { workspaceId: "workspace_1", consumed: 0, limit: 30, accessMode: "beta" },
+        history: [{ projectId: project.id, runs: [] }],
+      }))
+      .mockResolvedValueOnce(response({ project: secondProject }, 201));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CommercialDashboard interviewMode />);
+    await waitForProject();
+    await openPasteInput();
+    fireEvent.click(screen.getByRole("button", { name: "新建项目" }));
+    fireEvent.change(screen.getByLabelText("创建新的审查项目"), { target: { value: secondProject.name } });
+    fireEvent.click(screen.getByRole("button", { name: "创建项目" }));
+
+    expect((await screen.findAllByText(secondProject.name)).length).toBeGreaterThanOrEqual(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST", body: JSON.stringify({ name: secondProject.name }) });
+  });
+
   it("maps a fail-closed auth response to a safe user message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ error: "AUTH_UNAVAILABLE", message: "secret provider detail" }, 503)));
     render(<CommercialDashboard />);

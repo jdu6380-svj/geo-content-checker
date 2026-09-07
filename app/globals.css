@@ -735,10 +735,12 @@
 .evidra-project-context strong { display: block; margin-top: 5px; color: var(--evidra-ink); font-size: 13px; }
 .evidra-project-switcher { display: flex; flex-wrap: wrap; justify-content: end; gap: 5px; }
 .evidra-project-switcher button { border: 1px solid var(--evidra-line); border-radius: 999px; background: #fff; padding: 6px 9px; color: var(--evidra-body); font-size: 10px; }
+.evidra-project-switcher button svg { width: 12px; height: 12px; vertical-align: -2px; }
 .evidra-project-switcher button.is-selected { border-color: #c8bfff; background: var(--evidra-purple-soft); color: var(--evidra-purple); }
 .evidra-create-project > div { display: flex; gap: 9px; margin-top: 9px; }
 .evidra-create-project input { min-width: 0; flex: 1; }
 .evidra-create-project button { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 8px; background: var(--evidra-purple); padding: 0 14px; color: #fff; font-size: 11px; font-weight: 800; }
+.evidra-create-project button.evidra-project-cancel { border: 1px solid var(--evidra-line); background: #fff; color: var(--evidra-body); }
 .evidra-analysis-form { grid-template-columns: 1fr !important; gap: 8px !important; }
 .evidra-analysis-form label:nth-of-type(2), .evidra-analysis-form textarea, .evidra-analysis-form > button, .evidra-analysis-form > p { grid-column: auto !important; }
 .evidra-analysis-form > button { justify-self: start; }

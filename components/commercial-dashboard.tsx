@@ -61,6 +61,7 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [creatingProjectMode, setCreatingProjectMode] = useState(false);
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState("");
   const [title, setTitle] = useState("");
@@ -263,6 +264,7 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
       setSelectedId(project.id);
       setInputMode("paste");
       setProjectName("");
+      setCreatingProjectMode(false);
       setUsage((current) => current ? { ...current } : current);
     } catch (createError) {
       setError(workspaceErrorMessage(createError, betaMode));
@@ -589,12 +591,12 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
                   <div className="evidra-paste-panel">
                     <div className="evidra-project-context">
                       <div><span>审查项目</span><strong>{selectedProject?.name ?? "尚未选择项目"}</strong></div>
-                      {projects.length > 0 ? <div className="evidra-project-switcher">{projects.map((project) => <button type="button" key={project.id} className={selectedId === project.id ? "is-selected" : ""} onClick={() => setSelectedId(project.id)}>{project.name}</button>)}</div> : null}
+                      {projects.length > 0 ? <div className="evidra-project-switcher">{projects.map((project) => <button type="button" key={project.id} className={selectedId === project.id && !creatingProjectMode ? "is-selected" : ""} onClick={() => { setSelectedId(project.id); setCreatingProjectMode(false); }}>{project.name}</button>)}<button type="button" className={creatingProjectMode ? "is-selected" : ""} onClick={() => setCreatingProjectMode(true)}><Plus aria-hidden="true" />新建项目</button></div> : null}
                     </div>
-                    {!selectedProject ? (
+                    {!selectedProject || creatingProjectMode ? (
                       <form className="evidra-create-project" onSubmit={handleCreate}>
-                        <label htmlFor="commercial-project-name">先创建一个审查项目</label>
-                        <div><input id="commercial-project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="例如：个人品牌文章审查" maxLength={120} required disabled={creating || state === "loading"} /><button type="submit" disabled={creating || !projectName.trim() || state === "loading"}><Plus aria-hidden="true" />{creating ? "创建中" : "创建项目"}</button></div>
+                        <label htmlFor="commercial-project-name">{selectedProject ? "创建新的审查项目" : "先创建一个审查项目"}</label>
+                        <div><input id="commercial-project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="例如：个人品牌文章审查" maxLength={120} required disabled={creating || state === "loading"} /><button type="submit" disabled={creating || !projectName.trim() || state === "loading"}><Plus aria-hidden="true" />{creating ? "创建中" : "创建项目"}</button>{selectedProject ? <button type="button" className="evidra-project-cancel" onClick={() => { setCreatingProjectMode(false); setProjectName(""); }} disabled={creating}>取消</button> : null}</div>
                       </form>
                     ) : (
                       <form className="commercial-analysis-form evidra-analysis-form" onSubmit={handleAnalyze}>
