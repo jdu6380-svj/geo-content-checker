@@ -30,6 +30,38 @@ import {
 type DashboardState = "loading" | "ready" | "error";
 type RunState = "idle" | "loading" | "polling" | "success" | "error";
 type RunErrorAction = "retry-analysis" | "refresh-run" | "refresh-result" | null;
+type RevisionChecklistItem = { id: string; label: string; completed: boolean };
+
+function buildRevisionChecklist(result: CommercialAnalysisResult): RevisionChecklistItem[] {
+  const actionItems = result.analysis.patch.actions.map((action, index) => {
+    const reason = typeof action.reason === "string" ? action.reason.trim() : "";
+    const instruction = typeof action.instruction === "string" ? action.instruction.trim() : "";
+    const actionTitle = typeof action.title === "string" ? action.title.trim() : "";
+    const field = typeof action.field === "string" ? action.field.trim() : "";
+    const type = typeof action.type === "string" ? action.type : "";
+    const targetParagraphIds = Array.isArray(action.targetParagraphIds)
+      ? action.targetParagraphIds.filter((value): value is string => typeof value === "string")
+      : [];
+    const label = reason || instruction || actionTitle || (type === "author_evidence"
+      ? `补充${field || "可核验事实依据"}`
+      : targetParagraphIds.length
+        ? `调整 ${targetParagraphIds.join("、")} 的内容结构`
+        : "根据诊断建议修改正文");
+    return { id: typeof action.id === "string" ? action.id : `${result.contentDigest}-action-${index}`, label, completed: false };
+  });
+  const markdownItems = result.analysis.patch.markdown
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s*)/, "").trim())
+    .filter(Boolean)
+    .map((label, index) => ({ id: `${result.contentDigest}-markdown-${index}`, label, completed: false }));
+  const source = actionItems.length ? actionItems : markdownItems;
+  const labels = new Set<string>();
+  return source.filter((item) => {
+    if (labels.has(item.label)) return false;
+    labels.add(item.label);
+    return true;
+  }).slice(0, 8);
+}
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -74,11 +106,14 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
   const [baselineResult, setBaselineResult] = useState<CommercialAnalysisResult | null>(null);
   const [patchCopied, setPatchCopied] = useState(false);
   const [patchAdopted, setPatchAdopted] = useState(false);
+  const [revisionChecklist, setRevisionChecklist] = useState<RevisionChecklistItem[]>([]);
+  const [lastAnalyzedContent, setLastAnalyzedContent] = useState<string | null>(null);
   const [runState, setRunState] = useState<RunState>("idle");
   const [runError, setRunError] = useState("");
   const [runErrorCode, setRunErrorCode] = useState("");
   const [runErrorAction, setRunErrorAction] = useState<RunErrorAction>(null);
   const launchKeyRef = useRef<string | null>(null);
+  const submittedContentRef = useRef<string | null>(null);
   const previousSelectedIdRef = useRef<string | null>(null);
   const [subscription, setSubscription] = useState<CommercialSubscription | null>(null);
   const [plans, setPlans] = useState<import("@/lib/client/commercial-api").CommercialPlan[]>([]);
@@ -106,11 +141,14 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
     setBaselineResult(null);
     setPatchCopied(false);
     setPatchAdopted(false);
+    setRevisionChecklist([]);
+    setLastAnalyzedContent(null);
     setRunState("idle");
     setRunError("");
     setRunErrorCode("");
     setRunErrorAction(null);
     launchKeyRef.current = null;
+    submittedContentRef.current = null;
     cancelKeyRef.current = null;
     setCancellingRunId(null);
     try {
@@ -148,6 +186,8 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
       setBaselineResult(null);
       setPatchCopied(false);
       setPatchAdopted(false);
+      setRevisionChecklist([]);
+      setLastAnalyzedContent(null);
       setSubscription(null);
       setPlans([]);
       setPlansError("");
@@ -174,11 +214,14 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
       setFileMessage("");
       setPatchCopied(false);
       setPatchAdopted(false);
+      setRevisionChecklist([]);
+      setLastAnalyzedContent(null);
       setRunState("idle");
       setRunError("");
       setRunErrorCode("");
       setRunErrorAction(null);
       launchKeyRef.current = null;
+      submittedContentRef.current = null;
       cancelKeyRef.current = null;
       setCancellingRunId(null);
     }
@@ -208,6 +251,16 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
         try {
           const analysis = await getCommercialResult(runId);
           setResult(analysis);
+          if (analysis.inputSnapshot) {
+            setTitle(analysis.inputSnapshot.title);
+            setContent(analysis.inputSnapshot.content);
+            setLastAnalyzedContent(analysis.inputSnapshot.content);
+          } else if (submittedContentRef.current !== null) {
+            setLastAnalyzedContent(submittedContentRef.current);
+          }
+          setPatchCopied(false);
+          setPatchAdopted(false);
+          setRevisionChecklist([]);
           setRunState("success");
           setRunError("");
           setRunErrorCode("");
@@ -282,9 +335,7 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
     setRunErrorCode("");
     setRunErrorAction(null);
     if (result) setBaselineResult(result);
-    setResult(null);
-    setPatchCopied(false);
-    setPatchAdopted(false);
+    submittedContentRef.current = content;
     try {
       const idempotencyKey = launchKeyRef.current ?? createCommercialIdempotencyKey();
       launchKeyRef.current = idempotencyKey;
@@ -310,6 +361,16 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
     try {
       const analysis = await getCommercialResult(runId);
       setResult(analysis);
+      if (analysis.inputSnapshot) {
+        setTitle(analysis.inputSnapshot.title);
+        setContent(analysis.inputSnapshot.content);
+        setLastAnalyzedContent(analysis.inputSnapshot.content);
+      } else if (submittedContentRef.current !== null) {
+        setLastAnalyzedContent(submittedContentRef.current);
+      }
+      setPatchCopied(false);
+      setPatchAdopted(false);
+      setRevisionChecklist([]);
       setRunState("success");
       setRunError("");
       setRunErrorCode("");
@@ -333,6 +394,9 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
     setBaselineResult(null);
     setPatchCopied(false);
     setPatchAdopted(false);
+    setRevisionChecklist([]);
+    setLastAnalyzedContent(null);
+    submittedContentRef.current = null;
     setRunError("");
     setRunErrorCode("");
     setRunErrorAction(null);
@@ -498,20 +562,47 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
     }
   }
 
+  function adoptPatch(resultValue: CommercialAnalysisResult) {
+    if (revisionChecklist.length > 0) {
+      setPatchAdopted(true);
+      return;
+    }
+    const checklist = buildRevisionChecklist(resultValue);
+    setRevisionChecklist(checklist);
+    setPatchAdopted(checklist.length > 0);
+  }
+
+  function toggleRevisionItem(itemId: string) {
+    setRevisionChecklist((current) => current.map((item) => item.id === itemId ? { ...item, completed: !item.completed } : item));
+  }
+
+  function requestRecheck() {
+    if (lastAnalyzedContent !== null && content === lastAnalyzedContent) {
+      setRunState("error");
+      setRunError("正文尚未修改。请先完成至少一处修改，再重新审查。");
+      setRunErrorCode("CONTENT_UNCHANGED");
+      setRunErrorAction(null);
+      focusAnalysisEditor();
+      return;
+    }
+    void handleAnalyze({ preventDefault() {} } as FormEvent<HTMLFormElement>);
+  }
+
   function focusAnalysisEditor() {
     const editor = document.getElementById("commercial-analysis-content");
-    editor?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (typeof editor?.scrollIntoView === "function") editor.scrollIntoView({ behavior: "smooth", block: "center" });
     window.setTimeout(() => editor?.focus(), 250);
   }
 
   function focusProjectCreator() {
     const creator = document.getElementById("commercial-project-name");
-    creator?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (typeof creator?.scrollIntoView === "function") creator.scrollIntoView({ behavior: "smooth", block: "center" });
     window.setTimeout(() => creator?.focus(), 250);
   }
 
   function scrollToWorkspaceSection(sectionId: string) {
-    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const section = document.getElementById(sectionId);
+    if (typeof section?.scrollIntoView === "function") section.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function handleFilePick(file: File | undefined) {
@@ -611,7 +702,7 @@ export function CommercialDashboard({ interviewMode = false }: { interviewMode?:
                     )}
                     {selectedProject && runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{!betaMode && runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
                     {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status" role="status" aria-live="polite"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}><RefreshCw aria-hidden="true" />刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}>{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : null}</div> : null}
-                    {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} onEditContent={() => { setInputMode("paste"); focusAnalysisEditor(); }} onRecheck={() => void handleAnalyze({ preventDefault() {} } as FormEvent<HTMLFormElement>)} /> : null}
+                    {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} revisionChecklist={revisionChecklist} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => adoptPatch(result)} onToggleRevisionItem={toggleRevisionItem} onEditContent={() => { setInputMode("paste"); focusAnalysisEditor(); }} onRecheck={requestRecheck} /> : null}
                     {baselineResult && result ? <section className="commercial-recheck-summary" id="recheck" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">修改后复查</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
                   </div>
                 ) : null}
@@ -691,7 +782,7 @@ function AlipayOperatorPanel() {
   return <section className="commercial-operator-panel" aria-labelledby="commercial-operator-title"><button type="button" onClick={() => void load()} disabled={status === "loading"}>{status === "loading" ? "正在检查权限" : "支付运营管理"}</button>{open ? <div><h2 id="commercial-operator-title">支付宝运营审核</h2><p>退款与对账仅创建内部审核请求，不会直接调用支付机构。</p>{message ? <p role={status === "error" ? "alert" : "status"}>{message}</p> : null}{status === "ready" ? <form onSubmit={submit}><label htmlFor="operator-reference">内部支付引用</label><input id="operator-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={128} required /><select aria-label="运营类型" value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="refund_review">退款审核</option><option value="reconciliation">对账任务</option></select><button type="submit">创建审核请求</button></form> : null}{status === "ready" && items.length === 0 ? <p>暂无运营审核请求。</p> : null}{items.length ? <ul>{items.map((item) => <li key={item.id}><strong>{item.type === "refund_review" ? "退款审核" : "对账任务"}</strong><span>{item.status}</span></li>)}</ul> : null}</div> : null}</section>;
 }
 
-function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, onAdoptPatch, onEditContent, onRecheck }: { result: CommercialAnalysisResult; patchCopied: boolean; patchAdopted: boolean; onCopyPatch: () => void; onAdoptPatch: () => void; onEditContent: () => void; onRecheck: () => void }) {
+function AnalysisResultView({ result, patchCopied, patchAdopted, revisionChecklist, onCopyPatch, onAdoptPatch, onToggleRevisionItem, onEditContent, onRecheck }: { result: CommercialAnalysisResult; patchCopied: boolean; patchAdopted: boolean; revisionChecklist: RevisionChecklistItem[]; onCopyPatch: () => void; onAdoptPatch: () => void; onToggleRevisionItem: (itemId: string) => void; onEditContent: () => void; onRecheck: () => void }) {
   const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
   const scoreLabel = result.score >= 80 ? "发布准备充分" : result.score >= 60 ? "建议补充后发布" : "建议优先复核";
@@ -699,6 +790,7 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
   const issueDescription = result.diagnostics.issueCount ? "需要人工判断" : "可进入人工确认";
   const sourceLabel = result.source === "model" ? "模型诊断" : "结构化诊断";
   const issueCount = result.diagnostics.issueCount;
+  const completedRevisionItems = revisionChecklist.filter((item) => item.completed).length;
   const riskItems = result.analysis.diagnostics
     .map((diagnostic, index) => {
       const evidenceStatus = diagnostic.evidenceStatus ?? (index === 0 ? "missing" : "invalid");
@@ -797,6 +889,10 @@ function AnalysisResultView({ result, patchCopied, patchAdopted, onCopyPatch, on
     <details className="commercial-result-section commercial-result-patch" id="patch" open>
       <summary><span>Patch 建议</span><small>仅提供编辑方向，不会自动改写原文</small></summary>
       <div className="commercial-patch-actions"><button type="button" onClick={onCopyPatch}><ClipboardCopy aria-hidden="true" />{patchCopied ? "已复制" : "复制 Patch"}</button><button type="button" className={patchAdopted ? "is-adopted" : ""} onClick={onAdoptPatch}><ListPlus aria-hidden="true" />{patchAdopted ? "已加入修改清单" : "加入修改清单"}</button></div>
+      {revisionChecklist.length ? <div className="commercial-revision-checklist" aria-labelledby="commercial-revision-checklist-title">
+        <div><h5 id="commercial-revision-checklist-title">正文修改清单</h5><span>{completedRevisionItems} / {revisionChecklist.length} 已完成</span></div>
+        <ul>{revisionChecklist.map((item) => <li key={item.id} className={item.completed ? "is-completed" : ""}><label><input type="checkbox" checked={item.completed} onChange={() => onToggleRevisionItem(item.id)} /><span>{item.label}</span></label></li>)}</ul>
+      </div> : null}
       <pre>{result.analysis.patch.markdown}</pre>
     </details>
   </section>;

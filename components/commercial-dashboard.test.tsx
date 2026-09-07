@@ -282,7 +282,7 @@ describe("CommercialDashboard", () => {
         scoring: { totalScore: 62, dimensions: {} },
         questions: { questions: ["问题一", "问题二", "问题三", "问题四", "问题五"] },
         diagnostics: [{}],
-        patch: { mode: "advice", markdown: "补充来源与适用范围", actions: [] },
+        patch: { mode: "advice", markdown: "补充来源与适用范围", actions: [{ id: "patch_1", type: "author_evidence", field: "source", reason: "补充来源与适用范围" }] },
       },
     };
     const secondResult = {
@@ -328,16 +328,24 @@ describe("CommercialDashboard", () => {
     expect(writeText).toHaveBeenCalledWith("补充来源与适用范围");
     fireEvent.click(screen.getByRole("button", { name: "加入修改清单" }));
     expect(screen.getByRole("button", { name: "已加入修改清单" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "正文修改清单" })).toBeTruthy();
+    expect(screen.getByText("0 / 1 已完成")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "补充来源与适用范围" }));
+    expect(screen.getByText("1 / 1 已完成")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新审查" }));
+    expect(await screen.findByText("正文尚未修改。请先完成至少一处修改，再重新审查。")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/commercial/projects/project_1/analyze")).toHaveLength(1);
 
     fireEvent.change(screen.getByLabelText("正文内容"), { target: { value: "补充来源后的正文" } });
-    fireEvent.click(screen.getByRole("button", { name: "重新分析" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新审查" }));
     expect(await screen.findByText("总分 84")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "复查结果" })).toBeTruthy();
     expect(screen.getByText("+22")).toBeTruthy();
     expect(screen.getByText("62 → 84")).toBeTruthy();
     expect(screen.getByText(/修改后的内容可信度有所提升/)).toBeTruthy();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/commercial/projects/project_1/analyze")).toHaveLength(2);
-  });
+  }, 10_000);
 
   it("restores project run history without exposing storage keys and opens a private report", async () => {
     const historyRun = {
@@ -351,6 +359,7 @@ describe("CommercialDashboard", () => {
     };
     const result = {
       source: "deterministic", contentDigest: "digest", contentLength: 8, score: 82,
+      inputSnapshot: { title: "历史审查标题", content: "历史审查正文" },
       diagnostics: { status: "available", issueCount: 0 }, patch: { status: "not_generated" },
       analysis: {
         scoring: { totalScore: 82, dimensions: {} },
@@ -372,6 +381,8 @@ describe("CommercialDashboard", () => {
     expect(screen.queryByText(/result|private|workspace_1/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "查看报告" }));
     expect(await screen.findByText("总分 82")).toBeTruthy();
+    expect((screen.getByLabelText("文章标题") as HTMLInputElement).value).toBe("历史审查标题");
+    expect((screen.getByLabelText("正文内容") as HTMLTextAreaElement).value).toBe("历史审查正文");
     expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/commercial/runs/run_history_success/result");
   });
 

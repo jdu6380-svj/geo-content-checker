@@ -184,6 +184,10 @@ describe("commercial analysis orchestration", () => {
     expect(value.analysis.diagnostics).toHaveLength(5);
     expect(value.analysis.patch.mode).toBe("advice");
     expect(value.analysis.patch.actions.length).toBeGreaterThan(0);
+    expect(value.inputSnapshot).toEqual({
+      title: "GEO article",
+      content: "方法与步骤：第一步收集数据。第二步核验来源。",
+    });
   });
 
   it("runs the full provider-backed scoring, questions, diagnosis and patch flow", async () => {
@@ -216,6 +220,7 @@ describe("commercial analysis orchestration", () => {
     expect(value.analysis.diagnostics.every((diagnostic) => diagnostic.evidenceStatus === "valid")).toBe(true);
     expect(value.analysis.patch.source).toBe("model");
     expect(value.patch.status).toBe("generated");
+    expect(value.inputSnapshot).toEqual({ title: "Provider article", content: paragraph });
   });
 
   it("fails closed on invalid JSON, schema output, and evidence mismatch", async () => {

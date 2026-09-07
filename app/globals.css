@@ -3271,6 +3271,16 @@ h1, h2, h3, p { letter-spacing: 0; }
 .commercial-patch-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .commercial-patch-actions button:hover { border-color: var(--geo-primary); color: var(--geo-primary); }
 .commercial-patch-actions button.is-adopted { border-color: var(--geo-status-success-border); background: var(--geo-status-success-soft); color: var(--geo-status-success); }
+.commercial-revision-checklist { display: grid; gap: 10px; border-bottom: 1px solid var(--geo-border); background: var(--geo-surface); padding: 12px 14px; }
+.commercial-revision-checklist > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.commercial-revision-checklist h5 { margin: 0; color: var(--geo-text-heading); font-size: 12px; }
+.commercial-revision-checklist > div span { color: var(--geo-text-muted); font-size: 11px; }
+.commercial-revision-checklist ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.commercial-revision-checklist li { border: 1px solid var(--geo-border); border-radius: 7px; background: var(--geo-surface-subtle); }
+.commercial-revision-checklist label { display: flex; min-height: 38px; cursor: pointer; align-items: flex-start; gap: 9px; padding: 9px 10px; color: var(--geo-text-body); font-size: 12px; line-height: 1.5; }
+.commercial-revision-checklist input { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; accent-color: var(--geo-primary); }
+.commercial-revision-checklist li.is-completed { border-color: var(--geo-status-success-border); background: var(--geo-status-success-soft); }
+.commercial-revision-checklist li.is-completed span { color: var(--geo-text-muted); text-decoration: line-through; }
 .commercial-recheck-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; border: 1px solid var(--geo-status-success-border); border-radius: 8px; background: var(--geo-status-success-soft); padding: 14px; }
 .commercial-recheck-summary h3 { margin: 0; color: var(--geo-text-heading); font-size: 15px; }
 .commercial-recheck-summary > p { grid-column: 1 / -1; margin: 0; color: var(--geo-text-body); font-size: 12px; line-height: 1.6; }

@@ -53,6 +53,11 @@ export type CommercialAnalysisInput = {
 
 export type CommercialAnalysisResult = {
   source: "deterministic" | "model";
+  inputSnapshot?: {
+    title: string;
+    content: string;
+    publishedAt?: string;
+  };
   contentDigest: string;
   contentLength: number;
   score: number;
@@ -112,6 +117,11 @@ export class DeterministicCommercialExecutor implements CommercialAnalysisExecut
     const score = scoring.totalScore;
     return {
       source: "deterministic",
+      inputSnapshot: {
+        title: input.title,
+        content: input.content,
+        ...(input.publishedAt ? { publishedAt: input.publishedAt } : {}),
+      },
       contentDigest,
       contentLength: input.content.length,
       score,
@@ -229,6 +239,11 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
       const contentDigest = createHash("sha256").update(input.content).digest("hex");
       return {
         source: "model",
+        inputSnapshot: {
+          title: input.title,
+          content: input.content,
+          ...(input.publishedAt ? { publishedAt: input.publishedAt } : {}),
+        },
         contentDigest,
         contentLength: input.content.length,
         score: scoring.totalScore,

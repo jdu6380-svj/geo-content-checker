@@ -41,6 +41,11 @@ export type CommercialProjectHistory = {
 
 export type CommercialAnalysisResult = {
   source: "deterministic" | "model";
+  inputSnapshot?: {
+    title: string;
+    content: string;
+    publishedAt?: string;
+  };
   contentDigest: string;
   contentLength: number;
   score: number;
@@ -207,6 +212,11 @@ function parseAnalysisResult(value: unknown): CommercialAnalysisResult | null {
     !isRecord(value.diagnostics) || value.diagnostics.status !== "available" ||
     typeof value.diagnostics.issueCount !== "number" || !isRecord(value.patch) ||
     (value.patch.status !== "generated" && value.patch.status !== "not_generated") || !isRecord(value.analysis)) return null;
+  if (value.inputSnapshot !== undefined) {
+    if (!isRecord(value.inputSnapshot) || typeof value.inputSnapshot.title !== "string" ||
+      typeof value.inputSnapshot.content !== "string" ||
+      (value.inputSnapshot.publishedAt !== undefined && typeof value.inputSnapshot.publishedAt !== "string")) return null;
+  }
   const analysis = value.analysis;
   if (!isRecord(analysis.scoring) || typeof analysis.scoring.totalScore !== "number" || !isRecord(analysis.scoring.dimensions) ||
     !isRecord(analysis.questions) || !Array.isArray(analysis.questions.questions) || analysis.questions.questions.length !== 5 ||
