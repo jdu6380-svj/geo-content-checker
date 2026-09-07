@@ -52,7 +52,10 @@ export class InMemoryCommercialRepository implements CommercialRepository {
   private readonly usage = new Map<string, number>();
   private readonly reservations = new Map<string, number>();
 
-  constructor(private readonly runLimit: number) {
+  constructor(
+    private readonly runLimit: number,
+    private readonly accessMode: UsageSnapshot["accessMode"] = "paid",
+  ) {
     if (!Number.isSafeInteger(runLimit) || runLimit < 1) {
       throw new Error("runLimit must be a positive integer");
     }
@@ -196,7 +199,7 @@ export class InMemoryCommercialRepository implements CommercialRepository {
       workspaceId: actor.workspaceId,
       consumed: this.usage.get(actor.workspaceId) ?? 0,
       limit: this.runLimit,
-      accessMode: "paid",
+      accessMode: this.accessMode,
       accessExpiresAt: null,
     };
   }

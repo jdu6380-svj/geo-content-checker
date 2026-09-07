@@ -221,7 +221,7 @@ export class InterviewRedisCommercialRepository implements CommercialRepository 
       workspaceId: actor.workspaceId,
       consumed: Number((await this.redis.get<number>(this.consumedKey())) ?? 0),
       limit: this.runLimit,
-      accessMode: "paid",
+      accessMode: "beta",
       accessExpiresAt: null,
     };
   }

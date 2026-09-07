@@ -34,7 +34,6 @@ afterEach(() => {
 
 describe("CommercialDashboard", () => {
   it("shows the focused interview workspace without commercial controls", async () => {
-    vi.stubEnv("NEXT_PUBLIC_EVIDRA_BETA_MODE", "true");
     const fetchMock = vi.fn().mockResolvedValueOnce(response({
       projects: [],
       usage: { workspaceId: "workspace_1", consumed: 2, limit: 10, accessMode: "beta", accessExpiresAt: "2026-10-31T00:00:00.000Z" },
@@ -42,7 +41,7 @@ describe("CommercialDashboard", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CommercialDashboard />);
+    render(<CommercialDashboard interviewMode />);
 
     expect(await screen.findByRole("heading", { name: "开始一次内容可信度审查" })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "主工作区导航" }).textContent).toContain("首页");
@@ -52,7 +51,28 @@ describe("CommercialDashboard", () => {
     expect(screen.queryByRole("button", { name: "支付运营管理" })).toBeNull();
     expect(screen.queryByRole("button", { name: "运行故障恢复" })).toBeNull();
     expect(screen.queryByText("额度与设置")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/额度|套餐|购买|支付/);
+    expect(document.body.textContent).not.toMatch(/Nana|Pro Plan|邀请好友/);
+    expect(screen.getByText("邀请制免费 Beta")).toBeTruthy();
+    expect(screen.getByText("Portfolio Beta")).toBeTruthy();
+    expect(screen.getByText("Beta 演示环境")).toBeTruthy();
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/commercial/projects"]);
+  });
+
+  it("keeps the portfolio safety cap internal instead of presenting user quota", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response({
+      projects: [project],
+      usage: { workspaceId: "workspace_1", consumed: 30, limit: 30, accessMode: "beta" },
+      history: [{ projectId: project.id, runs: [] }],
+    })));
+
+    render(<CommercialDashboard interviewMode />);
+    await waitForProject();
+    await openPasteInput();
+
+    expect((screen.getByRole("button", { name: "开始分析" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("本次演示暂时达到安全运行上限，请稍后再试。")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/额度|套餐|购买|支付/);
   });
 
   it("renders an empty workspace and creates a project through the data API", async () => {

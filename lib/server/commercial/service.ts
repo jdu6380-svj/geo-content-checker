@@ -132,7 +132,7 @@ export function getLocalCommercialService(): CommercialService | null {
 export function getConfiguredCommercialService(): CommercialService | null {
   if (isInterviewMode()) {
     const limit = readPositiveInteger(process.env.COMMERCIAL_RUN_LIMIT) ?? 30;
-    const repository = getInterviewRedisCommercialRepository(limit) ?? new InMemoryCommercialRepository(limit);
+    const repository = getInterviewRedisCommercialRepository(limit) ?? new InMemoryCommercialRepository(limit, "beta");
     const persistence = repository instanceof InMemoryCommercialRepository ? "memory" : "redis";
     const key = `interview:${persistence}:${limit}`;
     if (!localService || localService.key !== key) localService = { key, service: new CommercialService({ repository }) };

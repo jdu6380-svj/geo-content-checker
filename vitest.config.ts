@@ -22,5 +22,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./test/setup.ts"],
     include: ["components/**/*.test.tsx"],
+    // The dashboard suites render a large jsdom tree. Bounded concurrency keeps
+    // the default 5s per-test timeout meaningful instead of creating CPU-only
+    // flakes when every test file starts a jsdom worker at once.
+    maxWorkers: 4,
   },
 });

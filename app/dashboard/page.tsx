@@ -5,6 +5,7 @@ import { isInterviewMode } from "@/lib/server/commercial/interview-mode";
 export const dynamic = "force-dynamic";
 
 export default function DashboardPage() {
+  const interviewMode = isInterviewMode();
   const clerkConfigured = Boolean(
     process.env.CLERK_SECRET_KEY?.trim() && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim(),
   );
@@ -12,7 +13,7 @@ export default function DashboardPage() {
     process.env.COMMERCIAL_AUTH_ADAPTER?.trim() && process.env.COMMERCIAL_DATA_ADAPTER?.trim(),
   );
 
-  if ((!clerkConfigured || !commercialConfigured) && !isInterviewMode()) {
+  if ((!clerkConfigured || !commercialConfigured) && !interviewMode) {
     return (
       <main className="commercial-dashboard commercial-dashboard-locked" aria-labelledby="commercial-dashboard-locked-title">
         <section className="commercial-dashboard-locked-panel">
@@ -24,5 +25,5 @@ export default function DashboardPage() {
     );
   }
 
-  return <CommercialDashboard />;
+  return <CommercialDashboard interviewMode={interviewMode} />;
 }

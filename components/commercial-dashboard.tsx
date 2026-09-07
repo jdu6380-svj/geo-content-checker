@@ -40,13 +40,20 @@ function errorMessage(error: unknown): string {
   return error instanceof CommercialApiError ? error.message : "商业工作台暂不可用，请稍后重试。";
 }
 
+function workspaceErrorMessage(error: unknown, interviewMode: boolean): string {
+  if (interviewMode && error instanceof CommercialApiError && error.code === "USAGE_QUOTA_EXCEEDED") {
+    return "本次演示暂时达到安全运行上限，请稍后再试。";
+  }
+  return errorMessage(error);
+}
+
 function isWorkspaceBoundaryError(error: unknown): boolean {
   return error instanceof CommercialApiError &&
     (error.code === "AUTH_UNAVAILABLE" || error.code === "UNAUTHENTICATED" || error.code === "WORKSPACE_REQUIRED");
 }
 
-export function CommercialDashboard() {
-  const betaMode = process.env.NEXT_PUBLIC_EVIDRA_BETA_MODE?.trim() === "true" || process.env.NEXT_PUBLIC_EVIDRA_INTERVIEW_MODE?.trim() === "true";
+export function CommercialDashboard({ interviewMode = false }: { interviewMode?: boolean } = {}) {
+  const betaMode = interviewMode || process.env.NEXT_PUBLIC_EVIDRA_BETA_MODE?.trim() === "true" || process.env.NEXT_PUBLIC_EVIDRA_INTERVIEW_MODE?.trim() === "true";
   const [state, setState] = useState<DashboardState>("loading");
   const [projects, setProjects] = useState<CommercialProject[]>([]);
   const [history, setHistory] = useState<import("@/lib/client/commercial-api").CommercialProjectHistory[]>([]);
@@ -144,7 +151,7 @@ export function CommercialDashboard() {
       setPlans([]);
       setPlansError("");
       setState("error");
-      setError(errorMessage(loadError));
+      setError(workspaceErrorMessage(loadError, betaMode));
       setErrorCode(loadError instanceof CommercialApiError ? loadError.code : "");
     }
   }, [betaMode]);
@@ -208,7 +215,7 @@ export function CommercialDashboard() {
           void syncWorkspaceSummary();
         } catch (resultError) {
           setRunState("error");
-          setRunError(errorMessage(resultError));
+          setRunError(workspaceErrorMessage(resultError, betaMode));
           setRunErrorCode(resultError instanceof CommercialApiError ? resultError.code : "");
           setRunErrorAction("refresh-result");
         }
@@ -229,12 +236,12 @@ export function CommercialDashboard() {
       return current;
     } catch (loadError) {
       setRunState("error");
-      setRunError(errorMessage(loadError));
+      setRunError(workspaceErrorMessage(loadError, betaMode));
       setRunErrorCode(loadError instanceof CommercialApiError ? loadError.code : "");
       setRunErrorAction("refresh-run");
       return null;
     }
-  }, [syncWorkspaceSummary]);
+  }, [betaMode, syncWorkspaceSummary]);
 
   useEffect(() => {
     if (!run || (run.status !== "queued" && run.status !== "running") || runState === "error") return;
@@ -258,7 +265,7 @@ export function CommercialDashboard() {
       setProjectName("");
       setUsage((current) => current ? { ...current } : current);
     } catch (createError) {
-      setError(errorMessage(createError));
+      setError(workspaceErrorMessage(createError, betaMode));
       setErrorCode(createError instanceof CommercialApiError ? createError.code : "");
     } finally {
       setCreating(false);
@@ -285,7 +292,7 @@ export function CommercialDashboard() {
       await refreshRun(launched.id);
     } catch (launchError) {
       setRunState("error");
-      setRunError(errorMessage(launchError));
+      setRunError(workspaceErrorMessage(launchError, betaMode));
       setRunErrorCode(launchError instanceof CommercialApiError ? launchError.code : "");
       setRunErrorAction("retry-analysis");
     }
@@ -309,12 +316,12 @@ export function CommercialDashboard() {
       return true;
     } catch (resultError) {
       setRunState("error");
-      setRunError(errorMessage(resultError));
+      setRunError(workspaceErrorMessage(resultError, betaMode));
       setRunErrorCode(resultError instanceof CommercialApiError ? resultError.code : "");
       setRunErrorAction("refresh-result");
       return false;
     }
-  }, []);
+  }, [betaMode]);
 
   async function openHistoryRun(historyRun: CommercialRunHistoryItem) {
     setInputMode("paste");
@@ -379,7 +386,7 @@ export function CommercialDashboard() {
     } catch (historyError) {
       setRun(historyRun);
       setRunState("error");
-      setRunError(errorMessage(historyError));
+      setRunError(workspaceErrorMessage(historyError, betaMode));
       setRunErrorCode(historyError instanceof CommercialApiError ? historyError.code : "");
       setRunErrorAction("refresh-run");
     }
@@ -556,19 +563,21 @@ export function CommercialDashboard() {
           <span className="evidra-nav-label">支持</span>
           <a href="/support"><ShieldAlert aria-hidden="true" />帮助中心</a>
         </nav>
-        <div className="commercial-sidebar-footer evidra-sidebar-footer"><span className="commercial-sidebar-avatar">N</span><span><strong>Nana</strong><small>Pro Plan</small></span><ChevronRight aria-hidden="true" /></div>
+        {betaMode
+          ? <div className="commercial-sidebar-footer evidra-sidebar-footer"><span className="commercial-sidebar-avatar">E</span><span><strong>Evidra</strong><small>Portfolio Beta</small></span></div>
+          : <div className="commercial-sidebar-footer evidra-sidebar-footer"><span className="commercial-sidebar-avatar">N</span><span><strong>Nana</strong><small>Pro Plan</small></span><ChevronRight aria-hidden="true" /></div>}
       </aside>
       <section className="commercial-workspace-main evidra-main">
         <header className="commercial-workspace-topbar evidra-topbar">
           <div className="evidra-topbar-context"><span>内容可信度审查</span>{selectedProject ? <><span className="commercial-context-divider">/</span><strong>{selectedProject.name}</strong></> : null}</div>
-          <div className="commercial-workspace-top-actions"><Link className="evidra-icon-button" href="/support?topic=invite"><Gift aria-hidden="true" /><span>邀请好友</span></Link><Link className="evidra-icon-button" href="#report" aria-label="查看最近报告"><Bell aria-hidden="true" /><span className="evidra-notification-dot">3</span></Link><span className="evidra-user-avatar" aria-label="当前用户 Nana">N</span></div>
+          {!betaMode ? <div className="commercial-workspace-top-actions"><Link className="evidra-icon-button" href="/support?topic=invite"><Gift aria-hidden="true" /><span>邀请好友</span></Link><Link className="evidra-icon-button" href="#report" aria-label="查看最近报告"><Bell aria-hidden="true" /><span className="evidra-notification-dot">3</span></Link><span className="evidra-user-avatar" aria-label="当前用户 Nana">N</span></div> : null}
         </header>
         <div className="commercial-dashboard evidra-dashboard" id="overview">
           <header className="commercial-dashboard-header evidra-welcome-header">
-            <div><p className="evidra-welcome">👋 欢迎回来，Nana</p><h1 id="commercial-dashboard-title">开始一次内容可信度审查</h1><p className="commercial-dashboard-lede">Evidra 基于 Evidence First 原则，帮助你识别内容风险，提升观点可信度。</p></div>
+            <div><p className="evidra-welcome">{betaMode ? "邀请制免费 Beta" : "👋 欢迎回来，Nana"}</p><h1 id="commercial-dashboard-title">开始一次内容可信度审查</h1><p className="commercial-dashboard-lede">Evidra 基于 Evidence First 原则，帮助你识别内容风险，提升观点可信度。</p></div>
           </header>
 
-          {error ? <section className="commercial-dashboard-alert" role="alert"><ShieldAlert aria-hidden="true" /><span>{error}</span>{errorCode === "WORKSPACE_REQUIRED" || errorCode === "NOT_FOUND" ? <Link href="/onboarding">设置或选择工作区</Link> : null}{errorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}<button type="button" onClick={() => void loadProjects()}>重试</button></section> : null}
+          {error ? <section className="commercial-dashboard-alert" role="alert"><ShieldAlert aria-hidden="true" /><span>{error}</span>{!betaMode && (errorCode === "WORKSPACE_REQUIRED" || errorCode === "NOT_FOUND") ? <Link href="/onboarding">设置或选择工作区</Link> : null}{!betaMode && errorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}<button type="button" onClick={() => void loadProjects()}>重试</button></section> : null}
           {billingMessage ? <section className="commercial-dashboard-info" role="status">{billingMessage}</section> : null}
 
           <div className="evidra-home-grid">
@@ -594,11 +603,11 @@ export function CommercialDashboard() {
                         <label htmlFor="commercial-analysis-content">正文内容</label>
                         <textarea id="commercial-analysis-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={500_000} rows={8} placeholder="粘贴需要审查的正文…" required disabled={runState === "loading" || runState === "polling"} />
                         <button type="submit" className={runState === "loading" || runState === "polling" ? "is-loading" : ""} aria-busy={runState === "loading" || runState === "polling"} disabled={quotaFull || !title.trim() || !content.trim() || runState === "loading" || runState === "polling"}>{runState === "loading" || runState === "polling" ? <LoaderCircle aria-hidden="true" /> : result ? <RotateCcw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}{runState === "loading" ? "提交中" : runState === "polling" ? "分析中" : result ? "重新分析" : "开始分析"}</button>
-                        {quotaFull ? <p className="commercial-form-hint">当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。</p> : null}
+                        {quotaFull ? <p className="commercial-form-hint">{betaMode ? "本次演示暂时达到安全运行上限，请稍后再试。" : "当前工作区没有可用审查次数；项目仍可创建，获得服务端确认的额度后即可提交审查。"}</p> : null}
                         {result ? <p className="commercial-form-hint">修改正文后重新分析，可对比本次结果与上一次报告的变化。</p> : null}
                       </form>
                     )}
-                    {selectedProject && runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
+                    {selectedProject && runState === "error" ? <section className="commercial-dashboard-alert" role="alert"><span className="commercial-run-error">{runError}</span>{!betaMode && runErrorCode === "UNAUTHENTICATED" ? <Link href="/sign-in?redirect_url=%2Fdashboard">重新登录</Link> : null}{runErrorAction ? <button type="button" onClick={retryAnalysis}>{runErrorAction === "refresh-run" ? "刷新状态" : runErrorAction === "refresh-result" ? "重新读取报告" : "重试分析"}</button> : null}</section> : null}
                     {run && (runState === "polling" || run.status === "queued" || run.status === "running") ? <div className="commercial-detail-status" role="status" aria-live="polite"><span className="commercial-status-dot" />{run.status === "queued" ? "排队中" : "正在分析"}<button type="button" onClick={() => void refreshRun(run.id)}><RefreshCw aria-hidden="true" />刷新状态</button>{run.status === "queued" ? <button type="button" onClick={() => void cancelRun(run)} disabled={cancellingRunId === run.id}>{cancellingRunId === run.id ? "取消中" : "取消本次分析"}</button> : null}</div> : null}
                     {result ? <AnalysisResultView result={result} patchCopied={patchCopied} patchAdopted={patchAdopted} onCopyPatch={() => void copyPatch(result.analysis.patch.markdown)} onAdoptPatch={() => setPatchAdopted(true)} onEditContent={() => { setInputMode("paste"); focusAnalysisEditor(); }} onRecheck={() => void handleAnalyze({ preventDefault() {} } as FormEvent<HTMLFormElement>)} /> : null}
                     {baselineResult && result ? <section className="commercial-recheck-summary" id="recheck" aria-labelledby="commercial-recheck-summary-title"><div><p className="commercial-eyebrow">修改后复查</p><h3 id="commercial-recheck-summary-title">复查结果</h3></div><div className="commercial-recheck-score"><span>评分变化</span><strong className={result.score >= baselineResult.score ? "is-positive" : "is-negative"}>{result.score - baselineResult.score >= 0 ? "+" : ""}{result.score - baselineResult.score}</strong><small>{baselineResult.score} → {result.score}</small></div><p>{result.score >= baselineResult.score ? "修改后的内容可信度有所提升，建议继续核对新增事实依据。" : "修改后评分下降，建议回到正文检查是否引入了新的事实缺口。"}</p></section> : null}
@@ -632,7 +641,7 @@ export function CommercialDashboard() {
             </aside>
           </div>
 
-          <footer className="evidra-home-footer"><span><ShieldAlert aria-hidden="true" />你的内容仅用于审查分析，我们不会用于模型训练或其他用途。</span><span>Evidra v1.0.0 · <b>服务正常</b></span></footer>
+          <footer className="evidra-home-footer"><span><ShieldAlert aria-hidden="true" />你的内容仅用于审查分析，我们不会用于模型训练或其他用途。</span><span>Evidra v1.0.0 · <b>{betaMode ? "Beta 演示环境" : "服务正常"}</b></span></footer>
       {!betaMode ? <div className="commercial-secondary-tools">
         <details className="commercial-billing-panel commercial-settings-collapsed" aria-labelledby="commercial-billing-title">
           <summary><span><Settings2 aria-hidden="true" />额度与设置</span><small>面试演示模式下默认折叠</small></summary>
