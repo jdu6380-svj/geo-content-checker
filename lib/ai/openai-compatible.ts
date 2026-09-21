@@ -67,6 +67,42 @@ function isVercelAiGateway(baseUrl: string): boolean {
   return baseUrl === VERCEL_AI_GATEWAY_BASE_URL;
 }
 
+function safeErrorIdentity(error: unknown): { name: string; code?: string; kind?: string } {
+  if (!(error instanceof Error)) return { name: "non_error" };
+  const code = Reflect.get(error, "code");
+  const message = error.message.toLowerCase();
+  const kind = message.includes("invalid header") || message.includes("headers.append")
+    ? "invalid_header"
+    : message.includes("invalid url") || message.includes("parse url")
+      ? "invalid_url"
+      : message.includes("fetch failed")
+        ? "fetch_failed"
+        : error instanceof TypeError
+          ? "type_error_other"
+          : undefined;
+  return {
+    name: error.name || "Error",
+    ...(typeof code === "string" && /^[A-Z0-9_]+$/.test(code)
+      ? { code }
+      : {}),
+    ...(kind ? { kind } : {}),
+  };
+}
+
+function logProviderNetworkFailure(error: unknown): void {
+  const failure = safeErrorIdentity(error);
+  const cause = error instanceof Error ? safeErrorIdentity(error.cause) : undefined;
+  console.info(JSON.stringify({
+    event: "model_provider_network_failure",
+    errorName: failure.name,
+    ...(failure.code ? { errorCode: failure.code } : {}),
+    ...(failure.kind ? { errorKind: failure.kind } : {}),
+    ...(cause ? { causeName: cause.name } : {}),
+    ...(cause?.code ? { causeCode: cause.code } : {}),
+    ...(cause?.kind ? { causeKind: cause.kind } : {}),
+  }));
+}
+
 export async function callOpenAICompatibleModel({
   messages,
   temperature = 0.1,
@@ -80,14 +116,14 @@ export async function callOpenAICompatibleModel({
       : "memory",
 }: ChatCompletionOptions): Promise<ModelCallResult> {
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const baseUrl = (process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/$/, "");
   const usesVercelAiGateway = isVercelAiGateway(baseUrl);
   const supportsReasoningEffort = !model.toLowerCase().startsWith("deepseek-");
   // Never forward a provider-specific key to the Gateway. Vercel deployments
   // receive a short-lived OIDC token automatically.
-  const apiKey = usesVercelAiGateway
+  const apiKey = (usesVercelAiGateway
     ? process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN
-    : process.env.OPENAI_API_KEY;
+    : process.env.OPENAI_API_KEY)?.replace(/\s+/g, "");
 
   if (!apiKey) {
     markGeoRequestOutcome({
@@ -271,6 +307,7 @@ export async function callOpenAICompatibleModel({
       modelLatencyMs: modelLatencyMs(),
       modelErrorCategory: "provider_network",
     });
+    logProviderNetworkFailure(error);
     throw new ModelCallError("Model request failed", {
       cause: error instanceof Error ? error : undefined,
       errorCategory: "provider_network",

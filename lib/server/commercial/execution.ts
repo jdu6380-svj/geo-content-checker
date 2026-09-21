@@ -220,7 +220,11 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
         const parsed = modelDiagnosticSchema.safeParse(normalized);
         if (!parsed.success) throw new CommercialExecutionInvalidOutputError();
         const validated = validateDiagnosticEvidenceWithTelemetry({ ...parsed.data, question, source: "model" }, paragraphs);
-        if (validated.result.evidenceStatus === "invalid") throw new CommercialExecutionInvalidOutputError();
+        // Keep the run usable when a provider returns a near-miss quote. The
+        // evidence validator already removes unverifiable quotes, marks the
+        // diagnostic as invalid, and downgrades answerability/risk. Failing the
+        // entire report here made OpenAI-compatible providers unnecessarily
+        // brittle even when the rest of the analysis was valid.
         diagnostics.push(validated.result);
       }
 
