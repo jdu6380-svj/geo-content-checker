@@ -87,6 +87,20 @@ function parseModelJson(raw: string): unknown {
   }
 }
 
+function normalizeScoringModelOutput(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const root = value as Record<string, unknown>;
+  if (!root.dimensions || typeof root.dimensions !== "object" || Array.isArray(root.dimensions)) return value;
+  const maxByKey = { questionCoverage: 35, factCompleteness: 30, structureClarity: 20, freshness: 15 } as const;
+  const dimensions = Object.fromEntries(Object.entries(maxByKey).map(([key, max]) => {
+    const item = (root.dimensions as Record<string, unknown>)[key];
+    return [key, item && typeof item === "object" && !Array.isArray(item)
+      ? { ...(item as Record<string, unknown>), max }
+      : item];
+  }));
+  return { ...root, dimensions };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
@@ -185,17 +199,18 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
     if (!input.title.trim() || !input.content.trim()) throw new CommercialExecutionFailedError();
     const paragraphs = createNumberedParagraphs(input.content);
     try {
-      const scorePayload = modelScoringSchema.safeParse(parseModelJson(await this.call(SCORING_SYSTEM_PROMPT, {
+      const scorePayload = modelScoringSchema.safeParse(normalizeScoringModelOutput(parseModelJson(await this.call(SCORING_SYSTEM_PROMPT, {
         title: input.title,
         publishedAt: input.publishedAt || "原文未提供",
         paragraphs,
-      }, { maxTokens: 2400, timeoutMs: 32_000 })));
+      }, { maxTokens: 2400, timeoutMs: 32_000 }))));
       if (!scorePayload.success) throw new CommercialExecutionInvalidOutputError();
+      const scoreData = scorePayload.data;
       const dimensions = {
-        questionCoverage: { ...scorePayload.data.dimensions.questionCoverage, score: clamp(scorePayload.data.dimensions.questionCoverage.score, 0, 35), max: 35 as const },
-        factCompleteness: { ...scorePayload.data.dimensions.factCompleteness, score: clamp(scorePayload.data.dimensions.factCompleteness.score, 0, 30), max: 30 as const },
-        structureClarity: { ...scorePayload.data.dimensions.structureClarity, score: clamp(scorePayload.data.dimensions.structureClarity.score, 0, 20), max: 20 as const },
-        freshness: { ...scorePayload.data.dimensions.freshness, score: clamp(scorePayload.data.dimensions.freshness.score, 0, 15), max: 15 as const },
+        questionCoverage: { ...scoreData.dimensions.questionCoverage, score: clamp(scoreData.dimensions.questionCoverage.score, 0, 35), max: 35 as const },
+        factCompleteness: { ...scoreData.dimensions.factCompleteness, score: clamp(scoreData.dimensions.factCompleteness.score, 0, 30), max: 30 as const },
+        structureClarity: { ...scoreData.dimensions.structureClarity, score: clamp(scoreData.dimensions.structureClarity.score, 0, 20), max: 20 as const },
+        freshness: { ...scoreData.dimensions.freshness, score: clamp(scoreData.dimensions.freshness.score, 0, 15), max: 15 as const },
       };
       const scoring: EvaluateScoringResponse = {
         totalScore: dimensions.questionCoverage.score + dimensions.factCompleteness.score + dimensions.structureClarity.score + dimensions.freshness.score,
@@ -218,13 +233,11 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
           throw new CommercialExecutionInvalidOutputError();
         }
         const parsed = modelDiagnosticSchema.safeParse(normalized);
-        if (!parsed.success) throw new CommercialExecutionInvalidOutputError();
+        if (!parsed.success) {
+          throw new CommercialExecutionInvalidOutputError();
+        }
         const validated = validateDiagnosticEvidenceWithTelemetry({ ...parsed.data, question, source: "model" }, paragraphs);
-        // Keep the run usable when a provider returns a near-miss quote. The
-        // evidence validator already removes unverifiable quotes, marks the
-        // diagnostic as invalid, and downgrades answerability/risk. Failing the
-        // entire report here made OpenAI-compatible providers unnecessarily
-        // brittle even when the rest of the analysis was valid.
+        if (validated.result.evidenceStatus === "invalid") throw new CommercialExecutionInvalidOutputError();
         diagnostics.push(validated.result);
       }
 
