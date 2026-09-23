@@ -89,16 +89,43 @@ function parseModelJson(raw: string): unknown {
 
 function normalizeScoringModelOutput(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-  const root = value as Record<string, unknown>;
-  if (!root.dimensions || typeof root.dimensions !== "object" || Array.isArray(root.dimensions)) return value;
+  const rootValue = value as Record<string, unknown>;
+  const nested = ["result", "data", "output", "scoring"].find((key) => {
+    const candidate = rootValue[key];
+    return candidate && typeof candidate === "object" && !Array.isArray(candidate);
+  });
+  const root = (nested ? rootValue[nested] : value) as Record<string, unknown>;
+  const dimensionsValue = root.dimensions ?? root.dimension_scores ?? root.dimensionScores;
+  if (!dimensionsValue || typeof dimensionsValue !== "object" || Array.isArray(dimensionsValue)) return value;
   const maxByKey = { questionCoverage: 35, factCompleteness: 30, structureClarity: 20, freshness: 15 } as const;
+  const dimensionAliases = {
+    questionCoverage: ["questionCoverage", "question_coverage"],
+    factCompleteness: ["factCompleteness", "fact_completeness"],
+    structureClarity: ["structureClarity", "structure_clarity"],
+    freshness: ["freshness"],
+  } as const;
+  const numeric = (candidate: unknown): unknown => {
+    if (typeof candidate === "number") return candidate;
+    if (typeof candidate === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(candidate)) return Number(candidate);
+    return candidate;
+  };
   const dimensions = Object.fromEntries(Object.entries(maxByKey).map(([key, max]) => {
-    const item = (root.dimensions as Record<string, unknown>)[key];
+    const source = dimensionsValue as Record<string, unknown>;
+    const sourceKey = dimensionAliases[key as keyof typeof dimensionAliases].find((alias) => Object.hasOwn(source, alias));
+    const item = sourceKey ? source[sourceKey] : undefined;
     return [key, item && typeof item === "object" && !Array.isArray(item)
-      ? { ...(item as Record<string, unknown>), max }
+      ? {
+          ...(item as Record<string, unknown>),
+          score: numeric((item as Record<string, unknown>).score),
+          max,
+        }
       : item];
   }));
-  return { ...root, dimensions };
+  return {
+    ...root,
+    totalScore: numeric(root.totalScore ?? root.total_score),
+    dimensions,
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {
