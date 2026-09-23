@@ -223,6 +223,54 @@ describe("commercial analysis orchestration", () => {
     expect(value.inputSnapshot).toEqual({ title: "Provider article", content: paragraph });
   });
 
+  it("normalizes common provider scoring aliases without weakening score validation", async () => {
+    const paragraph = "方法与步骤：第一步收集数据。第二步核验来源。";
+    const responses = [
+      JSON.stringify({ total_score: "40", dimensions: {
+        question_coverage: { value: "14", explanation: "覆盖核心问题" },
+        fact_completeness: { value: 11, analysis: "事实依据" },
+        structure_clarity: { value: 8, comment: "结构清楚" },
+        freshness: { value: 7, description: "时效边界" },
+      } }),
+      JSON.stringify({ questions: ["核心问题是什么？", "具体方法有哪些？", "适合哪些使用场景？", "有哪些事实依据？", "限制和时效是什么？"] }),
+      ...Array.from({ length: 5 }, () => JSON.stringify({
+        answerability: "可以完全回答",
+        riskLevel: "low",
+        evidence: [{ paragraphId: "Para-1", quote: paragraph }],
+        missingInfo: [],
+        recommendation: "保留原文已有的核验方式。",
+      })),
+      JSON.stringify({ actions: [{ type: "structure_change", title: "优化结构", instruction: "调整已有段落顺序。", targetParagraphIds: ["Para-1"] }] }),
+    ];
+    let index = 0;
+    const call: CommercialModelCall = async () => ({ content: responses[index++], finishReason: "stop" });
+    const value = await new OpenAICompatibleCommercialExecutor(call).execute({ title: "Provider article", content: paragraph });
+
+    expect(value.analysis.scoring.dimensions).toMatchObject({
+      questionCoverage: { score: 14, max: 35, reason: "覆盖核心问题" },
+      factCompleteness: { score: 11, max: 30, reason: "事实依据" },
+      structureClarity: { score: 8, max: 20, reason: "结构清楚" },
+      freshness: { score: 7, max: 15, reason: "时效边界" },
+    });
+  });
+
+  it("records scoring schema paths without logging provider values", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const privateValue = "PRIVATE_PROVIDER_RESPONSE_TEXT";
+    const invalidScoring: CommercialModelCall = async () => ({
+      content: JSON.stringify({ total_score: privateValue, dimensions: {} }),
+      finishReason: "stop",
+    });
+
+    await expect(new OpenAICompatibleCommercialExecutor(invalidScoring).execute({ title: "A", content: "Content" })).rejects.toBeInstanceOf(CommercialExecutionInvalidOutputError);
+    const diagnostic = info.mock.calls.map(([entry]) => String(entry)).find((entry) => {
+      if (!entry.includes("commercial_execution_schema_rejected")) return false;
+      try { return JSON.parse(String(entry)).stage === "scoring_schema"; } catch { return false; }
+    });
+    expect(diagnostic).toContain("totalScore");
+    expect(diagnostic).not.toContain(privateValue);
+  });
+
   it("fails closed on invalid JSON, schema output, and evidence mismatch", async () => {
     const invalidJson: CommercialModelCall = async () => ({ content: "not-json", finishReason: "stop" });
     await expect(new OpenAICompatibleCommercialExecutor(invalidJson).execute({ title: "A", content: "Content" })).rejects.toBeInstanceOf(CommercialExecutionInvalidOutputError);
@@ -266,7 +314,10 @@ describe("commercial analysis orchestration", () => {
     };
 
     await expect(new OpenAICompatibleCommercialExecutor(invalidDiagnostic).execute({ title: "A", content: "Content" })).rejects.toBeInstanceOf(CommercialExecutionInvalidOutputError);
-    const diagnostic = info.mock.calls.map(([entry]) => String(entry)).find((entry) => entry.includes("commercial_execution_schema_rejected"));
+    const diagnostic = info.mock.calls.map(([entry]) => String(entry)).find((entry) => {
+      if (!entry.includes("commercial_execution_schema_rejected")) return false;
+      try { return JSON.parse(String(entry)).stage === "diagnostic_schema"; } catch { return false; }
+    });
     expect(diagnostic).toContain("answerability");
     expect(diagnostic).toContain("invalid_enum_value");
     expect(diagnostic).not.toContain("invalid-private-value");

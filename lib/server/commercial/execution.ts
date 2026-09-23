@@ -104,6 +104,7 @@ function normalizeScoringModelOutput(value: unknown): unknown {
     structureClarity: ["structureClarity", "structure_clarity"],
     freshness: ["freshness"],
   } as const;
+  const reasonAliases = ["reason", "explanation", "analysis", "comment", "description"] as const;
   const numeric = (candidate: unknown): unknown => {
     if (typeof candidate === "number") return candidate;
     if (typeof candidate === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(candidate)) return Number(candidate);
@@ -114,17 +115,32 @@ function normalizeScoringModelOutput(value: unknown): unknown {
     const sourceKey = dimensionAliases[key as keyof typeof dimensionAliases].find((alias) => Object.hasOwn(source, alias));
     const item = sourceKey ? source[sourceKey] : undefined;
     return [key, item && typeof item === "object" && !Array.isArray(item)
-      ? {
-          ...(item as Record<string, unknown>),
-          score: numeric((item as Record<string, unknown>).score),
-          max,
-        }
+      ? (() => {
+          const dimension = item as Record<string, unknown>;
+          const reasonKey = reasonAliases.find((alias) => typeof dimension[alias] === "string");
+          return {
+            ...dimension,
+            score: numeric(dimension.score ?? dimension.value),
+            max,
+            reason: reasonKey ? dimension[reasonKey] : undefined,
+          };
+        })()
       : item];
   }));
   return {
     ...root,
-    totalScore: numeric(root.totalScore ?? root.total_score),
+    totalScore: numeric(root.totalScore ?? root.total_score ?? root.score),
     dimensions,
+  };
+}
+
+function safeSchemaIssue(issue: { path: PropertyKey[]; code: string; expected?: unknown; received?: unknown }) {
+  const safeTypes = new Set(["string", "number", "boolean", "array", "object", "undefined", "null"]);
+  return {
+    path: issue.path.map((part) => typeof part === "number" ? "index" : String(part)).join("."),
+    code: issue.code,
+    ...(typeof issue.expected === "string" && safeTypes.has(issue.expected) ? { expected: issue.expected } : {}),
+    ...(typeof issue.received === "string" && safeTypes.has(issue.received) ? { received: issue.received } : {}),
   };
 }
 
@@ -227,12 +243,28 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
     const paragraphs = createNumberedParagraphs(input.content);
     let stage = "scoring_response";
     try {
-      const scorePayload = modelScoringSchema.safeParse(normalizeScoringModelOutput(parseModelJson(await this.call(SCORING_SYSTEM_PROMPT, {
+      const scoringRaw = await this.call(SCORING_SYSTEM_PROMPT, {
         title: input.title,
         publishedAt: input.publishedAt || "原文未提供",
         paragraphs,
-      }, { maxTokens: 2400, timeoutMs: 32_000 }))));
-      if (!scorePayload.success) throw new CommercialExecutionInvalidOutputError();
+      }, { maxTokens: 2400, timeoutMs: 32_000 });
+      let scoringJson: unknown;
+      try {
+        scoringJson = parseModelJson(scoringRaw);
+      } catch (error) {
+        stage = "scoring_json";
+        throw error;
+      }
+      stage = "scoring_schema";
+      const scorePayload = modelScoringSchema.safeParse(normalizeScoringModelOutput(scoringJson));
+      if (!scorePayload.success) {
+        console.info(JSON.stringify({
+          event: "commercial_execution_schema_rejected",
+          stage,
+          issues: scorePayload.error.issues.map(safeSchemaIssue),
+        }));
+        throw new CommercialExecutionInvalidOutputError();
+      }
       stage = "scoring_semantics";
       const scoreData = scorePayload.data;
       const dimensions = {
@@ -269,10 +301,7 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
           console.info(JSON.stringify({
             event: "commercial_execution_schema_rejected",
             stage,
-            issues: parsed.error.issues.map((issue) => ({
-              path: issue.path.map((part) => typeof part === "number" ? "index" : String(part)).join("."),
-              code: issue.code,
-            })),
+            issues: parsed.error.issues.map(safeSchemaIssue),
           }));
           throw new CommercialExecutionInvalidOutputError();
         }
