@@ -225,6 +225,7 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
   async execute(input: CommercialAnalysisInput): Promise<CommercialAnalysisResult> {
     if (!input.title.trim() || !input.content.trim()) throw new CommercialExecutionFailedError();
     const paragraphs = createNumberedParagraphs(input.content);
+    let stage = "scoring_response";
     try {
       const scorePayload = modelScoringSchema.safeParse(normalizeScoringModelOutput(parseModelJson(await this.call(SCORING_SYSTEM_PROMPT, {
         title: input.title,
@@ -232,6 +233,7 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
         paragraphs,
       }, { maxTokens: 2400, timeoutMs: 32_000 }))));
       if (!scorePayload.success) throw new CommercialExecutionInvalidOutputError();
+      stage = "scoring_semantics";
       const scoreData = scorePayload.data;
       const dimensions = {
         questionCoverage: { ...scoreData.dimensions.questionCoverage, score: clamp(scoreData.dimensions.questionCoverage.score, 0, 35), max: 35 as const },
@@ -246,12 +248,14 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
         source: "model",
       };
 
+      stage = "questions_response";
       const questionsPayload = modelQuestionsSchema.safeParse(parseModelJson(await this.call(QUESTIONS_SYSTEM_PROMPT, { title: input.title, paragraphs }, { maxTokens: 1600, timeoutMs: 32_000 })));
       if (!questionsPayload.success || new Set(questionsPayload.data.questions).size !== 5) throw new CommercialExecutionInvalidOutputError();
       const questions: PredictQuestionsResponse = { questions: questionsPayload.data.questions, source: "model" };
 
       const diagnostics: DiagnosticResult[] = [];
       for (const question of questions.questions) {
+        stage = "diagnostic_response";
         let normalized: ReturnType<typeof normalizeDiagnosticModelOutput>;
         try {
           normalized = normalizeDiagnosticModelOutput(await this.call(DIAGNOSTIC_SYSTEM_PROMPT, { title: input.title, paragraphs, question }, { maxTokens: 2400, timeoutMs: 45_000 }), question);
@@ -263,11 +267,13 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
         if (!parsed.success) {
           throw new CommercialExecutionInvalidOutputError();
         }
+        stage = "diagnostic_evidence";
         const validated = validateDiagnosticEvidenceWithTelemetry({ ...parsed.data, question, source: "model" }, paragraphs);
         if (validated.result.evidenceStatus === "invalid") throw new CommercialExecutionInvalidOutputError();
         diagnostics.push(validated.result);
       }
 
+      stage = "patch_response";
       let normalizedPatch: unknown;
       try {
         normalizedPatch = normalizePatchModelOutput(await this.call(PATCH_SYSTEM_PROMPT, { title: input.title, paragraphs, diagnostics }, { maxTokens: 3600, timeoutMs: 45_000 }), "advice");
@@ -277,6 +283,7 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
       }
       const patchPayload = modelAdviceActionsSchema.safeParse(normalizedPatch);
       if (!patchPayload.success) throw new CommercialExecutionInvalidOutputError();
+      stage = "patch_references";
       assertAdviceReferences(patchPayload.data.actions, diagnostics, paragraphs);
       const actions = decorateAdviceActions(patchPayload.data.actions);
       const patch: GeneratePatchesResponse = { mode: "advice", actions, markdown: formatPatchMarkdown(actions), source: "model" };
@@ -296,6 +303,13 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
         analysis: { scoring, questions, diagnostics, patch },
       };
     } catch (error) {
+      console.info(JSON.stringify({
+        event: "commercial_execution_validation_failed",
+        stage,
+        errorCode: error instanceof CommercialExecutionInvalidOutputError
+          ? error.code
+          : "EXECUTION_FAILED",
+      }));
       return modelFailure(error);
     }
   }
