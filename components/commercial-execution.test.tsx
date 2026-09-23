@@ -253,6 +253,26 @@ describe("commercial analysis orchestration", () => {
     await expect(new OpenAICompatibleCommercialExecutor(diagnosisInvalidJson).execute({ title: "A", content: "Content" })).rejects.toBeInstanceOf(CommercialExecutionInvalidOutputError);
   });
 
+  it("logs only diagnostic schema paths and issue codes, never rejected values", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    let callCount = 0;
+    const invalidDiagnostic: CommercialModelCall = async () => {
+      callCount += 1;
+      if (callCount === 1) return { content: JSON.stringify({ totalScore: 20, dimensions: {
+        questionCoverage: { score: 5, max: 35, reason: "ok" }, factCompleteness: { score: 5, max: 30, reason: "ok" }, structureClarity: { score: 5, max: 20, reason: "ok" }, freshness: { score: 5, max: 15, reason: "ok" },
+      } }), finishReason: "stop" };
+      if (callCount === 2) return { content: JSON.stringify({ questions: ["核心问题是什么？", "具体方法有哪些？", "适合哪些使用场景？", "有哪些事实依据？", "限制和时效是什么？"] }), finishReason: "stop" };
+      return { content: JSON.stringify({ answerability: "invalid-private-value", riskLevel: "low", evidence: [], missingInfo: [], recommendation: "private recommendation" }), finishReason: "stop" };
+    };
+
+    await expect(new OpenAICompatibleCommercialExecutor(invalidDiagnostic).execute({ title: "A", content: "Content" })).rejects.toBeInstanceOf(CommercialExecutionInvalidOutputError);
+    const diagnostic = info.mock.calls.map(([entry]) => String(entry)).find((entry) => entry.includes("commercial_execution_schema_rejected"));
+    expect(diagnostic).toContain("answerability");
+    expect(diagnostic).toContain("invalid_enum_value");
+    expect(diagnostic).not.toContain("invalid-private-value");
+    expect(diagnostic).not.toContain("private recommendation");
+  });
+
   it("maps provider rate limits and timeouts to retryable errors without exposing provider text", async () => {
     const rateLimited: CommercialModelCall = async () => {
       throw new ModelCallError("provider secret text", { status: 429, retryAfter: "10" });

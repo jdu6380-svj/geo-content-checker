@@ -255,7 +255,7 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
 
       const diagnostics: DiagnosticResult[] = [];
       for (const question of questions.questions) {
-        stage = "diagnostic_response";
+        stage = "diagnostic_json";
         let normalized: ReturnType<typeof normalizeDiagnosticModelOutput>;
         try {
           normalized = normalizeDiagnosticModelOutput(await this.call(DIAGNOSTIC_SYSTEM_PROMPT, { title: input.title, paragraphs, question }, { maxTokens: 2400, timeoutMs: 45_000 }), question);
@@ -263,8 +263,17 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
           if (error instanceof CommercialExecutionRetryableError) throw error;
           throw new CommercialExecutionInvalidOutputError();
         }
+        stage = "diagnostic_schema";
         const parsed = modelDiagnosticSchema.safeParse(normalized);
         if (!parsed.success) {
+          console.info(JSON.stringify({
+            event: "commercial_execution_schema_rejected",
+            stage,
+            issues: parsed.error.issues.map((issue) => ({
+              path: issue.path.map((part) => typeof part === "number" ? "index" : String(part)).join("."),
+              code: issue.code,
+            })),
+          }));
           throw new CommercialExecutionInvalidOutputError();
         }
         stage = "diagnostic_evidence";
