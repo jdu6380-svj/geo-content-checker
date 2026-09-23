@@ -273,6 +273,30 @@ describe("commercial analysis orchestration", () => {
     expect(diagnostic).not.toContain("private recommendation");
   });
 
+  it("normalizes explicit answerability aliases and ignores malformed evidence items", async () => {
+    const paragraph = "原文明确说明，团队每周核验一次来源。";
+    const responses = [
+      JSON.stringify({ totalScore: 20, dimensions: {
+        questionCoverage: { score: 5, max: 35, reason: "ok" }, factCompleteness: { score: 5, max: 30, reason: "ok" }, structureClarity: { score: 5, max: 20, reason: "ok" }, freshness: { score: 5, max: 15, reason: "ok" },
+      } }),
+      JSON.stringify({ questions: ["核心问题是什么？", "具体方法有哪些？", "适合哪些使用场景？", "有哪些事实依据？", "限制和时效是什么？"] }),
+      ...Array.from({ length: 5 }, () => JSON.stringify({
+        answerability: "fully_answerable",
+        riskLevel: "low",
+        evidence: [null, { paragraph_id: "Para-1", text: paragraph }],
+        missing_info: [],
+        recommendation: "保留原文已有的核验方式。",
+      })),
+      JSON.stringify({ actions: [{ type: "structure_change", title: "优化结构", instruction: "调整已有段落顺序。", targetParagraphIds: ["Para-1"] }] }),
+    ];
+    let index = 0;
+    const call: CommercialModelCall = async () => ({ content: responses[index++], finishReason: "stop" });
+    const value = await new OpenAICompatibleCommercialExecutor(call).execute({ title: "Provider article", content: paragraph });
+
+    expect(value.analysis.diagnostics).toHaveLength(5);
+    expect(value.analysis.diagnostics.every((diagnostic) => diagnostic.answerability === "可以完全回答" && diagnostic.evidenceStatus === "valid")).toBe(true);
+  });
+
   it("maps provider rate limits and timeouts to retryable errors without exposing provider text", async () => {
     const rateLimited: CommercialModelCall = async () => {
       throw new ModelCallError("provider secret text", { status: 429, retryAfter: "10" });

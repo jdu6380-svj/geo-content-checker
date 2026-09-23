@@ -10,14 +10,23 @@ function aliasedField(record: JsonRecord, canonical: string, alias: string): unk
   return Object.hasOwn(record, canonical) ? record[canonical] : record[alias];
 }
 
+function normalizeAnswerability(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["answerable", "fully_answerable", "can_answer", "可以回答", "完全可回答"].includes(normalized)) return "可以完全回答";
+  if (["insufficient", "insufficient_information", "partially_answerable", "信息不足", "部分回答"].includes(normalized)) return "信息不足";
+  if (["risky", "risk", "有风险"].includes(normalized)) return "有风险";
+  return value;
+}
+
 function normalizeEvidence(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
 
-  return value.map((item) => {
-    if (!isJsonRecord(item)) return item;
+  return value.flatMap((item) => {
+    if (!isJsonRecord(item)) return [];
     return {
       paragraphId: aliasedField(item, "paragraphId", "paragraph_id"),
-      quote: item.quote,
+      quote: aliasedField(item, "quote", "text"),
     };
   });
 }
@@ -29,7 +38,7 @@ export function normalizeDiagnosticModelOutput(raw: string, question: string) {
 
   return {
     question,
-    answerability: candidate.answerability,
+    answerability: normalizeAnswerability(candidate.answerability),
     riskLevel: aliasedField(candidate, "riskLevel", "risk_level"),
     evidence: normalizeEvidence(candidate.evidence),
     missingInfo: aliasedField(candidate, "missingInfo", "missing_info"),
