@@ -223,6 +223,38 @@ describe("commercial analysis orchestration", () => {
     expect(value.inputSnapshot).toEqual({ title: "Provider article", content: paragraph });
   });
 
+  it("keeps verified model analysis and uses safe advice fallback for an invalid patch payload", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const paragraph = "方法与步骤：第一步收集数据。第二步核验来源。";
+    const responses = [
+      JSON.stringify({ totalScore: 40, dimensions: {
+        questionCoverage: { score: 14, max: 35, reason: "ok" },
+        factCompleteness: { score: 11, max: 30, reason: "ok" },
+        structureClarity: { score: 8, max: 20, reason: "ok" },
+        freshness: { score: 7, max: 15, reason: "ok" },
+      } }),
+      JSON.stringify({ questions: ["核心问题是什么？", "具体方法有哪些？", "适合哪些使用场景？", "有哪些事实依据？", "限制和时效是什么？"] }),
+      ...Array.from({ length: 5 }, (_, index) => JSON.stringify({
+        answerability: "信息不足",
+        riskLevel: "medium",
+        evidence: [],
+        missingInfo: [`缺少第${index + 1}项信息。`],
+        recommendation: `补充第${index + 1}项信息。`,
+      })),
+      "not-json patch output",
+    ];
+    let index = 0;
+    const call: CommercialModelCall = async () => ({ content: responses[index++], finishReason: "stop" });
+    const value = await new OpenAICompatibleCommercialExecutor(call).execute({ title: "Provider article", content: paragraph });
+
+    expect(value.source).toBe("model");
+    expect(value.analysis.scoring.source).toBe("model");
+    expect(value.analysis.diagnostics.every((diagnostic) => diagnostic.source === "model")).toBe(true);
+    expect(value.analysis.patch.source).toBe("fallback");
+    expect(value.analysis.patch.actions.length).toBeGreaterThan(0);
+    expect(info.mock.calls.some(([entry]) => String(entry).includes("commercial_patch_fallback"))).toBe(true);
+  });
+
   it("normalizes common provider scoring aliases without weakening score validation", async () => {
     const paragraph = "方法与步骤：第一步收集数据。第二步核验来源。";
     const responses = [

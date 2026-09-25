@@ -312,19 +312,28 @@ export class OpenAICompatibleCommercialExecutor implements CommercialAnalysisExe
       }
 
       stage = "patch_response";
-      let normalizedPatch: unknown;
+      let patch: GeneratePatchesResponse;
       try {
-        normalizedPatch = normalizePatchModelOutput(await this.call(PATCH_SYSTEM_PROMPT, { title: input.title, paragraphs, diagnostics }, { maxTokens: 3600, timeoutMs: 45_000 }), "advice");
+        const normalizedPatch = normalizePatchModelOutput(await this.call(PATCH_SYSTEM_PROMPT, { title: input.title, paragraphs, diagnostics }, { maxTokens: 3600, timeoutMs: 45_000 }), "advice");
+        const patchPayload = modelAdviceActionsSchema.safeParse(normalizedPatch);
+        if (!patchPayload.success) throw new CommercialExecutionInvalidOutputError();
+        stage = "patch_references";
+        assertAdviceReferences(patchPayload.data.actions, diagnostics, paragraphs);
+        const actions = decorateAdviceActions(patchPayload.data.actions);
+        patch = { mode: "advice", actions, markdown: formatPatchMarkdown(actions), source: "model" };
       } catch (error) {
         if (error instanceof CommercialExecutionRetryableError) throw error;
-        throw new CommercialExecutionInvalidOutputError();
+        // Scoring, questions, diagnostics, and evidence have already passed
+        // strict model validation. A malformed optional editing payload must
+        // not discard that verified analysis. Generate conservative advice
+        // only from the validated diagnostics and original paragraph IDs.
+        console.info(JSON.stringify({
+          event: "commercial_patch_fallback",
+          stage,
+          reason: "invalid_model_patch",
+        }));
+        patch = buildAdviceFallback(diagnostics, paragraphs);
       }
-      const patchPayload = modelAdviceActionsSchema.safeParse(normalizedPatch);
-      if (!patchPayload.success) throw new CommercialExecutionInvalidOutputError();
-      stage = "patch_references";
-      assertAdviceReferences(patchPayload.data.actions, diagnostics, paragraphs);
-      const actions = decorateAdviceActions(patchPayload.data.actions);
-      const patch: GeneratePatchesResponse = { mode: "advice", actions, markdown: formatPatchMarkdown(actions), source: "model" };
       const contentDigest = createHash("sha256").update(input.content).digest("hex");
       return {
         source: "model",
