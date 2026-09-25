@@ -12,10 +12,43 @@ function aliasedField(record: JsonRecord, canonical: string, alias: string): unk
 
 function normalizeAnswerability(value: unknown): unknown {
   if (typeof value !== "string") return value;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (["answerable", "fully_answerable", "can_answer", "可以回答", "完全可回答"].includes(normalized)) return "可以完全回答";
-  if (["insufficient", "insufficient_information", "partially_answerable", "信息不足", "部分回答"].includes(normalized)) return "信息不足";
-  if (["risky", "risk", "有风险"].includes(normalized)) return "有风险";
+  const trimmed = value.trim();
+  const normalized = trimmed.toLowerCase().replace(/[\s-]+/g, "_");
+  if ([
+    "answerable",
+    "fully_answerable",
+    "can_answer",
+    "可以回答",
+    "完全可回答",
+    "可以完全回答",
+    "能够回答",
+    "可回答",
+  ].includes(normalized)) return "可以完全回答";
+  if ([
+    "insufficient",
+    "insufficient_information",
+    "partially_answerable",
+    "cannot_fully_answer",
+    "cannot_answer",
+    "unable_to_answer",
+    "信息不足",
+    "部分回答",
+    "无法完全回答",
+    "无法回答",
+    "不能完全回答",
+    "不能回答",
+  ].includes(normalized)) return "信息不足";
+  if (["risky", "risk", "有风险", "存在风险", "高风险"].includes(normalized)) return "有风险";
+  return value;
+}
+
+function normalizeMissingInfo(value: unknown): unknown {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  if (value == null) return [];
   return value;
 }
 
@@ -41,7 +74,7 @@ export function normalizeDiagnosticModelOutput(raw: string, question: string) {
     answerability: normalizeAnswerability(candidate.answerability),
     riskLevel: aliasedField(candidate, "riskLevel", "risk_level"),
     evidence: normalizeEvidence(candidate.evidence),
-    missingInfo: aliasedField(candidate, "missingInfo", "missing_info"),
+    missingInfo: normalizeMissingInfo(aliasedField(candidate, "missingInfo", "missing_info")),
     recommendation: candidate.recommendation,
   };
 }
