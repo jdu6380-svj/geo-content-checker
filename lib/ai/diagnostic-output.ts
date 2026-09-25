@@ -39,6 +39,13 @@ function normalizeAnswerability(value: unknown): unknown {
     "不能回答",
   ].includes(normalized)) return "信息不足";
   if (["risky", "risk", "有风险", "存在风险", "高风险"].includes(normalized)) return "有风险";
+
+  // Some OpenAI-compatible providers paraphrase the requested enum even at
+  // temperature 0. Accept only phrases with an unambiguous semantic signal;
+  // unknown strings still flow into schema validation and are rejected.
+  if (/风险|矛盾|不可靠|误导/.test(trimmed)) return "有风险";
+  if (/信息不足|证据不足|依据不足|缺少|缺失|无法|不能|不可|未能|部分(?:可)?回答|回答不完整/.test(trimmed)) return "信息不足";
+  if (/完全(?:可以|能够|可)?回答|(?:可以|能够|足以|充分)(?:直接)?回答|可完整回答/.test(trimmed)) return "可以完全回答";
   return value;
 }
 
