@@ -373,6 +373,29 @@ describe("commercial analysis orchestration", () => {
     expect(value.analysis.diagnostics.every((diagnostic) => diagnostic.missingInfo[0] === "缺少可核验的独立来源。")).toBe(true);
   });
 
+  it("derives an unknown answerability only from unambiguous diagnostic structure", async () => {
+    const paragraph = "原文只描述了基本方法，没有提供独立来源。";
+    const responses = [
+      JSON.stringify({ totalScore: 20, dimensions: {
+        questionCoverage: { score: 5, max: 35, reason: "ok" }, factCompleteness: { score: 5, max: 30, reason: "ok" }, structureClarity: { score: 5, max: 20, reason: "ok" }, freshness: { score: 5, max: 15, reason: "ok" },
+      } }),
+      JSON.stringify({ questions: ["核心问题是什么？", "具体方法有哪些？", "适合哪些使用场景？", "有哪些事实依据？", "限制和时效是什么？"] }),
+      ...Array.from({ length: 5 }, () => JSON.stringify({
+        answerability: "provider-specific-partial-state",
+        riskLevel: "medium",
+        evidence: [],
+        missingInfo: "缺少可核验的独立来源。",
+        recommendation: "补充来源和适用范围。",
+      })),
+      JSON.stringify({ actions: [{ type: "author_evidence", field: "事实依据", reason: "补充可核验来源。", relatedQuestion: "有哪些事实依据？" }] }),
+    ];
+    let index = 0;
+    const call: CommercialModelCall = async () => ({ content: responses[index++], finishReason: "stop" });
+    const value = await new OpenAICompatibleCommercialExecutor(call).execute({ title: "Provider article", content: paragraph });
+
+    expect(value.analysis.diagnostics.every((diagnostic) => diagnostic.answerability === "信息不足")).toBe(true);
+  });
+
   it("maps provider rate limits and timeouts to retryable errors without exposing provider text", async () => {
     const rateLimited: CommercialModelCall = async () => {
       throw new ModelCallError("provider secret text", { status: 429, retryAfter: "10" });

@@ -10,7 +10,10 @@ function aliasedField(record: JsonRecord, canonical: string, alias: string): unk
   return Object.hasOwn(record, canonical) ? record[canonical] : record[alias];
 }
 
-function normalizeAnswerability(value: unknown): unknown {
+function normalizeAnswerability(
+  value: unknown,
+  context: { riskLevel: unknown; evidence: unknown; missingInfo: unknown },
+): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   const normalized = trimmed.toLowerCase().replace(/[\s-]+/g, "_");
@@ -46,6 +49,19 @@ function normalizeAnswerability(value: unknown): unknown {
   if (/风险|矛盾|不可靠|误导/.test(trimmed)) return "有风险";
   if (/信息不足|证据不足|依据不足|缺少|缺失|无法|不能|不可|未能|部分(?:可)?回答|回答不完整/.test(trimmed)) return "信息不足";
   if (/完全(?:可以|能够|可)?回答|(?:可以|能够|足以|充分)(?:直接)?回答|可完整回答/.test(trimmed)) return "可以完全回答";
+
+  // If the provider paraphrases the enum beyond recognition, derive the
+  // category only when the other structured fields make it unambiguous.
+  // Ambiguous output is intentionally left untouched for schema rejection.
+  if (context.riskLevel === "high") return "有风险";
+  if (Array.isArray(context.missingInfo) && context.missingInfo.length > 0) return "信息不足";
+  if (
+    context.riskLevel === "low"
+    && Array.isArray(context.evidence)
+    && context.evidence.length > 0
+    && Array.isArray(context.missingInfo)
+    && context.missingInfo.length === 0
+  ) return "可以完全回答";
   return value;
 }
 
@@ -75,13 +91,16 @@ export function normalizeDiagnosticModelOutput(raw: string, question: string) {
   const parsed: unknown = JSON.parse(cleanModelJson(raw));
   const root = isJsonRecord(parsed) ? parsed : {};
   const candidate = isJsonRecord(root.diagnostic) ? root.diagnostic : root;
+  const riskLevel = aliasedField(candidate, "riskLevel", "risk_level");
+  const evidence = normalizeEvidence(candidate.evidence);
+  const missingInfo = normalizeMissingInfo(aliasedField(candidate, "missingInfo", "missing_info"));
 
   return {
     question,
-    answerability: normalizeAnswerability(candidate.answerability),
-    riskLevel: aliasedField(candidate, "riskLevel", "risk_level"),
-    evidence: normalizeEvidence(candidate.evidence),
-    missingInfo: normalizeMissingInfo(aliasedField(candidate, "missingInfo", "missing_info")),
+    answerability: normalizeAnswerability(candidate.answerability, { riskLevel, evidence, missingInfo }),
+    riskLevel,
+    evidence,
+    missingInfo,
     recommendation: candidate.recommendation,
   };
 }
