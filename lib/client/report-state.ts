@@ -1,4 +1,10 @@
-import type { DiagnosticResult, EvaluateScoringResponse } from "@/lib/schemas/geo";
+import type { DiagnosticResult, EvaluateScoringResponse } from "../schemas/geo.ts";
+import type { PredictQuestionsResponse } from "../schemas/geo.ts";
+import {
+  ANALYSIS_CONTRACT_VERSION,
+  ANALYSIS_VERSION,
+  REPORT_SCHEMA_VERSION,
+} from "../constants/analysis-contract.ts";
 
 export type DiagnosticStatus = "queued" | "loading" | "success" | "error";
 
@@ -12,6 +18,27 @@ export interface DiagnosticItem {
 
 export type DiagnosticsState = Record<string, DiagnosticItem>;
 
+export type DiagnosticCompletion = {
+  diagnosticsSettled: boolean;
+  diagnosticsSucceeded: boolean;
+};
+
+export function deriveDiagnosticCompletion(
+  questionOrder: readonly string[],
+  diagnostics: DiagnosticsState,
+): DiagnosticCompletion {
+  const hasQuestions = questionOrder.length > 0;
+  const diagnosticsSettled = hasQuestions && questionOrder.every((question) => {
+    const status = diagnostics[question]?.status;
+    return status === "success" || status === "error";
+  });
+  const diagnosticsSucceeded = diagnosticsSettled && questionOrder.every(
+    (question) => diagnostics[question]?.status === "success",
+  );
+
+  return { diagnosticsSettled, diagnosticsSucceeded };
+}
+
 export type LoadState<T> =
   | { status: "idle" }
   | { status: "loading" }
@@ -22,17 +49,21 @@ export type CachedReport = {
   title: string;
   publishedAt: string;
   scoring: EvaluateScoringResponse;
+  questionSource: PredictQuestionsResponse["source"];
   questionOrder: string[];
   diagnostics: DiagnosticsState;
 };
 
 const CACHE_KEY = "geo:last-report";
-const CACHE_VERSION = 1;
 const MAX_CACHE_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_BYTES = 500 * 1024;
 
-type CacheEnvelope = {
-  version: number;
+export type CacheEnvelope = {
+  analysisVersion: typeof ANALYSIS_VERSION;
+  analysisContractVersion: typeof ANALYSIS_CONTRACT_VERSION;
+  reportSchemaVersion: typeof REPORT_SCHEMA_VERSION;
+  analysisHash: string;
+  status: "success";
   savedAt: string;
   report: CachedReport;
 };
@@ -41,14 +72,45 @@ function isCacheEnvelope(value: unknown): value is CacheEnvelope {
   if (!value || typeof value !== "object") return false;
   const envelope = value as Partial<CacheEnvelope>;
   return (
-    envelope.version === CACHE_VERSION &&
+    envelope.analysisVersion === ANALYSIS_VERSION &&
+    envelope.analysisContractVersion === ANALYSIS_CONTRACT_VERSION &&
+    envelope.reportSchemaVersion === REPORT_SCHEMA_VERSION &&
+    envelope.status === "success" &&
+    typeof envelope.analysisHash === "string" &&
+    /^[0-9a-f]{64}$/.test(envelope.analysisHash) &&
     typeof envelope.savedAt === "string" &&
     Boolean(envelope.report) &&
     typeof envelope.report?.title === "string" &&
+    (envelope.report?.questionSource === "model" || envelope.report?.questionSource === "fallback") &&
     Array.isArray(envelope.report?.questionOrder) &&
     Boolean(envelope.report?.scoring) &&
-    Boolean(envelope.report?.diagnostics)
+    hasCompatibleDiagnostics(envelope.report?.diagnostics) &&
+    hasCacheableDiagnostics(envelope.report.questionOrder, envelope.report.diagnostics)
   );
+}
+
+function hasCompatibleDiagnostics(value: unknown): value is DiagnosticsState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+
+  return Object.values(value).every((item) => {
+    if (!item || typeof item !== "object") return false;
+    const data = (item as Partial<DiagnosticItem>).data;
+    return data === undefined || (
+      data.evidenceStatus === "valid" ||
+      data.evidenceStatus === "missing" ||
+      data.evidenceStatus === "invalid"
+    );
+  });
+}
+
+function hasCacheableDiagnostics(
+  questionOrder: readonly string[],
+  diagnostics: DiagnosticsState,
+): boolean {
+  const { diagnosticsSucceeded } = deriveDiagnosticCompletion(questionOrder, diagnostics);
+  return diagnosticsSucceeded &&
+    Object.values(diagnostics).every((item) => item.status === "success" && Boolean(item.data)) &&
+    questionOrder.every((question) => Boolean(diagnostics[question]?.data));
 }
 
 function clearCache(): void {
@@ -59,7 +121,7 @@ function clearCache(): void {
   }
 }
 
-export function readCachedReport(): CachedReport | null {
+export function readCachedReport(): CacheEnvelope | null {
   try {
     const raw = window.localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
@@ -76,11 +138,28 @@ export function readCachedReport(): CachedReport | null {
       return null;
     }
 
-    return parsed.report;
+    return parsed;
   } catch {
     clearCache();
     return null;
   }
+}
+
+function stripCachedEvidence(diagnostics: DiagnosticsState): DiagnosticsState {
+  return Object.fromEntries(
+    Object.entries(diagnostics).map(([question, item]) => [
+      question,
+      item.data
+        ? {
+            ...item,
+            data: {
+              ...item.data,
+              evidence: [],
+            },
+          }
+        : item,
+    ]),
+  );
 }
 
 function summarizeDiagnostics(diagnostics: DiagnosticsState): DiagnosticsState {
@@ -102,13 +181,20 @@ function summarizeDiagnostics(diagnostics: DiagnosticsState): DiagnosticsState {
   );
 }
 
-export function saveCachedReport(report: CachedReport): void {
+export function saveCachedReport(report: CachedReport, analysisHash: string): void {
+  if (!hasCacheableDiagnostics(report.questionOrder, report.diagnostics)) return;
+
   const cacheSafeReport: CachedReport = {
     ...report,
     scoring: { ...report.scoring, numbered_paragraphs: [] },
+    diagnostics: stripCachedEvidence(report.diagnostics),
   };
   let envelope: CacheEnvelope = {
-    version: CACHE_VERSION,
+    analysisVersion: ANALYSIS_VERSION,
+    analysisContractVersion: ANALYSIS_CONTRACT_VERSION,
+    reportSchemaVersion: REPORT_SCHEMA_VERSION,
+    analysisHash,
+    status: "success",
     savedAt: new Date().toISOString(),
     report: cacheSafeReport,
   };

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { callOpenAICompatibleModel } from "@/lib/ai/openai-compatible";
-import { cleanModelJson } from "@/lib/ai/json";
+import { analyzeJsonParseFailure, cleanModelJson } from "@/lib/ai/json";
 import { formatUntrustedPromptData } from "@/lib/ai/prompt-data";
 import {
   modelQuestionsSchema,
@@ -14,13 +14,18 @@ import {
   authorizeAnalysisOperation,
 } from "@/lib/server/analysis-operation";
 import {
+  markGeoFallbackTelemetry,
+  markGeoParserFailureTelemetry,
   markGeoRequestOutcome,
+  markGeoRequestStage,
+  markGeoValidationTelemetry,
+  type GeoFallbackReason,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
 export const runtime = "nodejs";
-export const maxDuration = 15;
+export const maxDuration = 36;
 
 function fallbackQuestions(title: string): PredictQuestionsResponse {
   return {
@@ -66,28 +71,72 @@ async function handlePost(request: NextRequest): Promise<Response> {
       paragraphs: input.data.numbered_paragraphs,
     });
 
+    let parserStarted = false;
+    let parserFallbackReason: GeoFallbackReason = "parse_error";
     try {
-      const raw = await callOpenAICompatibleModel({
+      const { content: raw } = await callOpenAICompatibleModel({
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        timeoutMs: 10_000,
-        maxTokens: 800,
+        timeoutMs: 32_000,
+        maxTokens: 1_600,
+        reasoningEffort: "low",
         rateLimitMode: authorization.mode,
       });
-      const parsed = modelQuestionsSchema.parse(JSON.parse(cleanModelJson(raw)));
+      markGeoRequestStage("parser_started");
+      parserStarted = true;
+      let modelJson: unknown;
+      try {
+        modelJson = JSON.parse(cleanModelJson(raw));
+      } catch (error) {
+        markGeoValidationTelemetry({
+          stage: "json_parse",
+          profile: "questions",
+          issueCount: 1,
+          failureClassification: "json_parse_failed",
+          fieldPaths: [[]],
+          ...analyzeJsonParseFailure(raw, error),
+        });
+        throw error;
+      }
+      parserFallbackReason = "invalid_response";
+      const parsedResult = modelQuestionsSchema.safeParse(modelJson);
+      if (!parsedResult.success) {
+        markGeoValidationTelemetry({
+          stage: "schema_validation",
+          profile: "questions",
+          issueCount: parsedResult.error.issues.length,
+          fieldPaths: parsedResult.error.issues.map((issue) => issue.path),
+        });
+        throw parsedResult.error;
+      }
+      const parsed = parsedResult.data;
       const questions = normalizeQuestions(parsed.questions);
       if (!questions) {
+        markGeoValidationTelemetry({
+          stage: "semantic_validation",
+          profile: "questions",
+          issueCount: 1,
+          fieldPaths: [["questions"]],
+        });
+        markGeoParserFailureTelemetry();
+        markGeoFallbackTelemetry("invalid_response");
         markGeoRequestOutcome({ source: "fallback", modelStatus: "invalid-output" });
         return NextResponse.json(fallback, { headers });
       }
+      markGeoRequestStage("parser_completed");
+      parserStarted = false;
       markGeoRequestOutcome({ source: "model" });
       return NextResponse.json(
         { questions, source: "model" } satisfies PredictQuestionsResponse,
         { headers },
       );
     } catch {
+      if (parserStarted) {
+        markGeoParserFailureTelemetry();
+        markGeoFallbackTelemetry(parserFallbackReason);
+      }
       markGeoRequestOutcome({ source: "fallback" });
       return NextResponse.json(fallback, { headers });
     }

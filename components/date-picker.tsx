@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export type DatePickerProps = {
   value: string;
@@ -49,105 +53,84 @@ export function DatePicker({ value, onChange, optional = true }: DatePickerProps
   const today = useMemo(() => new Date(), []);
   const [open, setOpen] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(selectedDate ?? today));
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const todayValue = formatISODate(today);
 
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: MouseEvent) {
-      if (rootRef.current?.contains(event.target as Node)) return;
-      setOpen(false);
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setOpen(false);
-      triggerRef.current?.focus();
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
-  function openCalendar() {
-    setVisibleMonth(startOfMonth(selectedDate ?? today));
-    setOpen(true);
-  }
-
-  function closeAndRestoreFocus() {
-    setOpen(false);
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) setVisibleMonth(startOfMonth(selectedDate ?? today));
+    setOpen(nextOpen);
   }
 
   function selectDate(date: Date) {
     onChange(formatISODate(date));
-    closeAndRestoreFocus();
+    setOpen(false);
   }
 
   function clearDate() {
     onChange("");
-    closeAndRestoreFocus();
+    setOpen(false);
   }
 
   return (
-    <div ref={rootRef} className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={value ? `发布日期 ${value}，点击修改` : "选择发布日期，可选"}
-        onClick={() => (open ? setOpen(false) : openCalendar())}
-        className="flex h-11 w-full items-center justify-between rounded-lg border border-[#d6dde2] bg-white px-3 text-left font-normal text-[#17212b] hover:border-[#8ab9b2]"
-      >
-        <span className={value ? "" : "text-[#687386]"}>
-          {value || (optional ? "选择日期（选填）" : "选择日期")}
-        </span>
-        <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded border border-[#b9d4cf] bg-[#edf7f5] text-xs font-bold text-[#0b6b63]">日</span>
-      </button>
-
-      {open ? (
-        <div
-          role="dialog"
-          aria-label="选择发布日期"
-          className="absolute left-0 z-30 mt-2 w-[min(320px,calc(100vw-40px))] rounded-lg border border-[#d9dee5] bg-white p-3 shadow-[0_18px_45px_rgba(23,32,47,.16)] sm:left-auto sm:right-0"
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          aria-label={value ? `发布日期 ${value}，点击修改` : "选择发布日期，可选"}
+          className="h-11 w-full justify-between rounded-lg border-input bg-white px-3 font-normal text-foreground shadow-none hover:bg-white hover:text-foreground"
         >
+          <span className={value ? "" : "text-muted-foreground"}>
+            {value || (optional ? "选择日期（选填）" : "选择日期")}
+          </span>
+          <CalendarDays aria-hidden="true" className="size-4 text-primary" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        role="dialog"
+        aria-label="选择发布日期"
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        collisionPadding={16}
+        sticky="always"
+        style={{
+          maxHeight: "min(calc(100dvh - 96px), var(--radix-popover-content-available-height))",
+        }}
+        className="calendar-popover w-[min(320px,calc(100vw-32px))] overflow-y-auto rounded-lg border-border bg-popover p-3"
+      >
           <div className="flex items-center justify-between">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label="上个月"
               title="上个月"
               onClick={() => setVisibleMonth((current) => addMonths(current, -1))}
-              className="grid h-9 w-9 place-items-center rounded-lg text-xl text-[#465266] hover:bg-[#f3f5f7]"
+              className="h-9 w-9 rounded-md text-muted-foreground"
             >
-              ‹
-            </button>
-            <strong className="text-sm">
+              <ChevronLeft aria-hidden="true" />
+            </Button>
+            <strong className="text-sm font-semibold">
               {visibleMonth.getFullYear()} 年 {visibleMonth.getMonth() + 1} 月
             </strong>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label="下个月"
               title="下个月"
               onClick={() => setVisibleMonth((current) => addMonths(current, 1))}
-              className="grid h-9 w-9 place-items-center rounded-lg text-xl text-[#465266] hover:bg-[#f3f5f7]"
+              className="h-9 w-9 rounded-md text-muted-foreground"
             >
-              ›
-            </button>
+              <ChevronRight aria-hidden="true" />
+            </Button>
           </div>
 
           <div className="mt-2 grid grid-cols-7 gap-1" aria-hidden="true">
             {WEEKDAYS.map((weekday) => (
-              <span key={weekday} className="grid h-8 place-items-center text-xs font-semibold text-[#8992a2]">
+              <span key={weekday} className="grid h-8 place-items-center text-xs font-semibold text-muted-foreground">
                 {weekday}
               </span>
             ))}
@@ -168,13 +151,13 @@ export function DatePicker({ value, onChange, optional = true }: DatePickerProps
                   aria-pressed={isSelected}
                   onClick={() => selectDate(date)}
                   className={[
-                    "grid h-9 w-9 place-items-center rounded-lg text-sm",
+                    "grid aspect-square min-w-0 place-items-center rounded-md text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                     isSelected
-                      ? "bg-[#0e766e] font-bold text-white"
+                      ? "bg-primary font-semibold text-primary-foreground"
                       : isToday
-                        ? "border border-[#0e766e] font-semibold text-[#0e766e]"
-                        : "hover:bg-[#edf5f3]",
-                    isCurrentMonth || isSelected ? "" : "text-[#a9b0bc]",
+                        ? "border border-primary font-semibold text-primary"
+                        : "hover:bg-accent",
+                    isCurrentMonth || isSelected ? "" : "text-muted-foreground/55",
                   ].join(" ")}
                 >
                   {date.getDate()}
@@ -183,24 +166,27 @@ export function DatePicker({ value, onChange, optional = true }: DatePickerProps
             })}
           </div>
 
-          <div className="mt-3 flex items-center justify-between border-t border-[#e5e8ed] pt-3">
-            <button
+          <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={clearDate}
-              className="h-9 rounded-lg px-3 text-sm font-semibold text-[#687386] hover:bg-[#f3f5f7]"
+              className="h-9 rounded-md px-3 text-muted-foreground"
             >
               清空
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => selectDate(today)}
-              className="h-9 rounded-lg bg-[#e7f4f1] px-3 text-sm font-semibold text-[#0e766e] hover:bg-[#d8ebe7]"
+              className="h-9 rounded-md bg-accent px-3 text-primary hover:bg-accent hover:text-primary"
             >
               今天
-            </button>
+            </Button>
           </div>
-        </div>
-      ) : null}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }

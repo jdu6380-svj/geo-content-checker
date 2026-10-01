@@ -3,25 +3,38 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.23.x"
+  },
   "scripts": {
     "dev": "next dev",
+    "dev:model": "EVIDRA_DEV_MODEL=true next dev",
+    "dev:webpack": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "test": "npm run security:unit",
     "check": "npm run typecheck && npm run lint",
     "setup:env": "node scripts/setup-local-env.mjs",
     "security:unit": "node --experimental-strip-types scripts/security-unit.ts",
     "blackbox": "node scripts/blackbox.mjs",
     "blackbox:fallback": "node scripts/blackbox.mjs --expect-source=fallback",
-    "blackbox:model": "node scripts/blackbox.mjs --expect-source=model"
+    "blackbox:model": "node scripts/blackbox.mjs --expect-source=model",
+    "release:check": "node --env-file-if-exists=.env.local scripts/check-release-config.mjs"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.66.0",
     "@upstash/redis": "^1.38.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "jose": "^6.2.3",
+    "lucide-react": "^1.24.0",
     "next": "15.5.20",
+    "radix-ui": "^1.6.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "tailwind-merge": "^3.6.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

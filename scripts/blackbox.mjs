@@ -24,6 +24,27 @@ const article = {
   content: paragraphs[0].text,
   publishedAt: "2026-07-14",
 };
+function patchPayload(title, sourceParagraphs) {
+  const evidenceParagraph = sourceParagraphs[0];
+  const question = "文章说明了哪些适用范围和限制条件？";
+  return {
+    title,
+    numbered_paragraphs: sourceParagraphs,
+    mode: "advice",
+    diagnostics: [
+      {
+        question,
+        answerability: "信息不足",
+        riskLevel: "medium",
+        evidence: [{ paragraphId: evidenceParagraph.id, quote: evidenceParagraph.text }],
+        evidenceStatus: "valid",
+        missingInfo: ["适用范围的具体依据"],
+        recommendation: "补充适用范围、限制条件和可核验依据。",
+        source: "fallback",
+      },
+    ],
+  };
+}
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 let passed = 0;
@@ -236,7 +257,7 @@ await check("allows patch generation once", async () => {
   const result = await request("/api/generate-patches", {
     method: "POST",
     headers: headers({ token }),
-    body: JSON.stringify({ title: article.title, numbered_paragraphs: paragraphs }),
+    body: JSON.stringify(patchPayload(article.title, paragraphs)),
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(result.response.headers.get("x-geo-operation-remaining"), "0");
@@ -249,7 +270,7 @@ await expectStatus(
   {
     method: "POST",
     headers: headers({ token }),
-    body: JSON.stringify({ title: article.title, numbered_paragraphs: paragraphs }),
+    body: JSON.stringify(patchPayload(article.title, paragraphs)),
   },
   429,
   "OPERATION_LIMIT_REACHED",
@@ -281,7 +302,7 @@ await check("escapes raw HTML in Markdown patches", async () => {
   const result = await request("/api/generate-patches", {
     method: "POST",
     headers: headers({ clientId: markdownClientId, token: session.body.token }),
-    body: JSON.stringify({ title: "Markdown 安全测试", numbered_paragraphs: maliciousParagraphs }),
+    body: JSON.stringify(patchPayload("Markdown 安全测试", maliciousParagraphs)),
   });
   assert.equal(result.response.status, 200, responseSummary(result));
   assert.equal(typeof result.body?.markdown, "string");

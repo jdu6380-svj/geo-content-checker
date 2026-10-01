@@ -8,6 +8,7 @@ import {
   InvalidAnalysisClientIdError,
   resolveAnalysisIdentity,
 } from "@/lib/server/analysis-identity";
+import { isLightweightDevelopmentMode } from "@/lib/server/development-runtime";
 import type { AnalysisRateLimitMode } from "@/lib/server/analysis-rate-limit";
 import {
   ANALYSIS_OPERATION_LIMITS,
@@ -162,7 +163,7 @@ function consumeInMemory(
   cleanupMemoryUsage(nowSeconds);
   const usage = memoryUsage.get(claims.runId) ?? {
     expiresAt: claims.expiresAt,
-    counts: { score: 0, predict: 0, diagnose: 0, patch: 0 },
+    counts: { score: 0, predict: 0, diagnose: 0, patchAdvice: 0, patchContent: 0 },
   };
   const limit = ANALYSIS_OPERATION_LIMITS[operation];
   const current = usage.counts[operation];
@@ -202,7 +203,7 @@ async function consumeWithRedis(
   const ttl = Math.max(1, claims.expiresAt - Math.floor(Date.now() / 1_000));
   const raw = await redis.eval(
     CONSUME_OPERATION_SCRIPT,
-    [`geo:analysis-session:v1:usage:${claims.runId}`],
+    [`geo:analysis-session:v2:usage:${claims.runId}`],
     [operation, String(limit), String(ttl)],
   );
   const result = parseRedisResult(raw);
@@ -230,6 +231,10 @@ async function consumeOperation(
   claims: AnalysisTokenClaims,
   operation: AnalysisOperation,
 ): Promise<AnalysisOperationAuthorization> {
+  if (isLightweightDevelopmentMode()) {
+    return consumeInMemory(claims, operation, "memory", false);
+  }
+
   let redis: Redis | null;
   try {
     redis = getRedisClient();
@@ -287,10 +292,9 @@ function readToken(request: Request): string {
   return token;
 }
 
-export async function authorizeAnalysisOperation(
+export async function verifyAnalysisSession(
   request: Request,
-  operation: AnalysisOperation,
-): Promise<AnalysisOperationAuthorization> {
+): Promise<AnalysisTokenClaims> {
   let claims: AnalysisTokenClaims;
   try {
     claims = await verifyAnalysisToken(readToken(request));
@@ -346,6 +350,15 @@ export async function authorizeAnalysisOperation(
       publicMessage: "分析会话与当前设备不匹配，请重新发起体检。",
     });
   }
+
+  return claims;
+}
+
+export async function authorizeAnalysisOperation(
+  request: Request,
+  operation: AnalysisOperation,
+): Promise<AnalysisOperationAuthorization> {
+  const claims = await verifyAnalysisSession(request);
 
   return consumeOperation(claims, operation);
 }

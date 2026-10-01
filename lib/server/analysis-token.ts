@@ -12,13 +12,14 @@ export const ANALYSIS_OPERATION_LIMITS = {
   score: 1,
   predict: 1,
   diagnose: 10,
-  patch: 1,
+  patchAdvice: 1,
+  patchContent: 1,
 } as const;
 
 export type AnalysisOperation = keyof typeof ANALYSIS_OPERATION_LIMITS;
 
 export interface AnalysisTokenClaims {
-  version: 1;
+  version: 2;
   runId: string;
   deviceHash: string;
   ipHash: string;
@@ -54,7 +55,7 @@ const DEVELOPMENT_TOKEN_SECRET =
   "geo-content-checker-development-analysis-token-secret-v1";
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const tokenPayloadSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   runId: z.string().uuid(),
   deviceHash: hashSchema,
   ipHash: hashSchema,
@@ -62,7 +63,8 @@ const tokenPayloadSchema = z.object({
     score: z.literal(1),
     predict: z.literal(1),
     diagnose: z.literal(10),
-    patch: z.literal(1),
+    patchAdvice: z.literal(1),
+    patchContent: z.literal(1),
   }),
   sub: z.string().uuid(),
   jti: z.string().uuid(),
@@ -97,7 +99,7 @@ export async function issueAnalysisToken(
   const issuedAt = Math.floor(now.getTime() / 1_000);
   const expiresAt = issuedAt + ANALYSIS_TOKEN_LIFETIME_SECONDS;
   const token = await new SignJWT({
-    version: 1,
+    version: 2,
     runId,
     deviceHash: identity.deviceHash,
     ipHash: identity.ipHash,
