@@ -237,6 +237,12 @@ function isRedisQuotaExceeded(error: unknown): boolean {
   return /quota exceeded|exceeded[^\n]*quota|max(?:imum)? requests? limit|request quota/i.test(message);
 }
 
+function canUseMemoryFallback(): boolean {
+  // Preview deployments must remain testable when the optional Redis service is
+  // unavailable. Production keeps the fail-closed behavior below.
+  return process.env.NODE_ENV !== "production" || process.env.VERCEL_ENV === "preview";
+}
+
 function cleanupMemoryCounters(nowMs: number): void {
   if (nowMs - lastMemoryCleanup < 60_000 && memoryCounters.size < 2_000) return;
 
@@ -324,7 +330,7 @@ async function checkCounters<TName extends string, TReason extends string>(
   const redis = getRedisClient();
 
   if (!redis) {
-    if (process.env.NODE_ENV === "production") {
+    if (!canUseMemoryFallback()) {
       throw new AnalysisRateLimitUnavailableError();
     }
     return checkMemoryCounters(definitions, now.getTime(), "memory");
@@ -341,7 +347,7 @@ async function checkCounters<TName extends string, TReason extends string>(
     );
     return { ...parseRedisResult(raw, definitions), mode: "redis" };
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
+    if (canUseMemoryFallback()) {
       return checkMemoryCounters(definitions, now.getTime(), "memory");
     }
     if (
