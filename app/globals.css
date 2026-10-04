@@ -463,6 +463,13 @@
 .phase-recent-report > header button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--phase-purple); font-size: 11px; font-weight: 740; }
 .phase-recent-report > header button:disabled, .phase-view-report-button:disabled { cursor: default; }
 .phase-recent-report > header button svg { width: 14px; height: 14px; }
+.phase-report-intro { margin-top: 18px; color: #7f889a; font-size: 11px; line-height: 1.6; }
+.phase-report-dimensions { display: grid; gap: 13px; margin: 18px 0 0; padding: 0; list-style: none; }
+.phase-report-dimensions li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 9px; align-items: start; }
+.phase-report-dimensions li > svg { width: 16px; height: 16px; color: var(--phase-purple); }
+.phase-report-dimensions li > div { display: grid; gap: 3px; }
+.phase-report-dimensions strong { color: #313949; font-size: 12px; font-weight: 720; }
+.phase-report-dimensions span { color: #8b93a4; font-size: 10px; line-height: 1.45; }
 .phase-recent-summary { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 13px; margin-top: 22px; align-items: center; }
 .phase-recent-score { display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 3px; }
 .phase-recent-score strong { color: #151a28; font-size: 31px; font-weight: 820; letter-spacing: -.06em; }

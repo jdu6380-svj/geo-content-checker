@@ -1058,7 +1058,10 @@ export default function Home() {
   }
 
   function openReportStage() {
-    if (!analysisStarted) return;
+    if (!analysisStarted) {
+      openReviewStage();
+      return;
+    }
     scrollToSection("report-overview");
   }
 
@@ -1191,7 +1194,6 @@ export default function Home() {
         <WorkspaceSidebar
           stage={workspaceStage}
           reportView={reportView}
-          canOpenReport={analysisStarted}
           canOpenAdvice={canOpenAdvice}
           canOpenRecheck={canOpenRecheck}
           onOpenReview={openReviewStage}

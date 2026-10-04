@@ -8,7 +8,6 @@ import type { WorkspaceStage } from "@/components/workspace-command-bar";
 type WorkspaceSidebarProps = {
   stage: WorkspaceStage;
   reportView: ReportWorkspaceView;
-  canOpenReport: boolean;
   canOpenAdvice: boolean;
   canOpenRecheck: boolean;
   onOpenReview: () => void;
@@ -21,7 +20,6 @@ type WorkspaceSidebarProps = {
 
 export function WorkspaceSidebar({
   stage,
-  canOpenReport,
   canOpenAdvice,
   canOpenRecheck,
   onOpenReview,
@@ -45,15 +43,19 @@ export function WorkspaceSidebar({
 
         <div className="phase-sidebar-section">
           <p>审查流程</p>
-          <button type="button" onClick={onOpenReport} disabled={!canOpenReport} className={stage === "report" ? "is-active" : ""}>
+          <button type="button" onClick={onOpenReport} className={stage === "report" ? "is-active" : ""}>
             <FileText aria-hidden="true" />我的审查
           </button>
-          <button type="button" onClick={onOpenAdvice} disabled={!canOpenAdvice} className={stage === "advice" ? "is-active" : ""}>
-            <WandSparkles aria-hidden="true" />优化正文
-          </button>
-          <button type="button" onClick={onOpenRecheck} disabled={!canOpenRecheck} className={stage === "recheck" ? "is-active" : ""}>
-            <RotateCcw aria-hidden="true" />重新验证
-          </button>
+          {canOpenAdvice ? (
+            <button type="button" onClick={onOpenAdvice} className={stage === "advice" ? "is-active" : ""}>
+              <WandSparkles aria-hidden="true" />优化正文
+            </button>
+          ) : null}
+          {canOpenRecheck ? (
+            <button type="button" onClick={onOpenRecheck} className={stage === "recheck" ? "is-active" : ""}>
+              <RotateCcw aria-hidden="true" />重新验证
+            </button>
+          ) : null}
         </div>
 
         <div className="phase-sidebar-section">

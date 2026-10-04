@@ -1,10 +1,8 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 
 type RecentReviewCardProps = {
-  score?: number;
-  title?: string;
   onOpenReport?: () => void;
 };
 
@@ -15,11 +13,11 @@ const GUIDE_STEPS = [
   { label: "优化与验证", description: "记录建议，人工修改后重新验证" },
 ] as const;
 
-const SCORE_ITEMS = [
-  { label: "事实完整度", value: 68, tone: "is-warning" },
-  { label: "来源透明度", value: 76, tone: "is-success" },
-  { label: "结构清晰度", value: 82, tone: "is-success" },
-  { label: "可验证性", value: 62, tone: "is-danger" },
+const REPORT_DIMENSIONS = [
+  { label: "问题覆盖度", description: "是否直接回答读者会提出的关键问题" },
+  { label: "事实完整度", description: "关键结论是否有事实、数字或案例支撑" },
+  { label: "结构清晰度", description: "标题、段落与结论是否容易定位" },
+  { label: "可验证性", description: "来源、时间与适用边界是否清楚" },
 ] as const;
 
 export function QuickStartGuide() {
@@ -42,43 +40,26 @@ export function QuickStartGuide() {
 }
 
 export function RecentReviewCard({
-  score = 72,
-  title = "Demo 内容：AI 搜索长文审查示例",
   onOpenReport,
 }: RecentReviewCardProps) {
   return (
     <section className="phase-rail-card phase-recent-report" aria-labelledby="phase-recent-report-title">
       <header>
-        <h2 id="phase-recent-report-title">Demo 报告预览</h2>
+        <h2 id="phase-recent-report-title">报告评分维度</h2>
         {onOpenReport ? <button type="button" onClick={onOpenReport}>打开报告 <ArrowRight aria-hidden="true" /></button> : null}
       </header>
 
-      <div className="phase-recent-summary">
-        <div className="phase-recent-score">
-          <strong>{score}</strong>
-          <span>/100</span>
-          <small>示例分数</small>
-        </div>
-        <div>
-          <h3>{title}</h3>
-          <p>示例数据 · 仅用于说明报告结构</p>
-        </div>
-      </div>
-
-      <ul className="phase-recent-metrics">
-        {SCORE_ITEMS.map((item) => (
+      <p className="phase-report-intro">开始分析后，系统会基于你的文章生成真实评分，不使用预置结果。</p>
+      <ul className="phase-report-dimensions">
+        {REPORT_DIMENSIONS.map((item) => (
           <li key={item.label}>
-            <span className={`phase-metric-dot ${item.tone}`} aria-hidden="true" />
-            <strong>{item.label}</strong>
-            <b className={item.tone}>{item.value}</b>
-            <ArrowRight aria-hidden="true" />
+            <CheckCircle2 aria-hidden="true" />
+            <div><strong>{item.label}</strong><span>{item.description}</span></div>
           </li>
         ))}
       </ul>
 
-      <button type="button" className="phase-view-report-button" onClick={onOpenReport} disabled={!onOpenReport}>
-        {onOpenReport ? "打开当前报告" : "Demo 报告结构"} <ArrowRight aria-hidden="true" />
-      </button>
+      {onOpenReport ? <button type="button" className="phase-view-report-button" onClick={onOpenReport}>打开当前报告 <ArrowRight aria-hidden="true" /></button> : null}
     </section>
   );
 }

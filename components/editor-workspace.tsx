@@ -374,15 +374,15 @@ export function EditorWorkspace({
             {error ? <p className="phase-editor-error" role="alert">{error}</p> : null}
 
             <section className="phase-recent-list" aria-labelledby="phase-recent-list-title">
-              <h2 id="phase-recent-list-title">示例审查内容</h2>
+              <h2 id="phase-recent-list-title">快速开始文章</h2>
               <ul>
                 {samples.slice(0, 3).map((sample, index) => {
                   const presentation = SAMPLE_PRESENTATION[index] ?? SAMPLE_PRESENTATION[0];
                   return (
                     <li key={sample.id}>
                       <span className={`phase-recent-file-icon ${presentation.tone}`}>{presentation.marker}</span>
-                      <div><strong>Demo 内容 · {sample.title}</strong><span>{sample.status} · {sample.description}</span></div>
-                      <button type="button" onClick={() => handleSample(index)}>载入示例 <ArrowRight aria-hidden="true" /></button>
+                      <div><strong>{sample.title}</strong><span>{sample.status} · {sample.description}</span></div>
+                      <button type="button" onClick={() => handleSample(index)}>载入文章 <ArrowRight aria-hidden="true" /></button>
                     </li>
                   );
                 })}
