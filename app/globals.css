@@ -10819,6 +10819,37 @@ body {
 
 .report-mobile-subnav { display: none; }
 
+.report-flow-stepper {
+  margin-bottom: 22px;
+  border: 1px solid #e4e7ee;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgba(31, 37, 64, .035);
+  padding: 17px 20px 14px;
+}
+.report-flow-stepper-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.report-flow-stepper-heading > div { display: grid; gap: 3px; }
+.report-flow-stepper-heading strong { color: #242a37; font-size: 13px; font-weight: 790; }
+.report-flow-stepper-progress { color: #7a8395; font-size: 10px; font-weight: 680; white-space: nowrap; }
+.report-flow-stepper > ol { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.report-flow-stepper > ol > li { position: relative; min-width: 0; }
+.report-flow-stepper-line { position: absolute; top: 17px; right: calc(50% + 21px); left: calc(-50% + 21px); height: 1px; background: #e4e7ee; }
+.report-flow-stepper li.is-complete .report-flow-stepper-line { background: #a7d9b9; }
+.report-flow-stepper button { position: relative; z-index: 1; display: flex; width: 100%; min-width: 0; align-items: center; gap: 8px; border: 0; background: transparent; padding: 0; color: #697286; text-align: left; }
+.report-flow-stepper button:not(:disabled):hover .report-flow-stepper-copy strong { color: var(--phase-purple); }
+.report-flow-stepper button:focus-visible { outline: 2px solid var(--phase-purple); outline-offset: 4px; border-radius: 6px; }
+.report-flow-stepper-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid #dfe3eb; border-radius: 50%; background: #ffffff; color: #8f98a8; }
+.report-flow-stepper-icon svg { width: 16px; height: 16px; }
+.report-flow-stepper-copy { display: grid; min-width: 0; gap: 2px; }
+.report-flow-stepper-copy strong { overflow: hidden; color: #596276; font-size: 11px; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
+.report-flow-stepper-copy small { overflow: hidden; color: #9aa1af; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.report-flow-stepper li.is-active .report-flow-stepper-icon { border-color: var(--phase-purple); background: var(--phase-purple); color: #ffffff; box-shadow: 0 4px 10px rgba(91, 45, 244, .2); }
+.report-flow-stepper li.is-active .report-flow-stepper-copy strong { color: var(--phase-purple); }
+.report-flow-stepper li.is-complete .report-flow-stepper-icon { border-color: #a7d9b9; background: #effaf3; color: #159957; }
+.report-flow-stepper li.is-complete .report-flow-stepper-copy strong { color: #218653; }
+.report-flow-stepper li.is-locked .report-flow-stepper-icon { background: #f6f7f9; color: #b4bac6; }
+.report-flow-stepper li.is-locked .report-flow-stepper-copy { opacity: .72; }
+
 .phase2-report-overview,
 .phase2-evidence-page,
 .phase2-diagnosis-page,
@@ -10917,6 +10948,7 @@ body {
   gap: 24px;
   align-items: start;
 }
+.phase2-report-layout.is-single-column { grid-template-columns: minmax(0, 1fr); }
 
 .phase2-report-main,
 .phase2-complete-main { min-width: 0; }
@@ -11223,6 +11255,14 @@ body {
 .phase2-diagnosis-pass svg { width: 18px; height: 18px; color: #149a56; }
 .phase2-diagnosis-pass strong { color: #168f50; font-size: 14px; }
 .phase2-diagnosis-pass span { color: #546d5e; font-size: 11px; }
+.phase2-diagnosis-pass > div:first-of-type { display: grid; min-width: 0; gap: 3px; }
+.phase2-diagnosis-actions { display: flex; margin-left: auto; align-items: center; gap: 8px; }
+.phase2-primary-nav-button,
+.phase2-secondary-nav-button { min-height: 36px; border-radius: 6px; padding: 0 12px; font-size: 11px; font-weight: 740; }
+.phase2-primary-nav-button { border: 1px solid var(--phase-purple); background: var(--phase-purple); color: #ffffff; }
+.phase2-primary-nav-button:hover { border-color: var(--phase-purple-dark); background: var(--phase-purple-dark); }
+.phase2-secondary-nav-button { border: 1px solid #dfe3ea; background: #ffffff; color: #626d80; }
+.phase2-secondary-nav-button:hover { border-color: #c8ceda; color: var(--phase-purple); }
 
 .phase2-patch-layout { display: grid; min-height: 625px; grid-template-columns: minmax(0, .84fr) minmax(0, 1.16fr); gap: 14px; }
 .phase2-patch-original,
@@ -11569,6 +11609,18 @@ body {
 
 @media (max-width: 620px) {
   .report-workspace:not(.is-analysis-progress) { padding: 17px 14px 82px; }
+  .report-flow-stepper { margin-bottom: 16px; padding: 13px 10px 12px; }
+  .report-flow-stepper-heading { margin-bottom: 11px; }
+  .report-flow-stepper-heading strong { font-size: 12px; }
+  .report-flow-stepper-progress { font-size: 9px; }
+  .report-flow-stepper > ol { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .report-flow-stepper button { flex-direction: column; justify-content: flex-start; gap: 5px; text-align: center; }
+  .report-flow-stepper-icon { width: 28px; height: 28px; }
+  .report-flow-stepper-icon svg { width: 14px; height: 14px; }
+  .report-flow-stepper-line { top: 14px; right: calc(50% + 17px); left: calc(-50% + 17px); }
+  .report-flow-stepper-copy { width: 100%; justify-items: center; }
+  .report-flow-stepper-copy strong { max-width: 100%; font-size: 10px; white-space: normal; }
+  .report-flow-stepper-copy small { display: none; }
   .phase2-report-page-header h1,
   .phase2-subpage-header h1,
   .phase2-complete-report-header h1 { font-size: 25px; }
@@ -11588,6 +11640,9 @@ body {
   .phase2-diagnosis-summary > div:nth-child(-n+2),
   .phase2-diagnosis-summary > div:nth-child(n+3) { grid-column: auto; min-height: 62px; border-top: 1px solid #e7eaf0; border-left: 0; }
   .phase2-diagnosis-summary > p { grid-column: 1; }
+  .phase2-diagnosis-pass { align-items: flex-start; flex-wrap: wrap; padding: 13px 14px; }
+  .phase2-diagnosis-actions { width: 100%; margin-left: 31px; }
+  .phase2-diagnosis-actions button { flex: 1; }
   .phase2-patch-original-body { max-height: 430px; }
   .phase2-patch-card-actions { justify-content: stretch; }
   .phase2-patch-card-actions button { flex: 1; }

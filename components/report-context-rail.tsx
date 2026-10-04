@@ -3,7 +3,6 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Scale, ShieldAlert } from "lucide-react";
 
 import { ReportDimensionLedger } from "@/components/report-dimension-ledger";
-import { ReportNavigationPanel } from "@/components/report-navigation-panel";
 import { ReportScoreRail, type ReportScoreBand } from "@/components/report-score-rail";
 import {
   getReportIssueStatus,
@@ -29,12 +28,9 @@ type ReportContextRailProps = {
   onScrollToSection: (sectionId: string) => void;
   completedCount: number;
   evidenceCount: number;
-  contentAvailable: boolean;
   restoredFromCache: boolean;
   analysisSettled: boolean;
   analysisSucceeded: boolean;
-  hasRecheckBaseline: boolean;
-  onBackToEditor: () => void;
 };
 
 const RISK_PRIORITY = { passed: 1, attention: 2, high: 3 } as const;
@@ -79,12 +75,9 @@ export function ReportContextRail({
   onRetryScoring,
   onScrollToSection,
   completedCount,
-  contentAvailable,
   restoredFromCache,
   analysisSettled,
   analysisSucceeded,
-  hasRecheckBaseline,
-  onBackToEditor,
 }: ReportContextRailProps) {
   const diagnosticItems = questionOrder.flatMap((question) => {
     const item = diagnostics[question];
@@ -111,7 +104,6 @@ export function ReportContextRail({
     : priorityItem
       ? RISK_META[getReportIssueStatus(priorityItem)]
       : PENDING_RISK;
-  const pendingCount = diagnosticItems.filter((item) => item.evidenceStatus === "missing").length;
   const primaryProblems = [...riskItems]
     .sort((left, right) => RISK_PRIORITY[getReportIssueStatus(right)] - RISK_PRIORITY[getReportIssueStatus(left)])
     .slice(0, 3);
@@ -142,7 +134,7 @@ export function ReportContextRail({
         </div>
       </header>
 
-      <div className="phase2-report-layout">
+      <div className="phase2-report-layout is-single-column">
         <div className="phase2-report-main">
           <section className="phase2-report-hero-card">
             <ReportScoreRail
@@ -239,27 +231,6 @@ export function ReportContextRail({
           </section>
         </div>
 
-        <ReportNavigationPanel
-          activeView="overview"
-          evidencePendingCount={pendingCount}
-          diagnosisIssueCount={riskItems.length + failedCount}
-          patchCount={Math.min(riskItems.length, 3)}
-          recheckLabel={contentAvailable ? "待复核" : "暂无正文"}
-          analysisComplete={analysisSucceeded}
-          analysisSettled={analysisSettled}
-          patchAvailable={analysisSucceeded}
-          recheckAvailable={analysisSucceeded && contentAvailable}
-          onNavigate={(view) => {
-            if (view === "overview") return;
-            if (view === "evidence") onScrollToSection("evidence-section");
-            if (view === "diagnosis") onScrollToSection("diagnostic-section");
-            if (view === "patch") onScrollToSection("patch-workshop");
-            if (view === "recheck") {
-              if (hasRecheckBaseline) onScrollToSection("recheck-comparison");
-              else onBackToEditor();
-            }
-          }}
-        />
       </div>
     </section>
   );

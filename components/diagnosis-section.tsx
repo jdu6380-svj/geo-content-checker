@@ -245,8 +245,16 @@ export function DiagnosisSection({
 
           <footer className="phase2-diagnosis-pass">
             {diagnosticsSucceeded ? <CheckCircle2 aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />}
-            <strong>{diagnosticsSucceeded ? "诊断已完成" : `${completedCount} / ${totalCount} 已完成 · ${failedCount} 项失败`}</strong>
-            <span>{diagnosticsSucceeded ? "文章结构、作者信息与主要术语定义已完成基础核验。" : "已完成结果会保留；重试失败问题后才能生成修改建议。"}</span>
+            <div>
+              <strong>{diagnosticsSucceeded ? "诊断已完成" : `${completedCount} / ${totalCount} 已完成 · ${failedCount} 项失败`}</strong>
+              <span>{diagnosticsSucceeded ? "下一步可查看优化建议；是否应用由你决定。" : "已完成结果会保留；重试失败问题后才能生成修改建议。"}</span>
+            </div>
+            {diagnosticsSucceeded ? (
+              <div className="phase2-diagnosis-actions">
+                <button type="button" className="phase2-primary-nav-button" onClick={onOpenPatch}>查看优化建议</button>
+                <button type="button" className="phase2-secondary-nav-button" onClick={onOpenOverview}>暂不优化</button>
+              </div>
+            ) : null}
           </footer>
         </>
       )}

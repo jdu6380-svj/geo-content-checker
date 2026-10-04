@@ -7,6 +7,7 @@ import { PatchWorkshop } from "@/components/patch-workshop";
 import { ReportCompletionSummary } from "@/components/report-completion-summary";
 import { ReportContextRail } from "@/components/report-context-rail";
 import { ReportEvidencePanel } from "@/components/report-evidence-panel";
+import { ReportFlowStepper } from "@/components/report-flow-stepper";
 import { RecheckComparison } from "@/components/recheck-comparison";
 import type { ReportScoreBand } from "@/components/report-score-rail";
 import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
@@ -185,6 +186,20 @@ export function ReportWorkspace({
       aria-busy={analysisBusy || Boolean(loadingMessage)}
     >
       <div className="report-workspace-grid">
+        {reportComplete ? (
+          <ReportFlowStepper
+            activeView={view}
+            reportComplete={reportComplete}
+            flowComplete={flowComplete}
+            recheckAvailable={Boolean(recheckBaseline)}
+            onNavigate={(nextView) => onScrollToSection(
+              nextView === "overview" ? "report-overview" :
+                nextView === "evidence" ? "evidence-section" :
+                  nextView === "diagnosis" ? "diagnostic-section" :
+                    nextView === "patch" ? "patch-workshop" : "recheck-comparison",
+            )}
+          />
+        ) : null}
         <nav className="report-mobile-subnav" aria-label="报告页面导航">
           <button type="button" aria-current={view === "overview" ? "page" : undefined} onClick={() => onScrollToSection("report-overview")}>报告</button>
           <button type="button" aria-current={view === "evidence" ? "page" : undefined} disabled={!reportComplete} onClick={() => onScrollToSection("evidence-section")}>依据</button>
@@ -266,12 +281,9 @@ export function ReportWorkspace({
                     onScrollToSection={onScrollToSection}
                     completedCount={completedCount}
                     evidenceCount={evidenceCount}
-                    contentAvailable={contentAvailable}
                     restoredFromCache={restoredFromCache}
                     analysisSettled={diagnosticsSettled}
                     analysisSucceeded={diagnosticsSucceeded}
-                    hasRecheckBaseline={Boolean(recheckBaseline)}
-                    onBackToEditor={onBackToEditor}
                   />
                 )}
               </div>
