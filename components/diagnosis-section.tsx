@@ -2,7 +2,7 @@
 
 import type { FormEvent, RefObject } from "react";
 import { useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronDown, Circle, ShieldAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Circle, Lightbulb, ShieldAlert } from "lucide-react";
 
 import { DiagnosticDetailPanel } from "@/components/diagnostic-detail-panel";
 import {
@@ -172,15 +172,22 @@ export function DiagnosisSection({
 
           <div className="phase2-diagnosis-toolbar">
             <h2>发现的问题</h2>
-            <div role="group" aria-label="诊断风险筛选">
-              {([
-                ["all", `全部 ${totalCount}`],
-                ["high", `高风险 ${riskSummary.high}`],
-                ["attention", `注意 ${riskSummary.attention}`],
-                ["passed", `通过 ${riskSummary.passed}`],
-              ] as const).map(([value, label]) => (
-                <button key={value} type="button" className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>{label}</button>
-              ))}
+            <div className="phase2-diagnosis-toolbar-actions">
+              <div role="group" aria-label="诊断风险筛选">
+                {([
+                  ["all", `全部 ${totalCount}`],
+                  ["high", `高风险 ${riskSummary.high}`],
+                  ["attention", `注意 ${riskSummary.attention}`],
+                  ["passed", `通过 ${riskSummary.passed}`],
+                ] as const).map(([value, label]) => (
+                  <button key={value} type="button" className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>{label}</button>
+                ))}
+              </div>
+              {diagnosticsSucceeded ? (
+                <button type="button" className="phase2-batch-patch-button" onClick={onOpenPatch}>
+                  <Lightbulb aria-hidden="true" />批量查看优化建议
+                </button>
+              ) : null}
             </div>
           </div>
 

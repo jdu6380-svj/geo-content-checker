@@ -11233,9 +11233,13 @@ body {
 
 .phase2-diagnosis-toolbar { display: flex; min-height: 60px; align-items: center; justify-content: space-between; gap: 20px; }
 .phase2-diagnosis-toolbar h2 { color: #202633; font-size: 18px; font-weight: 800; }
-.phase2-diagnosis-toolbar > div { display: flex; align-items: center; gap: 8px; }
+.phase2-diagnosis-toolbar-actions { display: flex; align-items: center; gap: 10px; }
+.phase2-diagnosis-toolbar-actions > div { display: flex; align-items: center; gap: 8px; }
 .phase2-diagnosis-toolbar button { min-height: 34px; border: 1px solid #e0e4eb; border-radius: 7px; background: #ffffff; padding: 0 14px; color: #6d7688; font-size: 11px; font-weight: 680; }
 .phase2-diagnosis-toolbar button.is-active { border-color: #cbbfff; background: #f4f1ff; color: var(--phase-purple); box-shadow: inset 0 0 0 1px #e5e0ff; }
+.phase2-diagnosis-toolbar button.phase2-batch-patch-button { display: inline-flex; align-items: center; gap: 6px; border-color: #cfc5ff; background: #f7f5ff; color: var(--phase-purple); font-weight: 760; }
+.phase2-batch-patch-button:hover { border-color: var(--phase-purple) !important; background: #efebff !important; }
+.phase2-batch-patch-button svg { width: 14px; height: 14px; }
 .phase2-diagnosis-list { display: grid; gap: 8px; }
 .phase2-diagnosis-row { overflow: hidden; border: 1px solid #e3e7ee; border-left: 3px solid var(--phase-orange); border-radius: 9px; background: #ffffff; box-shadow: 0 5px 16px rgba(31, 37, 64, .03); }
 .phase2-diagnosis-row.is-danger { border-left-color: var(--phase-red); }
@@ -11596,7 +11600,9 @@ body {
   .phase2-diagnosis-summary > div:nth-child(-n+2) { grid-column: span 3; min-height: 75px; }
   .phase2-diagnosis-summary > div:nth-child(2) { border-top: 1px solid #e7eaf0; border-left: 0; }
   .phase2-diagnosis-toolbar { align-items: flex-start; flex-direction: column; padding-block: 15px; }
-  .phase2-diagnosis-toolbar > div { max-width: 100%; overflow-x: auto; }
+  .phase2-diagnosis-toolbar-actions { width: 100%; max-width: 100%; align-items: stretch; flex-direction: column; }
+  .phase2-diagnosis-toolbar-actions > div { max-width: 100%; overflow-x: auto; }
+  .phase2-diagnosis-toolbar button.phase2-batch-patch-button { justify-content: center; }
   .phase2-diagnosis-row > button { display: block; padding: 14px; }
   .phase2-diagnosis-row > button > span { display: block !important; border-left: 0 !important; padding: 8px 0; }
   .phase2-diagnosis-row > button > b { display: inline-flex; margin-top: 8px; }
