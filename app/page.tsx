@@ -6,11 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { EditorWorkspace } from "@/components/editor-workspace";
 import { ReportWorkspace, type ReportWorkspaceView } from "@/components/report-workspace";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
-import {
-  WorkspaceCommandBar,
-  type WorkspaceStage,
-  type WorkspaceStatus,
-} from "@/components/workspace-command-bar";
+import type { WorkspaceStage } from "@/components/workspace-command-bar";
 import {
   clearDraftAnalysis,
   createAnalysisHash,
@@ -349,33 +345,6 @@ export default function Home() {
   );
   const reportReady = !restoredFromCache && reportAvailable;
   const workflowSucceeded = reportAvailable && diagnosticsSucceeded;
-  const workspaceFlowComplete = workflowSucceeded;
-  const workspaceHasError = session.status === "error" || scoring.status === "error" ||
-    questions.status === "error" || Object.values(diagnostics).some((item) => item.status === "error");
-  const workspaceIsAnalyzing = !analysisPresentationComplete || session.status === "loading" || scoring.status === "loading" ||
-    questions.status === "loading" || Object.values(diagnostics).some(
-      (item) => item.status === "queued" || item.status === "loading",
-    );
-  const editorReady = Boolean(
-    draft.title.trim() &&
-    contentText.trim().length >= MIN_ARTICLE_CHARACTERS &&
-    remaining >= 0
-  );
-  const workspaceStatus: WorkspaceStatus = !analysisStarted
-    ? error || Object.values(fieldErrors).some(Boolean)
-      ? "error"
-      : editorReady
-        ? "ready"
-        : "empty"
-    : workspaceHasError
-      ? "error"
-      : restoredFromCache
-        ? "warning"
-        : workspaceFlowComplete
-          ? "completed"
-          : workspaceIsAnalyzing
-            ? "analyzing"
-            : "warning";
   const canOpenAdvice = analysisStarted && workflowSucceeded;
   const canOpenRecheck = canOpenAdvice && Boolean(contentText.trim());
 
@@ -1181,6 +1150,27 @@ export default function Home() {
     ));
   }
 
+  function applyPatchToDraft(item: PatchChecklistItem, draftText: string): boolean {
+    const normalizedInsert = draftText.trim();
+    if (!normalizedInsert) return false;
+    const currentContent = draftRef.current.content.trim();
+    if (currentContent.includes(normalizedInsert)) {
+      addPatchChecklistItem(item);
+      return true;
+    }
+
+    const nextContent = currentContent ? `${currentContent}\n\n${normalizedInsert}` : normalizedInsert;
+    if (nextContent.length > MAX_ARTICLE_CHARACTERS) return false;
+
+    const nextDraft = { ...draftRef.current, content: nextContent };
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
+    setFieldErrors((current) => ({ ...current, content: undefined }));
+    clearPersistedDraftAnalysis(nextDraft);
+    addPatchChecklistItem(item);
+    return true;
+  }
+
   const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL;
 
   return (
@@ -1195,22 +1185,6 @@ export default function Home() {
             : focusEditor()
         )}
         onNewAnalysis={startNewAnalysis}
-        feedbackUrl={feedbackUrl}
-        onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
-        navigation={(
-          <WorkspaceCommandBar
-            stage={workspaceStage}
-            status={workspaceStatus}
-            title={draft.title}
-            canOpenReport={analysisStarted}
-            canOpenAdvice={canOpenAdvice}
-            canOpenRecheck={canOpenRecheck}
-            onOpenReview={openReviewStage}
-            onOpenReport={openReportStage}
-            onOpenAdvice={openAdviceStage}
-            onOpenRecheck={openRecheckStage}
-          />
-        )}
       />
 
       <div className="workspace-shell-layout">
@@ -1222,8 +1196,6 @@ export default function Home() {
           canOpenRecheck={canOpenRecheck}
           onOpenReview={openReviewStage}
           onOpenReport={openReportStage}
-          onOpenEvidence={() => scrollToSection("evidence-section")}
-          onOpenDiagnosis={() => scrollToSection("diagnostic-section")}
           onOpenAdvice={openAdviceStage}
           onOpenRecheck={openRecheckStage}
           feedbackUrl={feedbackUrl}
@@ -1235,6 +1207,7 @@ export default function Home() {
             <ReportWorkspace
             view={reportView}
             title={draft.title}
+            draftContent={draft.content}
             analysisSignal={analysisControllerRef.current?.signal}
             contentAvailable={Boolean(draft.content)}
             reportStatus={reportStatus()}
@@ -1286,6 +1259,7 @@ export default function Home() {
             onSubmitFollowUp={submitFollowUp}
             onDiagnosisFeedback={submitDiagnosisFeedback}
             onAddPatchChecklistItem={addPatchChecklistItem}
+            onApplyPatchToDraft={applyPatchToDraft}
             onScrollToSection={scrollToSection}
             />
           ) : (

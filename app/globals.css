@@ -11026,6 +11026,41 @@ body {
 .phase2-evidence-first-callout > button:hover { background: var(--phase-purple-dark); }
 .phase2-evidence-first-callout > button svg { width: 15px; height: 15px; }
 
+.phase2-inline-issues {
+  margin-top: 22px;
+  border: 1px solid #e3e7ee;
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 20px 21px 18px;
+}
+.phase2-inline-issues > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.phase2-inline-issues > header p { color: #8a92a3; font-size: 9px; font-weight: 760; letter-spacing: .1em; }
+.phase2-inline-issues > header h2 { margin-top: 5px; color: #202635; font-size: 17px; font-weight: 800; }
+.phase2-inline-issues > header > span { display: inline-flex; min-height: 30px; flex: 0 0 auto; align-items: center; gap: 6px; border-radius: 6px; background: #f5f6f9; padding: 0 10px; color: #5f6879; font-size: 10px; font-weight: 700; }
+.phase2-inline-issues > header > span svg { width: 14px; height: 14px; }
+.phase2-inline-issues > header > span.is-warning { background: #fff7e8; color: #c47a00; }
+.phase2-inline-issues > header > span.is-success { background: #eff9f3; color: #178d52; }
+.phase2-inline-issues-counts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.phase2-inline-issues-counts > span { display: inline-flex; min-height: 29px; align-items: center; gap: 6px; border: 1px solid #e8eaf0; border-radius: 6px; padding: 0 9px; color: #697286; font-size: 10px; }
+.phase2-inline-issues-counts > span b { color: #31394a; font-size: 12px; }
+.phase2-inline-issues-counts > span.is-danger b { color: var(--phase-red); }
+.phase2-inline-issues-counts > span.is-warning b { color: var(--phase-orange); }
+.phase2-inline-issues-counts > span.is-success b { color: var(--phase-green); }
+.phase2-inline-issues > ul { display: grid; gap: 7px; margin-top: 13px; padding: 0; list-style: none; }
+.phase2-inline-issues > ul button { display: grid; width: 100%; min-height: 48px; grid-template-columns: auto minmax(0, 1fr) 17px; align-items: center; gap: 11px; border: 1px solid #edf0f4; border-radius: 7px; background: #ffffff; padding: 8px 11px; color: #303849; text-align: left; transition: border-color .16s ease, background .16s ease; }
+.phase2-inline-issues > ul button:hover { border-color: #cfc5ff; background: #fbfaff; }
+.phase2-inline-issues > ul button > span { border-radius: 4px; padding: 4px 6px; font-size: 9px; font-weight: 760; white-space: nowrap; }
+.phase2-inline-issues > ul button > span.is-danger { background: #fff1f1; color: #d83b40; }
+.phase2-inline-issues > ul button > span.is-warning { background: #fff7e8; color: #c47a00; }
+.phase2-inline-issues > ul button > span.is-success { background: #eff9f3; color: #178d52; }
+.phase2-inline-issues > ul button strong { overflow: hidden; font-size: 11px; font-weight: 650; line-height: 1.5; text-overflow: ellipsis; }
+.phase2-inline-issues > ul button > svg { width: 15px; height: 15px; color: #8b93a5; }
+.phase2-inline-issues-empty { margin-top: 15px; color: #5d6679; font-size: 11px; line-height: 1.65; }
+.phase2-inline-issues-empty.is-pending { border-radius: 6px; background: #f8f8fb; padding: 11px 12px; color: #747e91; }
+.phase2-inline-issues-cta { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; margin-top: 14px; border: 1px solid #d5ccff; border-radius: 6px; background: #f7f5ff; padding: 0 13px; color: var(--phase-purple); font-size: 11px; font-weight: 740; }
+.phase2-inline-issues-cta:hover { border-color: var(--phase-purple); background: #f0edff; }
+.phase2-inline-issues-cta svg { width: 14px; height: 14px; }
+
 .phase2-report-navigation {
   overflow: hidden;
   min-height: 580px;
@@ -11059,6 +11094,10 @@ body {
 .phase2-subpage-actions button { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: #465064; font-size: 12px; font-weight: 660; }
 .phase2-subpage-actions button:hover { color: var(--phase-purple); }
 .phase2-subpage-actions button svg { width: 15px; height: 15px; }
+.phase2-subpage-actions button.phase2-primary-nav-button { min-height: 42px; justify-content: center; border: 1px solid var(--phase-purple); border-radius: 7px; background: var(--phase-purple); padding: 0 14px; color: #ffffff; font-size: 12px; font-weight: 740; box-shadow: 0 4px 12px rgba(91, 45, 244, .16); }
+.phase2-subpage-actions button.phase2-primary-nav-button:hover { border-color: var(--phase-purple-dark); background: var(--phase-purple-dark); color: #ffffff; }
+.phase2-subpage-actions button.phase2-primary-nav-button:focus-visible,
+.phase2-inline-issues button:focus-visible { outline: 3px solid rgba(91, 45, 244, .28); outline-offset: 2px; }
 
 .phase2-evidence-layout { display: grid; min-height: 660px; grid-template-columns: minmax(0, 1.16fr) minmax(430px, .94fr); gap: 22px; }
 .phase2-article-surface,
@@ -11197,6 +11236,7 @@ body {
 .phase2-patch-original-body blockquote span { flex: 0 0 auto; border: 1px solid #f1c36a; border-radius: 6px; padding: 6px 8px; color: #d68200; font-size: 9px; font-weight: 720; }
 .phase2-patch-original > footer { border-top: 1px solid #edf0f5; padding: 14px 20px; color: #8b93a4; font-size: 10px; }
 .phase2-patch-guidance { margin: 0; padding: 12px 20px 0; color: #7f889a; font-size: 10px; }
+.phase2-patch-apply-error { margin: 7px 20px 0; color: var(--geo-status-danger); font-size: 10px; line-height: 1.5; }
 .phase2-patch-suggestion-body { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 13px 16px 14px; }
 .phase2-patch-suggestion-body > div:not(.phase2-patch-card-list):not(.phase2-patch-footer-actions):not(.phase3-patch-recheck-bar) { margin: auto 0; text-align: center; }
 .phase2-patch-suggestion-body h4 { color: #2b3241; font-size: 15px; font-weight: 760; }
@@ -11218,8 +11258,9 @@ body {
 .phase2-patch-card-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 9px; }
 .phase2-patch-card-actions button { min-height: 34px; border: 1px solid #dfe3ea; border-radius: 7px; background: #ffffff; padding: 0 15px; color: #424b5e; font-size: 10px; font-weight: 720; }
 .phase2-patch-card-actions button:first-child { border-color: var(--phase-purple); background: var(--phase-purple); color: #ffffff; }
+.phase2-patch-card-actions button:first-child:disabled { border-color: #9fd5b5; background: #eaf8ef; color: #168f50; }
 .phase2-patch-card-actions button:disabled { opacity: 1; }
-.phase2-patch-footer-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: auto; padding-top: 10px; }
+.phase2-patch-footer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: auto; padding-top: 10px; }
 .phase2-patch-footer-actions button { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; border: 0; background: transparent; color: #6a7386; font-size: 10px; font-weight: 680; }
 .phase2-patch-footer-actions svg { width: 13px; height: 13px; }
 .phase2-patch-loading { display: none; }
@@ -11532,6 +11573,9 @@ body {
   .phase2-dimension-card { min-height: 165px; }
   .phase2-evidence-first-callout { align-items: stretch; flex-direction: column; }
   .phase2-evidence-first-callout > button { width: 100%; justify-content: center; }
+  .phase2-inline-issues { padding: 17px 15px 15px; }
+  .phase2-inline-issues-cta { width: 100%; justify-content: center; }
+  .phase2-inline-issues > ul button { grid-template-columns: auto minmax(0, 1fr) 15px; gap: 8px; padding-inline: 8px; }
   .phase2-evidence-panel dl > div { grid-template-columns: 76px minmax(0, 1fr); }
   .phase2-diagnosis-summary { grid-template-columns: minmax(0, 1fr); }
   .phase2-diagnosis-summary > div:nth-child(-n+2),

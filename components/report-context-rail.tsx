@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Scale } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Scale, ShieldAlert } from "lucide-react";
 
 import { ReportDimensionLedger } from "@/components/report-dimension-ledger";
 import { ReportNavigationPanel } from "@/components/report-navigation-panel";
@@ -112,7 +112,10 @@ export function ReportContextRail({
       ? RISK_META[getReportIssueStatus(priorityItem)]
       : PENDING_RISK;
   const pendingCount = diagnosticItems.filter((item) => item.evidenceStatus === "missing").length;
-  const primaryProblems = riskItems.slice(0, 2).map((item) => item.question);
+  const primaryProblems = [...riskItems]
+    .sort((left, right) => RISK_PRIORITY[getReportIssueStatus(right)] - RISK_PRIORITY[getReportIssueStatus(left)])
+    .slice(0, 3);
+  const hasKnownIssues = riskSummary.high + riskSummary.attention > 0;
 
   return (
     <section id="report-core" className="phase2-report-overview section-anchor">
@@ -154,7 +157,7 @@ export function ReportContextRail({
             </div>
             <div className="phase2-report-conclusion">
               <p>结论</p>
-              <strong>{hasIncompleteDiagnostics ? "部分诊断未完成" : scoreBand?.label || primaryProblems[0] || "当前未发现明显高风险问题"}</strong>
+              <strong>{hasIncompleteDiagnostics ? "部分诊断未完成" : scoreBand?.label || primaryProblems[0]?.question || "当前未发现明显高风险问题"}</strong>
               <p>{hasIncompleteDiagnostics ? "部分问题未能完成诊断；重试成功后才能生成修改建议。" : priorityRisk.impact}</p>
               <span className="phase2-report-evidence-progress">已完成 {completedCount} 项 Evidence 检查</span>
             </div>
@@ -170,6 +173,68 @@ export function ReportContextRail({
             </div>
             <button type="button" onClick={() => onScrollToSection("evidence-section")}>
               查看 Evidence 分析 <ArrowRight aria-hidden="true" />
+            </button>
+          </section>
+
+          <section className="phase2-inline-issues" aria-labelledby="phase2-inline-issues-heading">
+            <header>
+              <div>
+                <p>REPORT FINDINGS</p>
+                <h2 id="phase2-inline-issues-heading">发现的问题</h2>
+              </div>
+              {analysisSucceeded ? (
+                <span className={hasKnownIssues ? "is-warning" : "is-success"}>
+                  {hasKnownIssues ? <ShieldAlert aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+                  {hasKnownIssues ? `${riskSummary.high + riskSummary.attention} 项待处理` : "暂未发现待处理问题"}
+                </span>
+              ) : null}
+            </header>
+
+            {analysisSucceeded ? (
+              <>
+                <div className="phase2-inline-issues-counts" aria-label="问题统计">
+                  <span className="is-danger"><b>{riskSummary.high}</b> 高风险</span>
+                  <span className="is-warning"><b>{riskSummary.attention}</b> 注意</span>
+                  <span className="is-success"><b>{riskSummary.passed}</b> 已通过</span>
+                </div>
+                {primaryProblems.length ? (
+                  <ul>
+                    {primaryProblems.map((item) => {
+                      const status = getReportIssueStatus(item);
+                      const risk = RISK_META[status];
+                      return (
+                        <li key={item.question}>
+                          <button type="button" onClick={() => onScrollToSection("diagnostic-section")}>
+                            <span className={risk.className}>{risk.label}</span>
+                            <strong>{item.question}</strong>
+                            <ArrowRight aria-hidden="true" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="phase2-inline-issues-empty">
+                    本次检查的 {riskSummary.passed} 个问题均已通过。可以继续查看逐项诊断与证据依据。
+                  </p>
+                )}
+              </>
+            ) : hasIncompleteDiagnostics ? (
+              <p className="phase2-inline-issues-empty is-pending">
+                部分问题尚未完成诊断，结果暂不完整。进入问题诊断查看已完成项与待确认项。
+              </p>
+            ) : (
+              <p className="phase2-inline-issues-empty is-pending">
+                问题分析完成后，发现的问题会显示在这里。
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="phase2-inline-issues-cta"
+              onClick={() => onScrollToSection("diagnostic-section")}
+            >
+              查看全部问题诊断<ArrowRight aria-hidden="true" />
             </button>
           </section>
         </div>

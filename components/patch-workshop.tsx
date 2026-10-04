@@ -34,12 +34,14 @@ import type {
 
 type PatchWorkshopProps = {
   title: string;
+  draftContent: string;
   paragraphs: Paragraph[];
   diagnostics: DiagnosticsState;
   runId: string | null;
   analysisSignal?: AbortSignal;
   checklistItems: PatchChecklistItem[];
   onAddChecklistItem: (item: PatchChecklistItem) => void;
+  onApplyPatchToDraft: (item: PatchChecklistItem, draftText: string) => boolean;
   onBackToEditor: () => void;
   onOpenOverview: () => void;
   onOpenRecheck: () => void;
@@ -161,6 +163,19 @@ function actionPresentation(action: PatchAction) {
   };
 }
 
+function actionDraftText(action: PatchAction): string {
+  if (action.type === "author_evidence") {
+    return `【待补充信息】${action.field}\n${action.reason}`;
+  }
+  if (action.type === "structure_change") {
+    return `## ${action.title}\n\n${action.instruction}`;
+  }
+  if (action.type === "faq") {
+    return `### ${action.question}\n\n${action.answer}`;
+  }
+  return `**${action.label}**：${action.value}`;
+}
+
 function findActionDiagnostic(
   action: PatchAction,
   diagnostics: DiagnosticResult[],
@@ -191,12 +206,14 @@ function findActionDiagnostic(
 
 export function PatchWorkshop({
   title,
+  draftContent,
   paragraphs,
   diagnostics,
   runId,
   analysisSignal,
   checklistItems,
   onAddChecklistItem,
+  onApplyPatchToDraft,
   onBackToEditor,
   onOpenOverview,
   onOpenRecheck,
@@ -204,6 +221,9 @@ export function PatchWorkshop({
   const [activeMode, setActiveMode] = useState<PatchMode>("advice");
   const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(initialPatchStates);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
+  const [draftCopyStatus, setDraftCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
+  const [appliedToDraftIds, setAppliedToDraftIds] = useState<Set<string>>(() => new Set());
+  const [applyError, setApplyError] = useState("");
   const generateButtonRef = useRef<HTMLButtonElement>(null);
   const manualCopyRef = useRef<HTMLTextAreaElement>(null);
   const mountedRef = useRef(true);
@@ -238,6 +258,8 @@ export function PatchWorkshop({
   function selectMode(mode: PatchMode) {
     setActiveMode(mode);
     setCopyStatus("idle");
+    setDraftCopyStatus("idle");
+    setApplyError("");
   }
 
   function setPatchForMode(mode: PatchMode, next: PatchState) {
@@ -318,6 +340,19 @@ export function PatchWorkshop({
     }
   }
 
+  async function copyCurrentDraft() {
+    const draftText = draftContent.trim();
+    if (!draftText) return;
+    setDraftCopyStatus("copying");
+
+    try {
+      if (!copyWithSelection(draftText)) await copyWithClipboard(draftText);
+      setDraftCopyStatus("copied");
+    } catch {
+      setDraftCopyStatus("manual");
+    }
+  }
+
   const modeTitle = activeMode === "advice" ? "修改建议" : "内容参考材料";
   const modeDescription = activeMode === "advice"
     ? "把诊断中的证据缺口和结构问题整理为可执行清单。"
@@ -325,17 +360,33 @@ export function PatchWorkshop({
   const visibleActions = activePatch.status === "success" ? activePatch.data.actions.slice(0, 3) : [];
   const appliedVisibleCount = visibleActions.filter((action) => checklistItemIds.has(action.id)).length;
 
-  function applyPatch(action: PatchAction, index: number) {
-    if (checklistItemIds.has(action.id)) return;
+  function createChecklistItem(action: PatchAction, index: number): PatchChecklistItem {
     const presentation = actionPresentation(action);
     const diagnostic = findActionDiagnostic(action, diagnosticResults, index);
-    onAddChecklistItem({
+    return {
       id: action.id,
       title: presentation.title,
       recommendation: presentation.body,
       location: presentation.source,
       status: diagnostic ? getReportIssueStatus(diagnostic) : "attention",
-    });
+    };
+  }
+
+  function applyPatch(action: PatchAction, index: number) {
+    if (checklistItemIds.has(action.id)) return;
+    onAddChecklistItem(createChecklistItem(action, index));
+  }
+
+  function applyPatchToDraft(action: PatchAction, index: number) {
+    const item = createChecklistItem(action, index);
+    const applied = onApplyPatchToDraft(item, actionDraftText(action));
+    if (!applied) {
+      setApplyError("正文已达到 12,000 字上限，未加入这条建议。");
+      return;
+    }
+    setApplyError("");
+    setAppliedToDraftIds((current) => new Set(current).add(action.id));
+    if (!checklistItemIds.has(action.id)) onAddChecklistItem(item);
   }
 
   return (
@@ -405,7 +456,8 @@ export function PatchWorkshop({
                 <p>修改建议</p>
               </div>
             </header>
-            <p className="phase2-patch-guidance">建议仅加入修改清单，不会自动改写正文。</p>
+            <p className="phase2-patch-guidance">先生成优化草稿，再选择要加入正文的建议。原文不会被覆盖，加入后可继续编辑并重新验证。</p>
+            {applyError ? <p className="phase2-patch-apply-error" role="alert">{applyError}</p> : null}
             <div className="phase2-patch-suggestion-body">
               {activePatch.status === "success" ? (
                 <>
@@ -416,12 +468,13 @@ export function PatchWorkshop({
                       const status = diagnostic ? getReportIssueStatus(diagnostic) : "attention";
                       const statusPresentation = PATCH_STATUS_META[status];
                       const applied = checklistItemIds.has(action.id);
+                      const appliedToDraft = appliedToDraftIds.has(action.id);
                       return (
                         <article
                           key={action.id}
-                          className={`${statusPresentation.className} ${index === 0 ? "is-primary" : "is-compact"} ${applied ? "is-applied" : ""}`}
+                          className={`${statusPresentation.className} ${index === 0 ? "is-primary" : "is-compact"} ${applied || appliedToDraft ? "is-applied" : ""}`}
                         >
-                          <span>{applied ? "已加入清单" : statusPresentation.label}</span>
+                            <span>{appliedToDraft ? "已加入正文" : applied ? "已加入清单" : statusPresentation.label}</span>
                           <dl>
                             <div><dt>问题</dt><dd>{presentation.title}</dd></div>
                             <div><dt>建议</dt><dd>{presentation.body}</dd></div>
@@ -429,11 +482,14 @@ export function PatchWorkshop({
                             <div><dt>依据</dt><dd>{presentation.source}</dd></div>
                           </dl>
                           <div className="phase2-patch-card-actions">
+                            <button type="button" onClick={() => applyPatchToDraft(action, index)} disabled={appliedToDraft}>
+                              {appliedToDraft ? <Check aria-hidden="true" /> : null}
+                              {appliedToDraft ? "已加入正文" : "加入优化草稿"}
+                            </button>
                             <button type="button" onClick={() => applyPatch(action, index)} disabled={applied}>
                               {applied ? <Check aria-hidden="true" /> : null}
-                              {applied ? "已加入" : "加入修改清单"}
+                              {applied ? "已加入清单" : "仅保留建议"}
                             </button>
-                            <button type="button" disabled>忽略</button>
                           </div>
                         </article>
                       );
@@ -484,6 +540,10 @@ export function PatchWorkshop({
                   </button>
                   <button type="button" onClick={() => selectMode(activeMode === "advice" ? "content_draft" : "advice")}>
                     <FileCheck2 aria-hidden="true" />{activeMode === "advice" ? "查看内容草稿" : "返回修改建议"}
+                  </button>
+                  <button type="button" onClick={copyCurrentDraft} disabled={draftCopyStatus === "copying" || !draftContent.trim()}>
+                    {draftCopyStatus === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                    {draftCopyStatus === "copied" ? "正文已复制" : "复制当前正文"}
                   </button>
                 </div>
               ) : null}

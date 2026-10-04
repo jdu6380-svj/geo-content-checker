@@ -85,7 +85,9 @@ export function ReportEvidencePanel({
         <div className="phase2-subpage-actions">
           <span><ShieldCheck aria-hidden="true" />已识别 {records.length} 个关键观点 · {verifiedCount} 项已验证</span>
           <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
-          <button type="button" onClick={onOpenDiagnosis}>进入问题诊断<ArrowRight aria-hidden="true" /></button>
+          <button type="button" className="phase2-primary-nav-button" onClick={onOpenDiagnosis}>
+            查看问题诊断<ArrowRight aria-hidden="true" />
+          </button>
         </div>
       </header>
 

@@ -35,6 +35,7 @@ type ReportStatusPresentation = {
 type ReportWorkspaceProps = {
   view: ReportWorkspaceView;
   title: string;
+  draftContent: string;
   runId: string | null;
   analysisSignal?: AbortSignal;
   contentAvailable: boolean;
@@ -78,12 +79,14 @@ type ReportWorkspaceProps = {
   onSubmitFollowUp: (event: FormEvent<HTMLFormElement>) => void;
   onDiagnosisFeedback: (question: string, helpful: boolean) => void;
   onAddPatchChecklistItem: (item: PatchChecklistItem) => void;
+  onApplyPatchToDraft: (item: PatchChecklistItem, draftText: string) => boolean;
   onScrollToSection: (sectionId: string) => void;
 };
 
 export function ReportWorkspace({
   view,
   title,
+  draftContent,
   runId,
   analysisSignal,
   contentAvailable,
@@ -127,6 +130,7 @@ export function ReportWorkspace({
   onSubmitFollowUp,
   onDiagnosisFeedback,
   onAddPatchChecklistItem,
+  onApplyPatchToDraft,
   onScrollToSection,
 }: ReportWorkspaceProps) {
   const evidenceCount = Object.values(diagnostics).reduce(
@@ -324,12 +328,14 @@ export function ReportWorkspace({
               <div hidden={view !== "patch"}>
                 <PatchWorkshop
                   title={title}
+                  draftContent={draftContent}
                   paragraphs={paragraphs}
                   diagnostics={diagnostics}
                   runId={runId}
                   analysisSignal={analysisSignal}
                   checklistItems={patchChecklist}
                   onAddChecklistItem={onAddPatchChecklistItem}
+                  onApplyPatchToDraft={onApplyPatchToDraft}
                   onBackToEditor={onBackToEditor}
                   onOpenOverview={() => onScrollToSection("report-overview")}
                   onOpenRecheck={onBackToEditor}

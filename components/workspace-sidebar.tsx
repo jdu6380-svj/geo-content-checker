@@ -1,18 +1,6 @@
 "use client";
 
-import {
-  Bot,
-  ChevronDown,
-  CircleHelp,
-  FileClock,
-  FileText,
-  Folder,
-  Home,
-  LayoutGrid,
-  MessageSquareText,
-  RotateCcw,
-  UsersRound,
-} from "lucide-react";
+import { FileText, Home, MessageSquareText, RotateCcw, WandSparkles } from "lucide-react";
 
 import type { ReportWorkspaceView } from "@/components/report-workspace";
 import type { WorkspaceStage } from "@/components/workspace-command-bar";
@@ -25,8 +13,6 @@ type WorkspaceSidebarProps = {
   canOpenRecheck: boolean;
   onOpenReview: () => void;
   onOpenReport: () => void;
-  onOpenEvidence: () => void;
-  onOpenDiagnosis: () => void;
   onOpenAdvice: () => void;
   onOpenRecheck: () => void;
   feedbackUrl?: string;
@@ -58,28 +44,20 @@ export function WorkspaceSidebar({
         </button>
 
         <div className="phase-sidebar-section">
-          <p>工作空间</p>
+          <p>审查流程</p>
           <button type="button" onClick={onOpenReport} disabled={!canOpenReport} className={stage === "report" ? "is-active" : ""}>
             <FileText aria-hidden="true" />我的审查
           </button>
-          <button type="button" disabled><Folder aria-hidden="true" />当前草稿</button>
-          <button type="button" disabled><UsersRound aria-hidden="true" />单用户 Beta</button>
-        </div>
-
-        <div className="phase-sidebar-section">
-          <p>工具</p>
           <button type="button" onClick={onOpenAdvice} disabled={!canOpenAdvice} className={stage === "advice" ? "is-active" : ""}>
-            <Bot aria-hidden="true" />AI 修改建议
+            <WandSparkles aria-hidden="true" />优化正文
           </button>
           <button type="button" onClick={onOpenRecheck} disabled={!canOpenRecheck} className={stage === "recheck" ? "is-active" : ""}>
             <RotateCcw aria-hidden="true" />重新验证
           </button>
-          <button type="button" disabled><LayoutGrid aria-hidden="true" />示例内容</button>
         </div>
 
         <div className="phase-sidebar-section">
-          <p>Beta 体验</p>
-          <button type="button" disabled><CircleHelp aria-hidden="true" />单用户模式</button>
+          <p>帮助</p>
           <a href="/feedback" target="_blank" rel="noreferrer" onClick={onFeedbackClick}>
             <MessageSquareText aria-hidden="true" />反馈建议
           </a>
@@ -87,15 +65,9 @@ export function WorkspaceSidebar({
       </nav>
 
       <div className="phase-sidebar-footer">
-        <span className="phase-user-avatar">B</span>
-        <div>
-          <strong>Beta 访客</strong>
-          <span>本地体验</span>
-        </div>
-        <ChevronDown aria-hidden="true" />
+        <strong>当前会话</strong>
+        <span>结果保存在本次浏览器会话</span>
       </div>
-
-      <span className="phase-sidebar-hidden-icon" aria-hidden="true"><FileClock /></span>
     </aside>
   );
 }
