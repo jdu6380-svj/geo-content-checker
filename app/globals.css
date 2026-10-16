@@ -2224,17 +2224,10 @@ h1, h2, h3, p { letter-spacing: 0; }
 .phase3-patch-checklist li.is-applied small { color: #159b59; font-weight: 700; }
 .phase3-patch-checklist li.is-skipped { opacity: .56; }
 .phase2-patch-card-actions button.phase2-patch-edit { color: var(--geo-primary); }
-.phase2-product-metrics { margin-top: 20px; border: 1px solid var(--geo-border); background: var(--geo-surface); padding: 18px 20px; }
-.phase2-product-metrics h2 { margin-top: 4px; color: var(--geo-text-heading); font-size: 15px; font-weight: 800; }
-.phase2-product-metrics ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 16px 0 0; padding: 0; list-style: none; }
-.phase2-product-metrics li { border-top: 1px solid var(--geo-border); padding-top: 9px; }
-.phase2-product-metrics strong { display: block; color: var(--geo-text-body); font-size: 11px; }
-.phase2-product-metrics span { display: block; margin-top: 3px; color: var(--geo-text-muted); font-size: 10px; line-height: 1.5; }
 .phase-guide-audience { margin: 10px 0 0; border-left: 2px solid var(--geo-primary); padding-left: 10px; color: var(--geo-text-muted); font-size: 11px; line-height: 1.6; }
 
 @media (max-width: 760px) {
   .phase3-patch-checklist { grid-template-columns: minmax(0, 1fr); }
-  .phase2-product-metrics ul { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* The rail card now explains the real review flow instead of showing placeholder scores. */
