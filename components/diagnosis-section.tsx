@@ -12,6 +12,7 @@ import {
 } from "@/lib/client/report-comparison";
 import type { DiagnosticItem, DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import type { PredictQuestionsResponse } from "@/lib/schemas/geo";
+import type { Paragraph } from "@/lib/schemas/geo";
 
 type DiagnosisSectionProps = {
   questions: LoadState<PredictQuestionsResponse>;
@@ -21,6 +22,7 @@ type DiagnosisSectionProps = {
   diagnosticsSettled: boolean;
   diagnosticsSucceeded: boolean;
   canOpenPatch: boolean;
+  paragraphs: Paragraph[];
   completedCount: number;
   totalCount: number;
   expandedQuestion: string | null;
@@ -83,6 +85,7 @@ export function DiagnosisSection({
   diagnosticsSettled,
   diagnosticsSucceeded,
   canOpenPatch,
+  paragraphs,
   completedCount,
   totalCount,
   expandedQuestion,
@@ -270,6 +273,7 @@ export function DiagnosisSection({
                         feedback={feedbackByQuestion[item.question]}
                         feedbackEnabled={feedbackEnabled}
                         canOpenPatch={canOpenPatch}
+                        paragraphs={paragraphs}
                         onRetry={() => onRetryDiagnostic(item.question)}
                         onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
                         onOpenEvidence={onOpenEvidence}

@@ -7,5 +7,7 @@ export type PatchChecklistItem = {
   title: string;
   recommendation: string;
   location: string;
+  paragraphIds?: string[];
+  decision?: "pending" | "applied" | "skipped";
   status: ReportIssueStatus;
 };

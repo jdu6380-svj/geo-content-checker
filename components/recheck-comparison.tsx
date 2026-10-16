@@ -84,6 +84,7 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
   }
 
   const scoreChange = current.totalScore - baseline.totalScore;
+  const contentChanged = Boolean(baseline.draftHash && current.draftHash && baseline.draftHash !== current.draftHash);
   const scorePresentation = changePresentation(scoreChange);
   const baselineIssues = baseline.diagnostics.filter(isReportIssue);
   const currentIssues = current.diagnostics.filter(isReportIssue);
@@ -131,7 +132,9 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
   ];
   const SummaryIcon = scoreChange < 0 ? AlertTriangle : ShieldCheck;
   const summaryTitle = scoreChange > 0 ? "可信度提升" : scoreChange < 0 ? "可信度下降" : "可信度保持稳定";
-  const summaryDescription = scoreChange > 0
+  const summaryDescription = !contentChanged
+    ? "本轮提交的正文与修改前一致，评分与问题状态不能证明已经改善。请先编辑正文，再重新验证。"
+    : scoreChange > 0
     ? "本轮修改改善了来源透明度、证据覆盖与结论可验证性。"
     : scoreChange < 0
       ? "本轮修改未形成预期改善，建议返回证据与诊断核对新增缺口。"
@@ -144,7 +147,7 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
           <p className="phase2-breadcrumb">我的审查 <span>/</span> 报告概览 <span>/</span> 重新验证</p>
           <h1>重新验证结果</h1>
           <p>已基于人工修改后的正文 · 对照原始报告重新核验</p>
-          <span className={`phase2-recheck-complete ${scorePresentation.className}`}><CheckCircle2 aria-hidden="true" />复核完成 · {scorePresentation.label} {scoreChangeLabel(scoreChange)}</span>
+          <span className={`phase2-recheck-complete ${!contentChanged ? "is-neutral" : scorePresentation.className}`}><CheckCircle2 aria-hidden="true" />复核完成 · {!contentChanged ? "正文未变化" : `${scorePresentation.label} ${scoreChangeLabel(scoreChange)}`}</span>
         </div>
         <div className="phase2-subpage-actions"><button type="button" onClick={onOpenOverview}>返回报告概览</button></div>
       </header>
@@ -159,7 +162,7 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
               <div className={`is-change ${scorePresentation.className}`}><strong><AnimatedNumber value={scoreChange} duration={520} delay={360} showSign /></strong><span>{scorePresentation.label}</span></div>
               <div className="is-after"><span>After</span><strong><AnimatedNumber value={current.totalScore} from={baseline.totalScore} duration={760} delay={180} /></strong><small>/100</small></div>
             </div>
-            <p>{scoreChange > 0 ? "来源引用与证据关联完成补强，整体可信度重新计算完成。" : scoreChange < 0 ? "重新验证后评分下降，建议回到证据与诊断核对新增缺口。" : "重新验证完成，整体评分保持稳定。"}</p>
+            <p>{!contentChanged ? "正文未发生变化，因此本次结果只能作为基线复核，不能确认问题已经改善。" : scoreChange > 0 ? "来源引用与证据关联完成补强，整体可信度重新计算完成。" : scoreChange < 0 ? "重新验证后评分下降，建议回到证据与诊断核对新增缺口。" : "重新验证完成，整体评分保持稳定。"}</p>
           </section>
 
           <section className="phase2-recheck-metrics">
@@ -185,7 +188,7 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
 
         <aside className="phase2-recheck-summary">
           <h2>改进总结</h2>
-          <div className={`phase2-recheck-summary-title ${scorePresentation.className}`}><SummaryIcon aria-hidden="true" /><strong>{summaryTitle}</strong></div>
+          <div className={`phase2-recheck-summary-title ${!contentChanged ? "is-neutral" : scorePresentation.className}`}><SummaryIcon aria-hidden="true" /><strong>{!contentChanged ? "正文未变化" : summaryTitle}</strong></div>
           <p>{summaryDescription}</p>
           <ul>{summaryItems.map((item) => <li key={item}><CheckCircle2 aria-hidden="true" />{item}</li>)}</ul>
           <span>{improvedIssueCount} 项问题改善 · 复核完成</span>

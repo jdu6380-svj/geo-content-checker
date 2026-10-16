@@ -18,6 +18,7 @@ export type ReportComparisonDiagnostic = {
 };
 
 export type ReportComparisonSnapshot = {
+  draftHash?: string;
   totalScore: number;
   dimensions: Record<ReportDimensionKey, { score: number; max: number }>;
   diagnostics: ReportComparisonDiagnostic[];
@@ -60,8 +61,10 @@ export function createReportComparisonSnapshot(
   scoring: EvaluateScoringResponse,
   questionOrder: string[],
   diagnostics: DiagnosticsState,
+  draftHash?: string,
 ): ReportComparisonSnapshot {
   return {
+    ...(draftHash ? { draftHash } : {}),
     totalScore: scoring.totalScore,
     dimensions: Object.fromEntries(
       REPORT_DIMENSION_KEYS.map((key) => [

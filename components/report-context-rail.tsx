@@ -174,6 +174,19 @@ export function ReportContextRail({
               查看证据分析 <ArrowRight aria-hidden="true" />
             </button>
           </section>
+
+          <section className="phase2-product-metrics" aria-labelledby="product-metrics-heading">
+            <div>
+              <p className="data-label">面试演示评估口径</p>
+              <h2 id="product-metrics-heading">不只看分数，也看能否完成修改闭环</h2>
+            </div>
+            <ul>
+              <li><strong>问题确认率</strong><span>人工确认的问题 / 全部诊断问题</span></li>
+              <li><strong>建议解决率</strong><span>复检后已改善的问题 / 已采纳建议</span></li>
+              <li><strong>审核耗时</strong><span>从提交到完成复检的总时长</span></li>
+              <li><strong>误判率</strong><span>被标记为有依据但人工否定的比例</span></li>
+            </ul>
+          </section>
         </div>
 
         <ReportNavigationPanel

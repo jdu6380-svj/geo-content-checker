@@ -1112,7 +1112,7 @@ export default function Home() {
 
   function openEditorForRecheck() {
     const baseline = scoring.status === "success" && diagnosticsSucceeded
-      ? createReportComparisonSnapshot(scoring.data, questionOrder, diagnostics)
+      ? createReportComparisonSnapshot(scoring.data, questionOrder, diagnostics, activeAnalysisHashRef.current ?? undefined)
       : null;
     if (baseline) setRecheckBaseline((current) => current ?? baseline);
     setWorkspaceStage("recheck");
@@ -1341,6 +1341,10 @@ export default function Home() {
     ));
   }
 
+  function updatePatchChecklistItem(id: string, decision: "applied" | "skipped") {
+    setPatchChecklist((current) => current.map((item) => item.id === id ? { ...item, decision } : item));
+  }
+
   return (
     <main className="app-shell">
       <AppHeader
@@ -1435,6 +1439,7 @@ export default function Home() {
             onSubmitFollowUp={submitFollowUp}
             onDiagnosisFeedback={submitDiagnosisFeedback}
             onAddPatchChecklistItem={addPatchChecklistItem}
+            onUpdatePatchChecklistItem={updatePatchChecklistItem}
             initialPatchStates={{
               ...(patchStates.advice ? { advice: patchStates.advice } : {}),
               ...(patchStates.content_draft ? { content_draft: patchStates.content_draft } : {}),

@@ -42,6 +42,7 @@ type PatchWorkshopProps = {
   analysisSignal?: AbortSignal;
   checklistItems: PatchChecklistItem[];
   onAddChecklistItem: (item: PatchChecklistItem) => void;
+  onUpdateChecklistItem: (id: string, decision: "applied" | "skipped") => void;
   onBackToEditor: () => void;
   onOpenOverview: () => void;
   onOpenRecheck: () => void;
@@ -202,6 +203,7 @@ export function PatchWorkshop({
   analysisSignal,
   checklistItems,
   onAddChecklistItem,
+  onUpdateChecklistItem,
   onBackToEditor,
   onOpenOverview,
   onOpenRecheck,
@@ -399,6 +401,8 @@ export function PatchWorkshop({
       title: presentation.title,
       recommendation: presentation.body,
       location: presentation.source,
+      paragraphIds: action.type === "structure_change" ? action.targetParagraphIds : priorityEvidence ? [priorityEvidence.paragraphId] : [],
+      decision: "pending",
       status: diagnostic ? getReportIssueStatus(diagnostic) : "attention",
     });
   }
@@ -412,10 +416,29 @@ export function PatchWorkshop({
           <p>基于已识别的可信度问题，逐项审阅可应用的编辑建议。</p>
         </div>
         <div className="phase2-subpage-actions">
-          <span>已加入 {checklistItems.length} 项 · 当前展示 {visibleActions.length} 条修改建议</span>
+          <span>清单 {currentChecklistItems.length} 项 · 待处理 {currentChecklistItems.filter((item) => item.decision !== "applied" && item.decision !== "skipped").length} 项</span>
           <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
         </div>
       </header>
+
+      {currentChecklistItems.length ? (
+        <section className="phase3-patch-checklist" aria-labelledby="patch-checklist-heading">
+          <div>
+            <p className="data-label">人工决策清单</p>
+            <h2 id="patch-checklist-heading">先判断，再改正文</h2>
+            <p>建议只负责指出证据缺口；事实、来源和最终表达必须由你确认。</p>
+          </div>
+          <ul>
+            {currentChecklistItems.map((item) => (
+              <li key={item.id} className={item.decision === "skipped" ? "is-skipped" : item.decision === "applied" ? "is-applied" : ""}>
+                <span>{item.status === "high" ? "高风险" : item.status === "attention" ? "注意" : "已通过"}</span>
+                <strong>{item.title}</strong>
+                <small>{item.decision === "applied" ? "已处理" : item.decision === "skipped" ? "已跳过" : "待人工处理"}</small>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {!paragraphs.length ? (
         <div className="phase2-loading-surface">
@@ -460,7 +483,7 @@ export function PatchWorkshop({
                 </div>
               ))}
             </div>
-            <footer>原文保持不变；建议加入修改清单后，仍需由你手动编辑正文。</footer>
+            <footer>原文不会被自动改写；点击“编辑正文”后完成修改，再进入重新验证。</footer>
           </section>
 
           <section className="phase2-patch-suggestions" aria-labelledby="patch-suggestion-heading">
@@ -498,7 +521,14 @@ export function PatchWorkshop({
                               {applied ? <Check aria-hidden="true" /> : null}
                               {applied ? "已加入" : "加入修改清单"}
                             </button>
-                            <button type="button" disabled>忽略</button>
+                            {applied ? (
+                              <>
+                                <button type="button" onClick={() => onUpdateChecklistItem(action.id, "applied")}>标记已处理</button>
+                                <button type="button" onClick={() => onUpdateChecklistItem(action.id, "skipped")}>跳过</button>
+                                <button type="button" className="phase2-patch-edit" onClick={onBackToEditor}>编辑正文</button>
+                              </>
+                            ) : null}
+                            <button type="button" className="phase2-patch-locate" onClick={onOpenOverview}>查看原文依据</button>
                           </div>
                         </article>
                       );

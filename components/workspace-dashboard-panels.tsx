@@ -20,6 +20,7 @@ export function QuickStartGuide() {
   return (
     <section className="phase-rail-card phase-guide-card" aria-labelledby="phase-guide-title">
       <h2 id="phase-guide-title">快速开始指南</h2>
+      <p className="phase-guide-audience">适合官网、帮助中心和 GEO 内容团队做发布前检查。</p>
       <ol className="phase-guide-list">
         {GUIDE_STEPS.map((step, index) => (
           <li key={step.label}>

@@ -82,12 +82,12 @@ function isPatchResponse(value: unknown): value is GeneratePatchesResponse {
 function isChecklistItem(value: unknown): value is PatchChecklistItem {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<PatchChecklistItem>;
-  return typeof item.id === "string" && (item.sourceReportHash === undefined || isHash(item.sourceReportHash)) && typeof item.title === "string" && typeof item.recommendation === "string" && typeof item.location === "string" && (item.status === "high" || item.status === "attention" || item.status === "passed");
+  return typeof item.id === "string" && (item.sourceReportHash === undefined || isHash(item.sourceReportHash)) && typeof item.title === "string" && typeof item.recommendation === "string" && typeof item.location === "string" && (item.paragraphIds === undefined || (Array.isArray(item.paragraphIds) && item.paragraphIds.every((id) => typeof id === "string"))) && (item.decision === undefined || item.decision === "pending" || item.decision === "applied" || item.decision === "skipped") && (item.status === "high" || item.status === "attention" || item.status === "passed");
 }
 function isComparisonSnapshot(value: unknown): value is ReportComparisonSnapshot {
   if (!value || typeof value !== "object") return false;
   const snapshot = value as Partial<ReportComparisonSnapshot>;
-  return typeof snapshot.totalScore === "number" && Boolean(snapshot.dimensions) && Array.isArray(snapshot.diagnostics) && snapshot.diagnostics.every((item) => typeof item.question === "string" && (item.answerability === "可以完全回答" || item.answerability === "信息不足" || item.answerability === "有风险") && (item.riskLevel === "low" || item.riskLevel === "medium" || item.riskLevel === "high") && (item.evidenceStatus === "valid" || item.evidenceStatus === "missing" || item.evidenceStatus === "invalid"));
+  return (snapshot.draftHash === undefined || isHash(snapshot.draftHash)) && typeof snapshot.totalScore === "number" && Boolean(snapshot.dimensions) && Array.isArray(snapshot.diagnostics) && snapshot.diagnostics.every((item) => typeof item.question === "string" && (item.answerability === "可以完全回答" || item.answerability === "信息不足" || item.answerability === "有风险") && (item.riskLevel === "low" || item.riskLevel === "medium" || item.riskLevel === "high") && (item.evidenceStatus === "valid" || item.evidenceStatus === "missing" || item.evidenceStatus === "invalid"));
 }
 function isWorkflowState(value: unknown): value is WorkflowState {
   if (!value || typeof value !== "object") return false;

@@ -81,6 +81,7 @@ type ReportWorkspaceProps = {
   onSubmitFollowUp: (event: FormEvent<HTMLFormElement>) => void;
   onDiagnosisFeedback: (question: string, helpful: boolean) => void;
   onAddPatchChecklistItem: (item: PatchChecklistItem) => void;
+  onUpdatePatchChecklistItem: (id: string, decision: "applied" | "skipped") => void;
   initialPatchStates?: Partial<Record<"advice" | "content_draft", PatchState>>;
   onPatchStateChange?: (mode: "advice" | "content_draft", state: PatchState) => void;
   onScrollToSection: (sectionId: string) => void;
@@ -134,6 +135,7 @@ export function ReportWorkspace({
   onSubmitFollowUp,
   onDiagnosisFeedback,
   onAddPatchChecklistItem,
+  onUpdatePatchChecklistItem,
   initialPatchStates,
   onPatchStateChange,
   onScrollToSection,
@@ -155,7 +157,7 @@ export function ReportWorkspace({
   const flowComplete = reportComplete && diagnosticsSucceeded;
   const comparisonComplete = flowComplete && scoring.status === "success";
   const currentComparison = comparisonComplete && scoring.status === "success"
-    ? createReportComparisonSnapshot(scoring.data, questionOrder, diagnostics)
+    ? createReportComparisonSnapshot(scoring.data, questionOrder, diagnostics, sourceHash ?? undefined)
     : null;
   const recheckStatus = resolveRecheckStatus({
     hasBaseline: Boolean(recheckBaseline),
@@ -305,6 +307,7 @@ export function ReportWorkspace({
                   diagnosticsSettled={diagnosticsSettled}
                   diagnosticsSucceeded={diagnosticsSucceeded}
                   canOpenPatch={canOpenPatch}
+                  paragraphs={paragraphs}
                   expandedQuestion={expandedQuestion}
                   latestQuestion={latestQuestion}
                   latestQuestionRef={latestQuestionRef}
@@ -341,6 +344,7 @@ export function ReportWorkspace({
                   analysisSignal={analysisSignal}
                   checklistItems={patchChecklist}
                   onAddChecklistItem={onAddPatchChecklistItem}
+                  onUpdateChecklistItem={onUpdatePatchChecklistItem}
                   initialPatches={initialPatchStates}
                   onPatchStateChange={onPatchStateChange}
                   onBackToEditor={onBackToEditor}

@@ -9,6 +9,7 @@ import {
   type ReportIssueStatus,
 } from "@/lib/client/report-comparison";
 import type { DiagnosticItem } from "@/lib/client/report-state";
+import type { Paragraph } from "@/lib/schemas/geo";
 
 type DiagnosticDetailPanelProps = {
   item: DiagnosticItem | null;
@@ -16,6 +17,7 @@ type DiagnosticDetailPanelProps = {
   fromCachedReport: boolean;
   canRetry: boolean;
   canOpenPatch: boolean;
+  paragraphs: Paragraph[];
   feedback?: boolean;
   feedbackEnabled: boolean;
   onRetry: () => void;
@@ -48,6 +50,7 @@ export function DiagnosticDetailPanel({
   fromCachedReport,
   canRetry,
   canOpenPatch,
+  paragraphs,
   feedback,
   feedbackEnabled,
   onRetry,
@@ -109,6 +112,12 @@ export function DiagnosticDetailPanel({
   const missingInfoEmptyMessage = fromCachedReport
     ? "本地缓存报告未保留缺失信息明细。"
     : "当前问题没有明显信息缺口。";
+  const linkedParagraphs = item.data.evidence
+    .map((evidence) => paragraphs.find((paragraph) => paragraph.id === evidence.paragraphId))
+    .filter((paragraph): paragraph is Paragraph => Boolean(paragraph));
+  const evidenceBoundary = item.data.evidenceStatus === "valid"
+    ? "已定位到提交文章内部的连续原文，但这不等于外部来源已经核验。"
+    : "当前只能确认文章内部缺少可核验支撑；外部事实与来源尚未核实。";
 
   return (
     <div id="diagnosis-detail-panel" className="diagnosis-detail-panel">
@@ -154,6 +163,17 @@ export function DiagnosticDetailPanel({
           ) : (
             <p className="diagnosis-empty-copy">{evidenceEmptyMessage}</p>
           )}
+          {linkedParagraphs.length ? (
+            <div className="diagnosis-source-context">
+              <span className="diagnosis-optimization-label">对应原文段落</span>
+              {linkedParagraphs.map((paragraph) => (
+                <div key={paragraph.id} className="diagnosis-source-paragraph">
+                  <strong>{paragraph.id}</strong>
+                  <p>{paragraph.text}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="diagnosis-detail-card is-reason">
@@ -165,6 +185,10 @@ export function DiagnosticDetailPanel({
                 ? "当前引用无法通过原文定位，结论缺少可复核的证据链。"
                 : "当前观点缺少足够的来源、事实或适用条件说明。"}
           </p>
+          <div className="diagnosis-evidence-boundary">
+            <strong>证据边界</strong>
+            <p>{evidenceBoundary}</p>
+          </div>
         </section>
 
         <section className="diagnosis-detail-card diagnosis-recommendation">
