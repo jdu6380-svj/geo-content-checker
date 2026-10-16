@@ -98,6 +98,7 @@ const ANALYSIS_SESSION_DEADLINE_MS = 15_000;
 const SCORING_DEADLINE_MS = 45_000;
 const QUESTIONS_DEADLINE_MS = 45_000;
 const DIAGNOSTIC_DEADLINE_MS = 60_000;
+const WORKFLOW_RESTORE_DEADLINE_MS = 4_000;
 
 const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
   {
@@ -668,43 +669,61 @@ export default function Home() {
     let cancelled = false;
 
     async function restoreSession() {
-      let workflowResult: Awaited<ReturnType<typeof readWorkflowState>> = { state: null, storageAvailable: true, invalid: false };
-      let workflowError = false;
-      try { workflowResult = await readWorkflowState(); } catch { workflowError = true; }
+      let restoreTimer: number | null = null;
+      try {
+        const restoreDeadline = new Promise<never>((_, reject) => {
+          restoreTimer = window.setTimeout(() => reject(new Error("workflow_restore_timeout")), WORKFLOW_RESTORE_DEADLINE_MS);
+        });
+        const restoreData = (async () => {
+          let workflowResult: Awaited<ReturnType<typeof readWorkflowState>> = { state: null, storageAvailable: true, invalid: false };
+          let workflowError = false;
+          try { workflowResult = await readWorkflowState(); } catch { workflowError = true; }
 
-      let storedResult = readDraftSessionResult();
-      let storedHash: string | null = null;
-      if (storedResult.envelope) {
-        try { storedHash = await createAnalysisHash(storedResult.envelope.draft); }
-        catch { storedResult = { ...storedResult, storageAvailable: false, invalid: false }; }
-      }
-      if (cancelled) return;
+          let storedResult = readDraftSessionResult();
+          let storedHash: string | null = null;
+          if (storedResult.envelope) {
+            try { storedHash = await createAnalysisHash(storedResult.envelope.draft); }
+            catch { storedResult = { ...storedResult, storageAvailable: false, invalid: false }; }
+          }
+          return { workflowResult, workflowError, storedResult, storedHash };
+        })();
+        const { workflowResult, workflowError, storedResult, storedHash } = await Promise.race([restoreData, restoreDeadline]);
+        if (cancelled) return;
 
-      const decision = resolveWorkflowRecovery({
-        workflow: workflowResult.state,
-        workflowInvalid: workflowResult.invalid,
-        workflowError: workflowError || !workflowResult.storageAvailable,
-        draft: storedResult.envelope,
-        draftInvalid: storedResult.invalid,
-        draftError: !storedResult.storageAvailable,
-        draftHash: storedHash,
-      });
-      if (decision.kind === "workflow") restoreWorkflow(decision.workflow);
-      else if (decision.kind === "pending-draft") restoreWorkflow(decision.workflow, decision.draft);
-      else if (decision.kind === "draft") {
-        draftRef.current = decision.draft;
-        setDraft(decision.draft);
-        setDraftSaveState("saved");
-        setError(decision.warning ?? "正文草稿已恢复，请重新分析。");
+        const decision = resolveWorkflowRecovery({
+          workflow: workflowResult.state,
+          workflowInvalid: workflowResult.invalid,
+          workflowError: workflowError || !workflowResult.storageAvailable,
+          draft: storedResult.envelope,
+          draftInvalid: storedResult.invalid,
+          draftError: !storedResult.storageAvailable,
+          draftHash: storedHash,
+        });
+        if (decision.kind === "workflow") restoreWorkflow(decision.workflow);
+        else if (decision.kind === "pending-draft") restoreWorkflow(decision.workflow, decision.draft);
+        else if (decision.kind === "draft") {
+          draftRef.current = decision.draft;
+          setDraft(decision.draft);
+          setDraftSaveState("saved");
+          setError(decision.warning ?? "正文草稿已恢复，请重新分析。");
+        }
+        if ("warning" in decision && decision.warning) setPersistenceError(decision.warning);
+        else if (workflowResult.invalid || workflowError || !workflowResult.storageAvailable || storedResult.invalid || !storedResult.storageAvailable) {
+          setPersistenceError("部分缓存无法恢复，已尽可能保留可用内容。");
+        }
+      } catch {
+        if (!cancelled) {
+          setPersistenceError("本地工作流恢复超时，已跳过旧状态。你可以直接开始新的分析。");
+          setError("旧工作流恢复失败，请重新开始分析。");
+        }
+      } finally {
+        if (restoreTimer !== null) window.clearTimeout(restoreTimer);
+        if (!cancelled) {
+          storageReadyRef.current = true;
+          setStorageReady(true);
+          setIsRestoringWorkflow(false);
+        }
       }
-      if ("warning" in decision && decision.warning) setPersistenceError(decision.warning);
-      else if (workflowResult.invalid || workflowError || !workflowResult.storageAvailable || storedResult.invalid || !storedResult.storageAvailable) {
-        setPersistenceError("部分缓存无法恢复，已尽可能保留可用内容。");
-      }
-
-      storageReadyRef.current = true;
-      setStorageReady(true);
-      setIsRestoringWorkflow(false);
     }
 
     void restoreSession();
