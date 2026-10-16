@@ -38,7 +38,7 @@ const RISK_STYLE: Record<ReportIssueStatus, { label: string; className: string }
 
 const RISK_IMPACT: Record<ReportIssueStatus, string> = {
   passed: "当前信息基本能够支撑判断，发布前仍应核对引用与适用边界。",
-  attention: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
+  attention: "信息缺口会增加读者与智能系统确认内容可靠性的成本。",
   high: "关键依据不足可能直接影响内容可信判断，应在发布前优先处理。",
 };
 

@@ -4,20 +4,18 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { EditorWorkspace } from "@/components/editor-workspace";
+import type { PatchState } from "@/components/patch-workshop";
 import { ReportWorkspace, type ReportWorkspaceView } from "@/components/report-workspace";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
-import {
-  WorkspaceCommandBar,
-  type WorkspaceStage,
-  type WorkspaceStatus,
-} from "@/components/workspace-command-bar";
+import type { WorkspaceStage } from "@/components/workspace-command-bar";
 import {
   clearDraftAnalysis,
   createAnalysisHash,
   markDraftAnalysis,
-  readDraftSession,
+  readDraftSessionResult,
   saveDraftSession,
 } from "@/lib/client/analysis-persistence";
+import { resolveWorkflowRecovery } from "@/lib/client/workflow-recovery";
 import {
   createGeoAbortError,
   isGeoAbortError,
@@ -45,10 +43,25 @@ import {
 } from "@/lib/client/report-comparison";
 import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
 import {
+  WORKFLOW_STATE_VERSION,
+  clearWorkflowState,
+  canPersistWorkflow,
+  paragraphsForWorkflow,
+  patchStatesForWorkflow,
+  readWorkflowState,
+  saveWorkflowState,
+  type WorkflowState,
+} from "@/lib/client/workflow-state";
+import {
   MAX_ARTICLE_CHARACTERS,
   MIN_ARTICLE_CHARACTERS,
 } from "@/lib/constants/input-limits";
 import { createNumberedParagraphs } from "@/lib/geo/paragraphs";
+import {
+  ANALYSIS_CONTRACT_VERSION,
+  ANALYSIS_VERSION,
+  REPORT_SCHEMA_VERSION,
+} from "@/lib/constants/analysis-contract";
 import type {
   DiagnosticResult,
   EvaluateScoringResponse,
@@ -90,26 +103,26 @@ const SAMPLES: Array<ArticleDraft & { label: string; note: string }> = [
   {
     label: "结构完整",
     note: "问题、事实、边界清晰",
-    title: "独立创作者如何为 AI 搜索优化长文",
+    title: "远程团队如何建立每周复盘机制",
     publishedAt: "2026-07-13",
     content:
-      "AI 搜索正在改变用户发现内容的方式。传统搜索通常先展示链接，AI 搜索则会提取多个来源的信息并组织成回答。\n\n一、创作者为什么要关注 GEO\n当文章能够直接回答真实问题，并提供清楚的事实、时间和适用边界时，模型更容易准确理解内容。GEO 不等于保证排名，它关注的是内容被正确理解和引用的准备度。\n\n二、具体怎么做\n第一步，列出读者最可能提出的 5 个问题。第二步，为关键结论补充数据、案例或来源。第三步，增加小标题、列表和 FAQ。第四步，标注发布日期、更新时间和适用版本。\n\n适用范围\n这套方法适合公众号、博客和帮助中心长文，不适合依赖图片或视频才能理解的内容。完成修改后，仍需人工确认事实是否准确。",
+      "远程团队可以通过每周复盘发现协作中的重复问题。建议每周固定安排一次复盘会议，记录已完成事项、未完成事项及其原因，并将问题整理为后续行动。\n\n一个可执行的复盘流程包括：\n1. 汇总本周任务完成情况。\n2. 区分客观事实与主观判断。\n3. 为每个关键问题指定负责人和下一步行动。\n\n复盘效果应通过任务按时完成率、问题重复发生率等指标持续观察。但在没有实际统计数据的情况下，不应声称该机制已经将效率提高了某个具体百分比。",
   },
   {
     label: "信息缺失",
     note: "观点明确，证据不足",
-    title: "内容创作者必须马上布局 AI 搜索",
+    title: "社区活动如何制定报名与通知流程",
     publishedAt: "",
     content:
-      "AI 搜索已经非常重要，所有创作者都应该马上开始布局。未来绝大部分用户都会通过 AI 获取信息。\n\n创作者需要把文章写得更好，让 AI 更容易理解。只要内容质量足够高，就有机会得到更多曝光。\n\n具体方法包括优化结构、增加信息和回答用户问题。坚持执行，就能获得明显效果。",
+      "社区准备举办一次周末公开活动，计划通过线上表单收集报名信息，再按照报名顺序发送确认通知。活动当天由志愿者负责签到，并在活动结束后整理参与者反馈。\n\n目前还需要补充活动人数上限、报名截止时间、取消报名方式和个人信息保存期限。若报名人数超过场地容量，应提前说明候补规则，避免参与者对是否成功报名产生误解。",
   },
   {
     label: "营销过强",
     note: "承诺很多，事实很少",
-    title: "一个方法让你的内容获得爆发式增长",
+    title: "小型电商如何记录售后问题",
     publishedAt: "2026-07-13",
     content:
-      "这是目前效果最强、全网领先的内容增长方法。任何人使用后都能快速提升流量，并获得前所未有的曝光。\n\n我们的独家方案可以彻底解决内容不被看见的问题，不需要复杂操作，也不需要长期等待。\n\n现在开始使用，你的文章就会更容易被所有 AI 平台推荐。这是创作者不可错过的增长机会。",
+      "小型电商可以为每一笔售后申请记录订单编号、商品名称、问题类型、处理时间和最终结果。每周汇总一次，可以帮助团队发现重复出现的质量或配送问题。\n\n建议由专人维护售后表格，并为退款、换货和补发分别设置处理状态。统计改善效果时，应注明统计周期、样本数量和计算方式，不能只用个别案例代表整体结果。",
   },
 ];
 
@@ -296,7 +309,9 @@ export default function Home() {
   const [followUpError, setFollowUpError] = useState("");
   const [latestQuestion, setLatestQuestion] = useState<string | null>(null);
   const [restoredFromCache, setRestoredFromCache] = useState(false);
+  const [completeWorkflowRestored, setCompleteWorkflowRestored] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
+  const [isRestoringWorkflow, setIsRestoringWorkflow] = useState(true);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [feedbackByQuestion, setFeedbackByQuestion] = useState<Record<string, boolean | undefined>>({});
@@ -307,10 +322,14 @@ export default function Home() {
   const analysisControllerRef = useRef<AbortController | null>(null);
   const activeAnalysisHashRef = useRef<string | null>(null);
   const draftRef = useRef<ArticleDraft>(draft);
+  const analyzedDraftRef = useRef<ArticleDraft | null>(null);
   const draftSaveTimerRef = useRef<number | null>(null);
   const analysisProgressTimersRef = useRef<number[]>([]);
   const analysisCompletionHandledRef = useRef(false);
   const storageReadyRef = useRef(false);
+  const workflowPersistenceBlockedRef = useRef(false);
+  const workflowSaveVersionRef = useRef(0);
+  const recheckBaselinePersistenceRef = useRef<Promise<void> | null>(null);
   const reportedRunIdsRef = useRef(new Set<string>());
   const editorStartedReportedRef = useRef(false);
   const reportViewedRunIdsRef = useRef(new Set<string>());
@@ -318,10 +337,14 @@ export default function Home() {
   const [activeSessionRunId, setActiveSessionRunId] = useState<string | null>(null);
   const [recheckBaseline, setRecheckBaseline] = useState<ReportComparisonSnapshot | null>(null);
   const [patchChecklist, setPatchChecklist] = useState<PatchChecklistItem[]>([]);
+  const [patchStates, setPatchStates] = useState<Record<"advice" | "content_draft", PatchState | null>>({ advice: null, content_draft: null });
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("review");
   const [reportView, setReportView] = useState<ReportWorkspaceView>("overview");
   const [analysisProgressStep, setAnalysisProgressStep] = useState(0);
   const [analysisProgressComplete, setAnalysisProgressComplete] = useState(false);
+  const [persistenceError, setPersistenceError] = useState("");
+  const [draftPersistenceError, setDraftPersistenceError] = useState("");
+  const [draftSaveState, setDraftSaveState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
 
   const contentText = draft?.content ?? "";
   const contentLength = contentText.length;
@@ -348,36 +371,68 @@ export default function Home() {
     diagnosticsSettled
   );
   const reportReady = !restoredFromCache && reportAvailable;
-  const workflowSucceeded = reportAvailable && diagnosticsSucceeded;
-  const workspaceFlowComplete = workflowSucceeded;
-  const workspaceHasError = session.status === "error" || scoring.status === "error" ||
-    questions.status === "error" || Object.values(diagnostics).some((item) => item.status === "error");
-  const workspaceIsAnalyzing = !analysisPresentationComplete || session.status === "loading" || scoring.status === "loading" ||
-    questions.status === "loading" || Object.values(diagnostics).some(
-      (item) => item.status === "queued" || item.status === "loading",
-    );
-  const editorReady = Boolean(
-    draft.title.trim() &&
-    contentText.trim().length >= MIN_ARTICLE_CHARACTERS &&
-    remaining >= 0
-  );
-  const workspaceStatus: WorkspaceStatus = !analysisStarted
-    ? error || Object.values(fieldErrors).some(Boolean)
-      ? "error"
-      : editorReady
-        ? "ready"
-        : "empty"
-    : workspaceHasError
-      ? "error"
-      : restoredFromCache
-        ? "warning"
-        : workspaceFlowComplete
-          ? "completed"
-          : workspaceIsAnalyzing
-            ? "analyzing"
-            : "warning";
+  // A cached report is still a complete, reusable analysis.  It must retain
+  // the numbered paragraphs so the user can reopen diagnosis/patch advice
+  // after a refresh instead of seeing those actions disabled.
+  const workflowSucceeded = reportAvailable && diagnosticsSucceeded && paragraphs.length > 0;
   const canOpenAdvice = analysisStarted && workflowSucceeded;
   const canOpenRecheck = canOpenAdvice && Boolean(contentText.trim());
+
+  const persistWorkflow = useCallback(async (options: {
+    recheckBaselineOverride?: ReportComparisonSnapshot | null;
+    allowWhileEditing?: boolean;
+  } = {}) => {
+    const reportHash = activeAnalysisHashRef.current;
+    const effectiveRecheckBaseline = options.recheckBaselineOverride ?? recheckBaseline;
+    if (!canPersistWorkflow({
+      storageReady: storageReadyRef.current,
+      analysisStarted,
+      reportHash,
+      scoringSucceeded: scoring.status === "success",
+      questionsSucceeded: questions.status === "success",
+      diagnosticsSucceeded,
+      paragraphsCount: paragraphs.length,
+      restoredFromCache,
+      completeWorkflowRestored,
+      persistenceBlocked: options.allowWhileEditing ? false : workflowPersistenceBlockedRef.current,
+    }) || !reportHash || scoring.status !== "success" || questions.status !== "success") return;
+    const saveVersion = ++workflowSaveVersionRef.current;
+    const state: WorkflowState = {
+      workflowVersion: WORKFLOW_STATE_VERSION,
+      analysisVersion: ANALYSIS_VERSION,
+      analysisContractVersion: ANALYSIS_CONTRACT_VERSION,
+      reportSchemaVersion: REPORT_SCHEMA_VERSION,
+      savedAt: new Date().toISOString(),
+      reportId: `report:${reportHash}`,
+      reportHash,
+      draftHash: await createAnalysisHash(draft),
+      patchSourceHash: reportHash,
+      analyzedDraft: analyzedDraftRef.current ?? draft,
+      draft,
+      report: {
+        title: draft.title,
+        publishedAt: draft.publishedAt,
+        scoring: scoring.data,
+        questionSource: questions.data.source,
+        questionOrder,
+        diagnostics,
+      },
+      paragraphs,
+      patchStates: patchStatesForWorkflow({
+        advice: patchStates.advice?.status === "success" ? { mode: "advice", data: patchStates.advice.data } : null,
+        content_draft: patchStates.content_draft?.status === "success" ? { mode: "content_draft", data: patchStates.content_draft.data } : null,
+      }, reportHash),
+      patchChecklist: patchChecklist.map((item) => ({ ...item, sourceReportHash: reportHash })),
+      recheckBaseline: effectiveRecheckBaseline,
+      workspaceStage,
+      reportView,
+    };
+    const result = await saveWorkflowState(state, {
+      isCurrent: () => workflowSaveVersionRef.current === saveVersion,
+    });
+    if (!result.ok && result.reason !== "stale") setPersistenceError("工作流状态未能保存，刷新后可能无法恢复完整报告。");
+    else setPersistenceError("");
+  }, [analysisStarted, completeWorkflowRestored, diagnostics, diagnosticsSucceeded, draft, paragraphs, patchChecklist, patchStates, questions, questionOrder, recheckBaseline, reportView, restoredFromCache, scoring, workspaceStage]);
 
   const abortActiveAnalysis = useCallback(() => {
     analysisControllerRef.current?.abort();
@@ -415,7 +470,9 @@ export default function Home() {
       draftSaveTimerRef.current = null;
     }
     if (!storageReadyRef.current) return;
-    saveDraftSession(draftRef.current);
+    const saved = saveDraftSession(draftRef.current);
+    setDraftSaveState(saved ? "saved" : "failed");
+    setDraftPersistenceError(saved ? "" : "正文尚未可靠保存，离开页面后可能无法恢复最新修改。");
   }, []);
 
   const clearPersistedDraftAnalysis = useCallback((nextDraft?: ArticleDraft) => {
@@ -425,22 +482,34 @@ export default function Home() {
       draftSaveTimerRef.current = null;
     }
     if (!storageReadyRef.current) return;
-    clearDraftAnalysis(draftRef.current);
+    const saved = clearDraftAnalysis(draftRef.current);
+    setDraftSaveState(saved ? "saved" : "failed");
+    setDraftPersistenceError(saved ? "" : "正文尚未可靠保存，离开页面后可能无法恢复最新修改。");
   }, []);
 
   const restoreCachedAnalysis = useCallback((cached: CacheEnvelope, restoredDraft: ArticleDraft) => {
+    workflowSaveVersionRef.current += 1;
     abortActiveAnalysis();
     clearAnalysisProgressTimers();
     analysisCompletionHandledRef.current = true;
     activeAnalysisHashRef.current = cached.analysisHash;
+    analyzedDraftRef.current = restoredDraft.content ? restoredDraft : null;
     setActiveSessionRunId(null);
     setGeoAnalysisToken(null);
+    setCompleteWorkflowRestored(false);
     if (restoredDraft.content) {
       markDraftAnalysis(restoredDraft, cached.analysisHash, "success");
     }
     draftRef.current = restoredDraft;
     setDraft(restoredDraft);
-    setParagraphs([]);
+    // The cached scoring response already contains the exact paragraph
+    // segmentation used by the report. Restore it so downstream evidence and
+    // patch actions remain available after reopening the app.
+    setParagraphs(
+      cached.report.scoring.numbered_paragraphs.length > 0
+        ? cached.report.scoring.numbered_paragraphs
+        : createNumberedParagraphs(restoredDraft.content),
+    );
     setScoring({ status: "success", data: cached.report.scoring });
     setQuestions({
       status: "success",
@@ -459,6 +528,47 @@ export default function Home() {
     setAnalysisProgressComplete(true);
     setWorkspaceStage("report");
     setReportView("overview");
+  }, [abortActiveAnalysis, clearAnalysisProgressTimers]);
+
+  const restoreWorkflow = useCallback((workflow: WorkflowState, pendingDraft?: ArticleDraft) => {
+    workflowSaveVersionRef.current += 1;
+    abortActiveAnalysis();
+    clearAnalysisProgressTimers();
+    analysisCompletionHandledRef.current = true;
+    activeAnalysisHashRef.current = workflow.reportHash;
+    analyzedDraftRef.current = workflow.analyzedDraft;
+    setGeoAnalysisToken(null);
+    setCompleteWorkflowRestored(true);
+    setActiveSessionRunId(null);
+    const restoredDraft = pendingDraft ?? workflow.draft;
+    const isEditingPendingDraft = Boolean(pendingDraft);
+    draftRef.current = restoredDraft;
+    setDraft(restoredDraft);
+    setParagraphs(paragraphsForWorkflow(workflow));
+    setScoring({ status: "success", data: workflow.report.scoring });
+    setQuestions({ status: "success", data: { questions: workflow.report.questionOrder, source: workflow.report.questionSource } });
+    setQuestionOrder(workflow.report.questionOrder);
+    setDiagnostics(workflow.report.diagnostics);
+    setPatchStates({ advice: null, content_draft: null });
+    if (!isEditingPendingDraft) {
+      for (const patch of workflow.patchStates) {
+        if (patch.sourceReportHash !== workflow.reportHash) continue;
+        setPatchStates((current) => ({ ...current, [patch.mode]: { status: "success", data: patch.data } }));
+      }
+    }
+    setPatchChecklist(isEditingPendingDraft ? [] : workflow.patchChecklist);
+    setRecheckBaseline(workflow.recheckBaseline);
+    setAnalysisStarted(!isEditingPendingDraft);
+    setRestoredFromCache(!isEditingPendingDraft);
+    setAnalysisProgressStep(3);
+    setAnalysisProgressComplete(true);
+    setWorkspaceStage(isEditingPendingDraft ? (workflow.recheckBaseline ? "recheck" : "review") : workflow.workspaceStage);
+    setReportView(isEditingPendingDraft ? "overview" : workflow.reportView);
+    if (isEditingPendingDraft) {
+      workflowPersistenceBlockedRef.current = true;
+      setCompleteWorkflowRestored(false);
+      setSession({ status: "idle" });
+    }
   }, [abortActiveAnalysis, clearAnalysisProgressTimers]);
 
   useEffect(() => {
@@ -558,44 +668,50 @@ export default function Home() {
     let cancelled = false;
 
     async function restoreSession() {
-      const stored = readDraftSession();
-      const cached = readCachedReport();
+      let workflowResult: Awaited<ReturnType<typeof readWorkflowState>> = { state: null, storageAvailable: true, invalid: false };
+      let workflowError = false;
+      try { workflowResult = await readWorkflowState(); } catch { workflowError = true; }
 
-      if (stored) {
-        const storedHash = await createAnalysisHash(stored.draft);
-        if (cancelled) return;
+      let storedResult = readDraftSessionResult();
+      let storedHash: string | null = null;
+      if (storedResult.envelope) {
+        try { storedHash = await createAnalysisHash(storedResult.envelope.draft); }
+        catch { storedResult = { ...storedResult, storageAvailable: false, invalid: false }; }
+      }
+      if (cancelled) return;
 
-        draftRef.current = stored.draft;
-        setDraft(stored.draft);
-        if (stored.analysis?.status === "running") {
-          markDraftAnalysis(stored.draft, storedHash, "failed");
-          setError("上次分析在完成前中断，草稿已恢复，请重新分析。");
-        } else if (
-          stored.analysis?.status === "success" &&
-          stored.analysis.analysisHash === storedHash &&
-          cached?.analysisHash === storedHash
-        ) {
-          restoreCachedAnalysis(cached, stored.draft);
-        }
-      } else if (cached) {
-        restoreCachedAnalysis(cached, {
-          title: cached.report.title,
-          content: "",
-          publishedAt: cached.report.publishedAt,
-        });
+      const decision = resolveWorkflowRecovery({
+        workflow: workflowResult.state,
+        workflowInvalid: workflowResult.invalid,
+        workflowError: workflowError || !workflowResult.storageAvailable,
+        draft: storedResult.envelope,
+        draftInvalid: storedResult.invalid,
+        draftError: !storedResult.storageAvailable,
+        draftHash: storedHash,
+      });
+      if (decision.kind === "workflow") restoreWorkflow(decision.workflow);
+      else if (decision.kind === "pending-draft") restoreWorkflow(decision.workflow, decision.draft);
+      else if (decision.kind === "draft") {
+        draftRef.current = decision.draft;
+        setDraft(decision.draft);
+        setDraftSaveState("saved");
+        setError(decision.warning ?? "正文草稿已恢复，请重新分析。");
+      }
+      if ("warning" in decision && decision.warning) setPersistenceError(decision.warning);
+      else if (workflowResult.invalid || workflowError || !workflowResult.storageAvailable || storedResult.invalid || !storedResult.storageAvailable) {
+        setPersistenceError("部分缓存无法恢复，已尽可能保留可用内容。");
       }
 
-      if (!cancelled) {
-        storageReadyRef.current = true;
-        setStorageReady(true);
-      }
+      storageReadyRef.current = true;
+      setStorageReady(true);
+      setIsRestoringWorkflow(false);
     }
 
     void restoreSession();
     return () => {
       cancelled = true;
     };
-  }, [restoreCachedAnalysis]);
+  }, [restoreCachedAnalysis, restoreWorkflow]);
 
   useEffect(() => {
     if (!storageReady) return;
@@ -607,7 +723,10 @@ export default function Home() {
     const timerId = window.setTimeout(() => {
       if (draftSaveTimerRef.current !== timerId) return;
       draftSaveTimerRef.current = null;
-      saveDraftSession(draftRef.current);
+      setDraftSaveState("saving");
+      const saved = saveDraftSession(draftRef.current);
+      setDraftSaveState(saved ? "saved" : "failed");
+      setDraftPersistenceError(saved ? "" : "正文尚未可靠保存，离开页面后可能无法恢复最新修改。");
     }, DRAFT_SAVE_DEBOUNCE_MS);
     draftSaveTimerRef.current = timerId;
 
@@ -617,6 +736,11 @@ export default function Home() {
       draftSaveTimerRef.current = null;
     };
   }, [draft, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !diagnosticsSucceeded) return;
+    void persistWorkflow();
+  }, [diagnosticsSucceeded, persistWorkflow, storageReady]);
 
   useEffect(() => {
     const handlePageHide = (event: PageTransitionEvent) => {
@@ -671,6 +795,7 @@ export default function Home() {
       draftRef.current = nextDraft;
       return nextDraft;
     });
+    setDraftSaveState("saving");
     if (field === "title" || field === "content") {
       setFieldErrors((current) => ({ ...current, [field]: undefined }));
     }
@@ -682,6 +807,8 @@ export default function Home() {
       void postGeoBetaEvent({ event: "editor_started" });
     }
     activeRunRef.current += 1;
+    workflowPersistenceBlockedRef.current = true;
+    workflowSaveVersionRef.current += 1;
     abortActiveAnalysis();
     setGeoAnalysisToken(null);
     const nextDraft = {
@@ -708,8 +835,11 @@ export default function Home() {
     setError("");
     setFieldErrors({});
     setRestoredFromCache(false);
+    setCompleteWorkflowRestored(false);
     setRecheckBaseline(null);
     setPatchChecklist([]);
+    setPatchStates({ advice: null, content_draft: null });
+    clearWorkflowState();
   }
 
   function handleLoadSample(sample: (typeof SAMPLES)[number]) {
@@ -861,6 +991,15 @@ export default function Home() {
   }
 
   async function startAnalysis(article: ArticleDraft, force = false) {
+    const pendingBaselinePersistence = recheckBaselinePersistenceRef.current;
+    if (pendingBaselinePersistence) {
+      await pendingBaselinePersistence;
+      if (recheckBaselinePersistenceRef.current === pendingBaselinePersistence) {
+        recheckBaselinePersistenceRef.current = null;
+      }
+    }
+    workflowPersistenceBlockedRef.current = true;
+    workflowSaveVersionRef.current += 1;
     flushDraftSession(article);
     const runId = activeRunRef.current + 1;
     activeRunRef.current = runId;
@@ -880,8 +1019,15 @@ export default function Home() {
 
     const articleParagraphs = createNumberedParagraphs(article.content);
 
+    const previousAnalysisHash = activeAnalysisHashRef.current;
+    if (previousAnalysisHash && previousAnalysisHash !== analysisHash) {
+      setPatchStates({ advice: null, content_draft: null });
+      setPatchChecklist([]);
+    }
+
     if (!recheckBaseline) setPatchChecklist([]);
     activeAnalysisHashRef.current = analysisHash;
+    analyzedDraftRef.current = article;
     markDraftAnalysis(article, analysisHash, "running");
     setParagraphs(articleParagraphs);
     setAnalysisStarted(true);
@@ -890,6 +1036,7 @@ export default function Home() {
     setReportView("overview");
     setSession({ status: "loading" });
     setRestoredFromCache(false);
+    setCompleteWorkflowRestored(false);
     setExpandedQuestion(null);
     setScoring({ status: "loading" });
     setQuestions({ status: "loading" });
@@ -901,6 +1048,7 @@ export default function Home() {
     setLatestQuestion(null);
     setGeoAnalysisToken(null);
     setActiveSessionRunId(null);
+    workflowPersistenceBlockedRef.current = false;
 
     window.requestAnimationFrame(() => {
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -943,6 +1091,8 @@ export default function Home() {
   }
 
   function backToEditor() {
+    workflowPersistenceBlockedRef.current = true;
+    workflowSaveVersionRef.current += 1;
     activeRunRef.current += 1;
     abortActiveAnalysis();
     clearAnalysisProgressTimers();
@@ -953,21 +1103,28 @@ export default function Home() {
     setActiveSessionRunId(null);
     setGeoAnalysisToken(null);
     setAnalysisStarted(false);
+    setRestoredFromCache(false);
+    setCompleteWorkflowRestored(false);
     setSession({ status: "idle" });
     setExpandedQuestion(null);
     setError("");
   }
 
   function openEditorForRecheck() {
-    if (scoring.status === "success" && diagnosticsSucceeded) {
-      setRecheckBaseline((current) => current ?? createReportComparisonSnapshot(
-        scoring.data,
-        questionOrder,
-        diagnostics,
-      ));
-    }
+    const baseline = scoring.status === "success" && diagnosticsSucceeded
+      ? createReportComparisonSnapshot(scoring.data, questionOrder, diagnostics)
+      : null;
+    if (baseline) setRecheckBaseline((current) => current ?? baseline);
     setWorkspaceStage("recheck");
     backToEditor();
+    if (baseline) {
+      // Persist the completed report and immutable baseline after the editor
+      // transition blocks ordinary workflow writes.
+      recheckBaselinePersistenceRef.current = persistWorkflow({
+        recheckBaselineOverride: baseline,
+        allowWhileEditing: true,
+      });
+    }
     focusEditor();
   }
 
@@ -979,8 +1136,11 @@ export default function Home() {
   }
 
   function startNewAnalysis() {
+    workflowPersistenceBlockedRef.current = true;
     setRecheckBaseline(null);
     setPatchChecklist([]);
+    setPatchStates({ advice: null, content_draft: null });
+    clearWorkflowState();
     setWorkspaceStage("review");
     setReportView("overview");
     backToEditor();
@@ -1040,7 +1200,7 @@ export default function Home() {
       return { label: "正在分析", className: "status-info" };
     }
     if (scoring.status === "success" && scoring.data.source === "model") {
-      return { label: "AI 模型分析", className: "status-success" };
+      return { label: "模型分析", className: "status-success" };
     }
     return { label: "安全降级结果", className: "status-neutral" };
   }
@@ -1177,11 +1337,9 @@ export default function Home() {
 
   function addPatchChecklistItem(item: PatchChecklistItem) {
     setPatchChecklist((current) => (
-      current.some((existing) => existing.id === item.id) ? current : [...current, item]
+      current.some((existing) => existing.id === item.id) ? current : [...current, { ...item, sourceReportHash: activeAnalysisHashRef.current ?? undefined }]
     ));
   }
-
-  const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL;
 
   return (
     <main className="app-shell">
@@ -1195,28 +1353,11 @@ export default function Home() {
             : focusEditor()
         )}
         onNewAnalysis={startNewAnalysis}
-        feedbackUrl={feedbackUrl}
-        onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
-        navigation={(
-          <WorkspaceCommandBar
-            stage={workspaceStage}
-            status={workspaceStatus}
-            title={draft.title}
-            canOpenReport={analysisStarted}
-            canOpenAdvice={canOpenAdvice}
-            canOpenRecheck={canOpenRecheck}
-            onOpenReview={openReviewStage}
-            onOpenReport={openReportStage}
-            onOpenAdvice={openAdviceStage}
-            onOpenRecheck={openRecheckStage}
-          />
-        )}
       />
 
       <div className="workspace-shell-layout">
         <WorkspaceSidebar
           stage={workspaceStage}
-          reportView={reportView}
           canOpenReport={analysisStarted}
           canOpenAdvice={canOpenAdvice}
           canOpenRecheck={canOpenRecheck}
@@ -1226,12 +1367,18 @@ export default function Home() {
           onOpenDiagnosis={() => scrollToSection("diagnostic-section")}
           onOpenAdvice={openAdviceStage}
           onOpenRecheck={openRecheckStage}
-          feedbackUrl={feedbackUrl}
           onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
         />
 
         <div className="workspace-shell-content">
-          {analysisStarted ? (
+          {persistenceError || draftPersistenceError ? <p className="workspace-persistence-warning" role="alert">{persistenceError || draftPersistenceError}</p> : null}
+          {isRestoringWorkflow ? (
+            <section className="surface-flat border border-[var(--geo-border)] p-6 sm:p-8" role="status" aria-live="polite" aria-busy="true">
+              <p className="data-label">正在恢复工作区</p>
+              <h1 className="mt-2 text-xl font-semibold text-[var(--geo-text-strong)]">正在检查上次审查状态</h1>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--geo-text-muted)]">正在读取本地工作流状态。恢复完成后会保留当前报告、修改建议和工作区位置。</p>
+            </section>
+          ) : analysisStarted ? (
             <ReportWorkspace
             view={reportView}
             title={draft.title}
@@ -1246,9 +1393,11 @@ export default function Home() {
             diagnostics={diagnostics}
             diagnosticsSettled={diagnosticsSettled}
             diagnosticsSucceeded={diagnosticsSucceeded}
+            canOpenPatch={canOpenAdvice}
             patchChecklist={patchChecklist}
             recheckBaseline={recheckBaseline}
             runId={activeSessionRunId}
+            sourceHash={activeAnalysisHashRef.current}
             completedCount={completedCount}
             expandedQuestion={expandedQuestion}
             latestQuestion={latestQuestion}
@@ -1286,6 +1435,13 @@ export default function Home() {
             onSubmitFollowUp={submitFollowUp}
             onDiagnosisFeedback={submitDiagnosisFeedback}
             onAddPatchChecklistItem={addPatchChecklistItem}
+            initialPatchStates={{
+              ...(patchStates.advice ? { advice: patchStates.advice } : {}),
+              ...(patchStates.content_draft ? { content_draft: patchStates.content_draft } : {}),
+            }}
+            onPatchStateChange={(mode, state) => {
+              setPatchStates((current) => ({ ...current, [mode]: state.status === "success" ? state : current[mode] }));
+            }}
             onScrollToSection={scrollToSection}
             />
           ) : (
@@ -1306,6 +1462,7 @@ export default function Home() {
               issueCount: recheckBaseline.diagnostics.filter(isReportIssue).length,
               checklistItems: patchChecklist,
             } : null}
+            draftSaveState={draftSaveState}
             onSubmit={submit}
             onDraftChange={updateDraft}
             onLoadSample={(index) => handleLoadSample(SAMPLES[index])}

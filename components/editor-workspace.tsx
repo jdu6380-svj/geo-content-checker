@@ -65,13 +65,14 @@ type EditorWorkspaceProps = {
     issueCount: number;
     checklistItems: PatchChecklistItem[];
   } | null;
+  draftSaveState: "idle" | "saving" | "saved" | "failed";
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDraftChange: (field: keyof EditorDraft, value: string) => void;
   onLoadSample: (index: number) => void;
 };
 
 type EditorMode = "upload" | "paste";
-type SelectedFile = { name: string; size: number; format: "MD" | "TXT" };
+type SelectedFile = { name: string; size: number; format: "文档" | "文本" };
 
 const TOOLBAR_ITEMS = [
   { label: "标题", icon: Heading },
@@ -116,6 +117,7 @@ export function EditorWorkspace({
   contentRef,
   samples,
   recheckContext,
+  draftSaveState,
   onSubmit,
   onDraftChange,
   onLoadSample,
@@ -128,7 +130,7 @@ export function EditorWorkspace({
   const isRecheck = Boolean(recheckContext);
 
   useEffect(() => {
-    if (recheckContext || (error && contentText)) setMode("paste");
+    if (contentText || recheckContext || error) setMode("paste");
   }, [contentText, error, recheckContext]);
 
   useEffect(() => {
@@ -151,7 +153,7 @@ export function EditorWorkspace({
     if (!SUPPORTED_UPLOAD_PATTERN.test(file.name)) {
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setUploadError("当前 Beta 仅支持 Markdown（.md、.markdown）与 TXT 文本文件。PDF、DOCX 尚未开放解析。");
+      setUploadError("当前仅支持 Markdown 文档与纯文本文件，暂不支持 PDF、DOCX。");
       return;
     }
 
@@ -179,7 +181,7 @@ export function EditorWorkspace({
       setSelectedFile({
         name: file.name,
         size: file.size,
-        format: /\.txt$/i.test(file.name) ? "TXT" : "MD",
+        format: /\.txt$/i.test(file.name) ? "文本" : "文档",
       });
       onDraftChange("title", file.name.replace(/\.[^.]+$/, ""));
       onDraftChange("content", text);
@@ -210,7 +212,7 @@ export function EditorWorkspace({
       <div className="phase-editor-page-heading">
         <p className="phase-editor-kicker">内容可信度审查</p>
         <h1>{recheckContext ? "重新验证修改后的文章" : "开始一次内容可信度审查"}</h1>
-        <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "Evidra 基于 Evidence First 原则，帮助你识别内容风险，提升观点可信度。"}</p>
+        <p>{recheckContext ? "提交人工确认后的版本，对比修改前后的真实变化。" : "Evidra 基于证据优先原则，帮助你识别内容风险，提升观点可信度。"}</p>
       </div>
 
       {recheckContext ? (
@@ -308,7 +310,7 @@ export function EditorWorkspace({
                   <>
                     <span className="phase-upload-state-icon"><Upload aria-hidden="true" /></span>
                     <h2>拖入文章文件，或选择文件上传</h2>
-                    <p>支持 Markdown、TXT（UTF-8 文本，最多读取 {maxArticleCharacters.toLocaleString()} 字）</p>
+                    <p>支持 Markdown 文档和纯文本（UTF-8，最多读取 {maxArticleCharacters.toLocaleString()} 字）</p>
                     <button type="button" className="phase-primary-button phase-file-button" onClick={() => fileInputRef.current?.click()}>
                       选择文件 <ChevronDown aria-hidden="true" />
                     </button>
@@ -356,6 +358,9 @@ export function EditorWorkspace({
                     />
                     <footer>
                       <span>字数统计：{contentLength.toLocaleString()} 字</span>
+                      {draftSaveState === "saving" ? <small role="status">正在保存正文</small> : null}
+                      {draftSaveState === "saved" ? <small role="status">正文已保存</small> : null}
+                      {draftSaveState === "failed" ? <small role="alert">正文尚未可靠保存</small> : null}
                       <button type="submit" className="phase-primary-button">开始分析 <ArrowRight aria-hidden="true" /></button>
                     </footer>
                   </div>
@@ -381,7 +386,7 @@ export function EditorWorkspace({
                   return (
                     <li key={sample.id}>
                       <span className={`phase-recent-file-icon ${presentation.tone}`}>{presentation.marker}</span>
-                      <div><strong>Demo 内容 · {sample.title}</strong><span>{sample.status} · {sample.description}</span></div>
+                      <div><strong>{sample.title}</strong><span>{sample.status} · {sample.description}</span></div>
                       <button type="button" onClick={() => handleSample(index)}>载入示例 <ArrowRight aria-hidden="true" /></button>
                     </li>
                   );

@@ -2,7 +2,7 @@
 
 import type { FormEvent, RefObject } from "react";
 import { useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronDown, Circle, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, Circle, ShieldAlert } from "lucide-react";
 
 import { DiagnosticDetailPanel } from "@/components/diagnostic-detail-panel";
 import {
@@ -20,6 +20,7 @@ type DiagnosisSectionProps = {
   diagnostics: DiagnosticsState;
   diagnosticsSettled: boolean;
   diagnosticsSucceeded: boolean;
+  canOpenPatch: boolean;
   completedCount: number;
   totalCount: number;
   expandedQuestion: string | null;
@@ -62,7 +63,7 @@ const PENDING_RISK = {
 
 const RISK_IMPACT = {
   high: "关键依据不足可能直接影响内容可信判断。",
-  attention: "信息缺口会增加读者与 AI 系统确认内容可靠性的成本。",
+  attention: "信息缺口会增加读者与智能系统确认内容可靠性的成本。",
   passed: "当前信息与证据能够支持判断。",
 } as const;
 
@@ -81,6 +82,7 @@ export function DiagnosisSection({
   diagnostics,
   diagnosticsSettled,
   diagnosticsSucceeded,
+  canOpenPatch,
   completedCount,
   totalCount,
   expandedQuestion,
@@ -126,7 +128,7 @@ export function DiagnosisSection({
     <section id="diagnostic-section" className="phase2-diagnosis-page section-anchor">
       <header className="phase2-subpage-header">
         <div>
-          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Diagnosis</p>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> 报告概览 <span>/</span> 诊断</p>
           <h1>问题诊断</h1>
           <p>基于观点、证据与来源链路，定位影响内容可信度的问题。</p>
         </div>
@@ -167,7 +169,44 @@ export function DiagnosisSection({
             <div><Circle className="is-danger" aria-hidden="true" /><span>高风险</span><strong>{riskSummary.high}</strong></div>
             <div><Circle className="is-warning" aria-hidden="true" /><span>注意</span><strong>{riskSummary.attention}</strong></div>
             <div><Circle className="is-success" aria-hidden="true" /><span>通过</span><strong>{riskSummary.passed}</strong></div>
-            <p>Evidence First · 风险判断均可追溯至具体观点、证据与来源。</p>
+          <p>证据优先 · 风险判断均可追溯至具体观点、证据与来源。</p>
+          </section>
+
+          <section
+            className={`phase2-diagnosis-next-step ${diagnosticsSucceeded ? "is-ready" : "is-pending"}`}
+            aria-labelledby="diagnosis-next-step-title"
+          >
+            <div>
+              <span aria-hidden="true">{diagnosticsSucceeded ? "03" : "02"}</span>
+              <div>
+                <p className="data-label">下一步</p>
+                <h2 id="diagnosis-next-step-title">
+                  {diagnosticsSucceeded ? "整理为可执行的修改建议" : "先完成可用的诊断结果"}
+                </h2>
+                <p>
+                  {diagnosticsSucceeded
+                    ? "审阅建议后可加入修改清单，正文仍由你人工修改。"
+                    : diagnosticsSettled
+                      ? "已完成的结果会保留；重试失败项目后，才能生成完整修改建议。"
+                      : "诊断仍在处理中，完成后这里会显示下一步操作。"}
+                </p>
+              </div>
+            </div>
+            <div className="phase2-diagnosis-next-step-action">
+              <button
+                type="button"
+                className="phase2-diagnosis-next-step-button"
+                onClick={onOpenPatch}
+                disabled={!canOpenPatch}
+              >
+                进入修改建议 <ArrowRight aria-hidden="true" />
+              </button>
+              {!canOpenPatch ? (
+                <span className="phase2-diagnosis-next-step-status">
+                  {diagnosticsSucceeded ? "正文恢复完成后可进入修改建议" : diagnosticsSettled ? "等待失败项重试" : "正在整理结果"}
+                </span>
+              ) : null}
+            </div>
           </section>
 
           <div className="phase2-diagnosis-toolbar">
@@ -195,7 +234,7 @@ export function DiagnosisSection({
               const reason = status === "passed"
                 ? "原文已提供可核验依据，当前观点能够得到支持。"
                 : item.data?.missingInfo[0]
-                  || (item.data?.evidenceStatus === "invalid" ? "现有引用未通过原文校验。" : "当前观点缺少足够 Evidence 支撑。");
+                  || (item.data?.evidenceStatus === "invalid" ? "现有引用未通过原文校验。" : "当前观点缺少足够证据支撑。");
               return (
                 <article key={item.question} className={`phase2-diagnosis-row ${risk.className} ${expandedQuestion === item.question ? "is-expanded" : ""}`}>
                   <button
@@ -230,7 +269,7 @@ export function DiagnosisSection({
                         canRetry={canRetryDiagnostic(item.question)}
                         feedback={feedbackByQuestion[item.question]}
                         feedbackEnabled={feedbackEnabled}
-                        canOpenPatch={diagnosticsSucceeded}
+                        canOpenPatch={canOpenPatch}
                         onRetry={() => onRetryDiagnostic(item.question)}
                         onFeedback={(helpful) => onDiagnosisFeedback(item.question, helpful)}
                         onOpenEvidence={onOpenEvidence}

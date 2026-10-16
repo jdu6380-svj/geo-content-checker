@@ -33,6 +33,7 @@ type ReportContextRailProps = {
   restoredFromCache: boolean;
   analysisSettled: boolean;
   analysisSucceeded: boolean;
+  patchAvailable: boolean;
   hasRecheckBaseline: boolean;
   onBackToEditor: () => void;
 };
@@ -83,6 +84,7 @@ export function ReportContextRail({
   restoredFromCache,
   analysisSettled,
   analysisSucceeded,
+  patchAvailable,
   hasRecheckBaseline,
   onBackToEditor,
 }: ReportContextRailProps) {
@@ -118,7 +120,7 @@ export function ReportContextRail({
     <section id="report-core" className="phase2-report-overview section-anchor">
       <header className="phase2-report-page-header">
         <div>
-          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview</p>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> 报告概览</p>
           <h1>内容可信度审查报告</h1>
           <p className="phase2-report-article">文章：{title || "未命名内容"}</p>
           <span className="phase2-report-complete-copy">
@@ -128,7 +130,7 @@ export function ReportContextRail({
                 ? "分析已完成"
                 : analysisSettled
                   ? "分析部分完成"
-                  : "分析进行中"} · Evidence First
+                  : "分析进行中"} · 证据优先
           </span>
         </div>
         <div className="phase2-report-stat-strip" aria-label="报告状态摘要">
@@ -156,7 +158,7 @@ export function ReportContextRail({
               <p>结论</p>
               <strong>{hasIncompleteDiagnostics ? "部分诊断未完成" : scoreBand?.label || primaryProblems[0] || "当前未发现明显高风险问题"}</strong>
               <p>{hasIncompleteDiagnostics ? "部分问题未能完成诊断；重试成功后才能生成修改建议。" : priorityRisk.impact}</p>
-              <span className="phase2-report-evidence-progress">已完成 {completedCount} 项 Evidence 检查</span>
+              <span className="phase2-report-evidence-progress">已完成 {completedCount} 项证据检查</span>
             </div>
           </section>
 
@@ -165,11 +167,11 @@ export function ReportContextRail({
           <section className="phase2-evidence-first-callout">
             <div>
               <span aria-hidden="true"><Scale /></span>
-              <p><strong>Evidence First</strong> · 每项结论均建立在可核验的证据与来源之上。</p>
+              <p><strong>证据优先</strong> · 每项结论均建立在可核验的证据与来源之上。</p>
               <small>优先查看来源透明度与可验证性中的待补充项。</small>
             </div>
             <button type="button" onClick={() => onScrollToSection("evidence-section")}>
-              查看 Evidence 分析 <ArrowRight aria-hidden="true" />
+              查看证据分析 <ArrowRight aria-hidden="true" />
             </button>
           </section>
         </div>
@@ -182,7 +184,7 @@ export function ReportContextRail({
           recheckLabel={contentAvailable ? "待复核" : "暂无正文"}
           analysisComplete={analysisSucceeded}
           analysisSettled={analysisSettled}
-          patchAvailable={analysisSucceeded}
+          patchAvailable={patchAvailable}
           recheckAvailable={analysisSucceeded && contentAvailable}
           onNavigate={(view) => {
             if (view === "overview") return;

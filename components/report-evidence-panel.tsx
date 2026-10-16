@@ -22,21 +22,21 @@ const STATUS_META = {
   valid: {
     label: "已验证",
     className: "is-success",
-    confidence: "High",
+    confidence: "高",
     conclusion: "多项原文信息与结论一致，可作为当前判断依据。",
     icon: CheckCircle2,
   },
   missing: {
     label: "待补充",
     className: "is-warning",
-    confidence: "Medium",
+    confidence: "中",
     conclusion: "当前依据不足，需要补充来源或可核验事实。",
     icon: CircleAlert,
   },
   invalid: {
     label: "风险",
     className: "is-danger",
-    confidence: "Low",
+    confidence: "低",
     conclusion: "现有引用无法支持该结论，需要重新核对。",
     icon: ShieldAlert,
   },
@@ -78,14 +78,14 @@ export function ReportEvidencePanel({
     <section id="evidence-section" className="phase2-evidence-page section-anchor">
       <header className="phase2-subpage-header">
         <div>
-          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Evidence</p>
-          <h1>Evidence 依据分析</h1>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> 报告概览 <span>/</span> 证据</p>
+          <h1>证据依据分析</h1>
           <p>逐条核验观点、证据与来源，让每项结论可追溯、可解释。</p>
         </div>
         <div className="phase2-subpage-actions">
           <span><ShieldCheck aria-hidden="true" />已识别 {records.length} 个关键观点 · {verifiedCount} 项已验证</span>
           <button type="button" onClick={onOpenOverview}><ArrowLeft aria-hidden="true" />返回报告概览</button>
-          <button type="button" onClick={onOpenDiagnosis}>进入问题诊断<ArrowRight aria-hidden="true" /></button>
+          <button type="button" className="phase2-evidence-diagnosis-action" onClick={onOpenDiagnosis}>进入问题诊断<ArrowRight aria-hidden="true" /></button>
         </div>
       </header>
 
@@ -125,7 +125,7 @@ export function ReportEvidencePanel({
           <section className="phase2-evidence-panel" aria-labelledby="phase2-evidence-panel-heading">
             <header>
               <div>
-                <h2 id="phase2-evidence-panel-heading">Evidence Panel</h2>
+                <h2 id="phase2-evidence-panel-heading">证据面板</h2>
                 <p>观点、依据与来源的可解释链路</p>
               </div>
               <span>当前展示 {visibleRecords.length}/{records.length}</span>
@@ -144,10 +144,10 @@ export function ReportEvidencePanel({
                   <li key={`${order}-${data.question}`} className={`${status.className} ${order === 1 ? "is-primary" : ""} ${expanded ? "is-expanded" : ""}`}>
                     <span className="phase2-evidence-status"><StatusIcon aria-hidden="true" />{status.label}</span>
                     <dl>
-                      <div><dt>Claim</dt><dd>{data.question}</dd></div>
-                      <div><dt>Evidence</dt><dd>{evidenceText}</dd></div>
+                      <div><dt>观点</dt><dd>{data.question}</dd></div>
+                      <div><dt>原文依据</dt><dd>{evidenceText}</dd></div>
                       <div>
-                        <dt>Source</dt>
+                        <dt>原文位置</dt>
                         <dd className="is-link">
                           <button
                             type="button"
@@ -163,7 +163,7 @@ export function ReportEvidencePanel({
                           </button>
                         </dd>
                       </div>
-                      <div><dt>Confidence</dt><dd className={status.className}>{status.confidence}</dd></div>
+                      <div><dt>置信等级</dt><dd className={status.className}>{status.confidence}</dd></div>
                     </dl>
                     <div className="phase3-evidence-summary">
                       <p>{status.conclusion}</p>
@@ -173,7 +173,7 @@ export function ReportEvidencePanel({
                         aria-controls={detailId}
                         onClick={() => setExpandedEvidenceOrder((current) => current === order ? null : order)}
                       >
-                        Detail
+                        {expanded ? "收起判断详情" : "查看判断详情"}
                         <ChevronDown aria-hidden="true" />
                       </button>
                     </div>
@@ -218,11 +218,11 @@ export function ReportEvidencePanel({
                 <ChevronDown aria-hidden="true" />
               </button>
             ) : null}
-            <footer><ShieldCheck aria-hidden="true" /><span><strong>Evidence First</strong> · 所有结论均应建立在可核验的证据与来源之上。</span></footer>
+            <footer><ShieldCheck aria-hidden="true" /><span><strong>证据优先</strong> · 所有结论均应建立在可核验的证据与来源之上。</span></footer>
           </section>
         </div>
       ) : pending || Object.keys(diagnostics).length === 0 ? (
-        <div className="phase2-loading-surface" role="status" aria-live="polite">正在整理 Evidence 分析…</div>
+        <div className="phase2-loading-surface" role="status" aria-live="polite">正在整理证据分析…</div>
       ) : (
         <div className="phase2-loading-surface">当前报告没有可展示的诊断证据。</div>
       )}

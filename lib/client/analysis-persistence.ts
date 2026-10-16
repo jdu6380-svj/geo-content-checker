@@ -25,6 +25,11 @@ export type DraftSessionEnvelope = {
   draft: PersistedArticleDraft;
   analysis?: PersistedAnalysisState;
 };
+export type DraftSessionReadResult = {
+  envelope: DraftSessionEnvelope | null;
+  storageAvailable: boolean;
+  invalid: boolean;
+};
 
 export const DRAFT_CONTENT_MAX_BYTES = 64 * 1024;
 export const DRAFT_PAYLOAD_MAX_BYTES = 128 * 1024;
@@ -99,15 +104,14 @@ export function parseDraftSession(raw: string): DraftSessionEnvelope | null {
   }
 }
 
-function readStoredEnvelope(): DraftSessionEnvelope | null {
+function readStoredEnvelopeResult(): DraftSessionReadResult {
   try {
     const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) return { envelope: null, storageAvailable: true, invalid: false };
     const envelope = parseDraftSession(raw);
-    if (!envelope) window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
-    return envelope;
+    return { envelope, storageAvailable: true, invalid: envelope === null };
   } catch {
-    return null;
+    return { envelope: null, storageAvailable: false, invalid: false };
   }
 }
 
@@ -124,11 +128,15 @@ function writeEnvelope(envelope: DraftSessionEnvelope): boolean {
 }
 
 export function readDraftSession(): DraftSessionEnvelope | null {
-  return readStoredEnvelope();
+  return readStoredEnvelopeResult().envelope;
+}
+
+export function readDraftSessionResult(): DraftSessionReadResult {
+  return readStoredEnvelopeResult();
 }
 
 export function saveDraftSession(draft: PersistedArticleDraft): boolean {
-  const existing = readStoredEnvelope();
+  const existing = readStoredEnvelopeResult().envelope;
   return writeEnvelope({
     analysisVersion: ANALYSIS_VERSION,
     analysisContractVersion: ANALYSIS_CONTRACT_VERSION,

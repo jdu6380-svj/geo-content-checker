@@ -186,7 +186,6 @@ export function saveCachedReport(report: CachedReport, analysisHash: string): vo
 
   const cacheSafeReport: CachedReport = {
     ...report,
-    scoring: { ...report.scoring, numbered_paragraphs: [] },
     diagnostics: stripCachedEvidence(report.diagnostics),
   };
   let envelope: CacheEnvelope = {

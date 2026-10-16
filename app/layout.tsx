@@ -4,17 +4,17 @@ import "./globals.css";
 export const metadata: Metadata = {
   applicationName: "Evidra",
   title: {
-    default: "Evidra · AI 内容可信度审查",
+    default: "Evidra · 智能内容可信度审查",
     template: "%s · Evidra",
   },
-  description: "Evidra 是面向 AI 搜索时代的内容可信度审查平台。",
-  keywords: ["Evidra", "AI 内容可信度", "Evidence Review", "AI 搜索", "GEO"],
+    description: "Evidra 是面向智能搜索时代的内容可信度审查平台。",
+    keywords: ["Evidra", "内容可信度", "证据审查", "智能搜索"],
   openGraph: {
     type: "website",
     locale: "zh_CN",
     siteName: "Evidra",
-    title: "Evidra · AI 内容可信度审查",
-    description: "面向 AI 搜索时代的内容可信度审查平台。",
+    title: "Evidra · 智能内容可信度审查",
+    description: "面向智能搜索时代的内容可信度审查平台。",
   },
   appleWebApp: {
     title: "Evidra",

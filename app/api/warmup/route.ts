@@ -13,10 +13,12 @@ import {
   AnalysisRateLimitUnavailableError,
   checkWarmupRateLimit,
 } from "@/lib/server/analysis-rate-limit";
+import { isLightweightDevelopmentMode } from "@/lib/server/development-runtime";
 import {
   markGeoRequestOutcome,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
+import { runWarmupModel } from "@/lib/server/warmup-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,10 +47,12 @@ async function handlePost(request: NextRequest): Promise<Response> {
 
   try {
     const identity = resolveAnalysisIdentity(request);
-    const rateLimit = await checkWarmupRateLimit({
-      deviceHash: identity.deviceHash,
-      ipHash: identity.ipHash,
-    });
+    const rateLimit = isLightweightDevelopmentMode()
+      ? { allowed: true, retryAfter: 0, mode: "memory" as const, reason: undefined }
+      : await checkWarmupRateLimit({
+          deviceHash: identity.deviceHash,
+          ipHash: identity.ipHash,
+        });
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -67,9 +71,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
       );
     }
 
-    let warmed = false;
-    try {
-      await callOpenAICompatibleModel({
+    const warmed = await runWarmupModel(process.env, () =>
+      callOpenAICompatibleModel({
         messages: [
           { role: "system", content: "Return one minimal JSON object and no other text." },
           { role: "user", content: "Return {\"ok\":true}." },
@@ -78,11 +81,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
         timeoutMs: 4_000,
         maxTokens: 16,
         rateLimitMode: rateLimit.mode,
-      });
-      warmed = true;
-    } catch {
-      warmed = false;
-    }
+      }),
+    );
     markGeoRequestOutcome({ source: warmed ? "model" : "fallback" });
 
     return NextResponse.json(

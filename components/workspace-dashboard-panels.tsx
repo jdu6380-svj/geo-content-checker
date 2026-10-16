@@ -1,25 +1,19 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { Check, FileSearch2, RotateCcw, ShieldCheck } from "lucide-react";
 
-type RecentReviewCardProps = {
-  score?: number;
-  title?: string;
-  onOpenReport?: () => void;
-};
-
-const GUIDE_STEPS = [
-  { label: "上传或粘贴内容", description: "支持 Markdown、TXT 与直接粘贴" },
-  { label: "AI 分析审查", description: "多维度识别风险与可信度问题" },
-  { label: "获取审查报告", description: "查看问题诊断与优化建议" },
-  { label: "优化与验证", description: "记录建议，人工修改后重新验证" },
+const REVIEW_STEPS = [
+  { label: "主张识别", description: "识别文章中的可验证主张", icon: FileSearch2 },
+  { label: "证据定位", description: "定位原文证据并评估支持范围", icon: ShieldCheck },
+  { label: "修改建议", description: "基于证据缺口给出可追溯建议", icon: Check },
+  { label: "重新验证", description: "修改后重新验证支持状态", icon: RotateCcw },
 ] as const;
 
-const SCORE_ITEMS = [
-  { label: "事实完整度", value: 68, tone: "is-warning" },
-  { label: "来源透明度", value: 76, tone: "is-success" },
-  { label: "结构清晰度", value: 82, tone: "is-success" },
-  { label: "可验证性", value: 62, tone: "is-danger" },
+const GUIDE_STEPS = [
+  { label: "上传或粘贴内容", description: "支持文本文件与直接粘贴" },
+  { label: "智能分析审查", description: "多维度识别风险与可信度问题" },
+  { label: "查看证据报告", description: "逐条理解主张与原文证据的关系" },
+  { label: "修改与重新验证", description: "应用证据驱动修改后重新验证" },
 ] as const;
 
 export function QuickStartGuide() {
@@ -41,44 +35,33 @@ export function QuickStartGuide() {
   );
 }
 
-export function RecentReviewCard({
-  score = 72,
-  title = "Demo 内容：AI 搜索长文审查示例",
-  onOpenReport,
-}: RecentReviewCardProps) {
+export function RecentReviewCard() {
   return (
     <section className="phase-rail-card phase-recent-report" aria-labelledby="phase-recent-report-title">
       <header>
-        <h2 id="phase-recent-report-title">Demo 报告预览</h2>
-        {onOpenReport ? <button type="button" onClick={onOpenReport}>打开报告 <ArrowRight aria-hidden="true" /></button> : null}
+        <div>
+          <span className="phase-core-workflow-kicker">核心工作流</span>
+          <h2 id="phase-recent-report-title">证据优先审查闭环</h2>
+        </div>
+        <span className="phase-core-workflow-status"><i />实时生成</span>
       </header>
 
-      <div className="phase-recent-summary">
-        <div className="phase-recent-score">
-          <strong>{score}</strong>
-          <span>/100</span>
-          <small>示例分数</small>
-        </div>
-        <div>
-          <h3>{title}</h3>
-          <p>示例数据 · 仅用于说明报告结构</p>
-        </div>
-      </div>
+      <p className="phase-core-workflow-description">提交文章后，系统会生成本次审查报告。每个结论都来自本次输入与原文证据。</p>
 
       <ul className="phase-recent-metrics">
-        {SCORE_ITEMS.map((item) => (
-          <li key={item.label}>
-            <span className={`phase-metric-dot ${item.tone}`} aria-hidden="true" />
-            <strong>{item.label}</strong>
-            <b className={item.tone}>{item.value}</b>
-            <ArrowRight aria-hidden="true" />
+        {REVIEW_STEPS.map((step, index) => {
+          const Icon = step.icon;
+          return (
+          <li key={step.label}>
+            <span className="phase-core-workflow-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+            <span className="phase-core-workflow-icon"><Icon aria-hidden="true" /></span>
+            <div><strong>{step.label}</strong><p>{step.description}</p></div>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
-      <button type="button" className="phase-view-report-button" onClick={onOpenReport} disabled={!onOpenReport}>
-        {onOpenReport ? "打开当前报告" : "Demo 报告结构"} <ArrowRight aria-hidden="true" />
-      </button>
+      <footer className="phase-core-workflow-footer"><ShieldCheck aria-hidden="true" />每个结论都保留与原文证据的对应关系</footer>
     </section>
   );
 }

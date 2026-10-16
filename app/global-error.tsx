@@ -46,7 +46,7 @@ export default function GlobalError({
               <EvidraBrandMark className="brand-mark size-10 shrink-0" />
               <span>
                 <span className="app-brand-name block">Evidra</span>
-                <span className="app-brand-subtitle mt-1 block">AI 内容可信度审查</span>
+                <span className="app-brand-subtitle mt-1 block">智能内容可信度审查</span>
               </span>
             </header>
 

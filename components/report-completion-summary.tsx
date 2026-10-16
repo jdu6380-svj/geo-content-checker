@@ -65,7 +65,7 @@ export function ReportCompletionSummary({
         <p className="phase2-breadcrumb">我的审查 <span>/</span> 报告详情</p>
         <div><h1>内容可信度审查报告</h1><span>已完成</span></div>
         <p>文章：{title || "未命名内容"}</p>
-        <small>最终审查完成 · 基于 Evidence First 原则，逐项核验观点、证据与来源。</small>
+        <small>最终审查完成 · 基于证据优先原则，逐项核验观点、证据与来源。</small>
       </header>
 
       <div className="phase2-report-layout">
@@ -90,27 +90,27 @@ export function ReportCompletionSummary({
           <div className="phase2-complete-sections">
             <button type="button" onClick={() => onNavigate("evidence")}>
               <span className="is-success"><FileCheck2 aria-hidden="true" /></span>
-              <strong>Evidence 证据分析<small>{questionOrder.length} 个关键观点 · {validCount} 项已验证 · {pendingCount} 项待补充</small></strong>
+              <strong>证据分析<small>{questionOrder.length} 个关键观点 · {validCount} 项已验证 · {pendingCount} 项待补充</small></strong>
               <p>{highlightedQuestions.map((question) => <span key={question}>· {question}</span>)}</p>
-              <b>查看全部 Evidence</b>
+              <b>查看全部证据</b>
             </button>
             <button type="button" onClick={() => onNavigate("diagnosis")}>
               <span className="is-warning"><AlertTriangle aria-hidden="true" /></span>
-              <strong>Diagnosis 问题诊断<small>{questionOrder.length} 个问题 · {resolvedCount} 项已解决 · {issueCount} 项待跟进</small></strong>
+              <strong>问题诊断<small>{questionOrder.length} 个问题 · {resolvedCount} 项已解决 · {issueCount} 项待跟进</small></strong>
               <p>{highlightedQuestions.map((question) => <span key={question}>· {question}</span>)}</p>
-              <b>查看 Diagnosis</b>
+              <b>查看问题诊断</b>
             </button>
             <button type="button" onClick={() => onNavigate("patch")}>
               <span className="is-success"><Wrench aria-hidden="true" /></span>
-              <strong>Patch 修复建议<small>{Math.max(resolvedCount, 1)} 项建议 · 已完成人工应用流程</small></strong>
-              <p><span>· 补充可核验来源</span><span>· 建立观点与 Evidence 对应</span></p>
-              <b>查看 Patch 记录</b>
+              <strong>修改建议<small>{Math.max(resolvedCount, 1)} 项建议 · 已完成人工应用流程</small></strong>
+              <p><span>· 补充可核验来源</span><span>· 建立观点与证据对应</span></p>
+              <b>查看修改建议</b>
             </button>
             <button type="button" onClick={() => onNavigate("recheck")}>
               <span className="is-info"><RotateCcw aria-hidden="true" /></span>
-              <strong>Recheck 重新验证结果<small>Before {baseline.totalScore} → After {current.totalScore}</small></strong>
-              <p><span className={scoreChangeClassName}>{scoreChange > 0 ? `+${scoreChange}` : scoreChange}</span><span>评分变化均可追溯至应用的 Patch 与来源。</span></p>
-              <b>查看 Recheck 详情</b>
+              <strong>重新验证结果<small>修改前 {baseline.totalScore} → 修改后 {current.totalScore}</small></strong>
+              <p><span className={scoreChangeClassName}>{scoreChange > 0 ? `+${scoreChange}` : scoreChange}</span><span>评分变化均可追溯至应用的修改建议与来源。</span></p>
+              <b>查看重新验证详情</b>
             </button>
           </div>
         </div>
@@ -128,7 +128,7 @@ export function ReportCompletionSummary({
             title="报告目录"
             onNavigate={onNavigate}
           />
-          <div className="phase2-complete-stamp"><CheckCircle2 aria-hidden="true" /><strong>报告已完成</strong><span>Evidence First · 全程透明可追溯</span></div>
+          <div className="phase2-complete-stamp"><CheckCircle2 aria-hidden="true" /><strong>报告已完成</strong><span>证据优先 · 全程透明可追溯</span></div>
         </div>
       </div>
     </section>

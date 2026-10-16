@@ -17,8 +17,10 @@ import {
   isGeoAbortError,
   postGeoBetaEvent,
   postGeoJson,
+  setGeoAnalysisToken,
 } from "@/lib/client/geo-api";
 import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
+import { createPatchSourceSignature, filterPatchChecklistForSource, shouldAdoptExternalPatchState } from "@/lib/client/patch-state";
 import {
   getReportIssueStatus,
   type ReportIssueStatus,
@@ -43,9 +45,12 @@ type PatchWorkshopProps = {
   onBackToEditor: () => void;
   onOpenOverview: () => void;
   onOpenRecheck: () => void;
+  sourceHash?: string | null;
+  initialPatches?: Partial<Record<PatchMode, PatchState>>;
+  onPatchStateChange?: (mode: PatchMode, state: PatchState) => void;
 };
 
-type PatchState =
+export type PatchState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "success"; data: GeneratePatchesResponse }
@@ -200,19 +205,33 @@ export function PatchWorkshop({
   onBackToEditor,
   onOpenOverview,
   onOpenRecheck,
+  sourceHash,
+  initialPatches,
+  onPatchStateChange,
 }: PatchWorkshopProps) {
   const [activeMode, setActiveMode] = useState<PatchMode>("advice");
-  const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(initialPatchStates);
+  const [patches, setPatches] = useState<Record<PatchMode, PatchState>>(() => ({
+    ...initialPatchStates(),
+    ...initialPatches,
+  }));
+  const lastInitialPatchesSignatureRef = useRef(JSON.stringify(initialPatches ?? {}));
+  const patchSourceRef = useRef(createPatchSourceSignature({ sourceHash, title, paragraphs }));
+  const userEditedPatchRef = useRef(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
   const generateButtonRef = useRef<HTMLButtonElement>(null);
   const manualCopyRef = useRef<HTMLTextAreaElement>(null);
   const mountedRef = useRef(true);
   const patchRequestControllerRef = useRef<AbortController | null>(null);
   const patchRequestIdRef = useRef(0);
+  const restoredPatchSessionRef = useRef<{ runId: string } | null>(null);
   const activePatch = patches[activeMode];
-  const checklistItemIds = new Set(checklistItems.map((item) => item.id));
+  const currentChecklistItems = filterPatchChecklistForSource(checklistItems, sourceHash);
+  const checklistItemIds = new Set(currentChecklistItems.map((item) => item.id));
   const diagnosticResults = Object.values(diagnostics).flatMap((item) => item.data ? [item.data] : []);
-  const canGenerate = paragraphs.length > 0 && diagnosticResults.length > 0;
+  const canDisplay = paragraphs.length > 0 && diagnosticResults.length > 0;
+  // A restored report has no live analysis run id, but it still contains the
+  // paragraphs and diagnostics required to generate patch advice.
+  const canGenerate = canDisplay;
   const priorityDiagnostic = diagnosticResults.find(
     (item) => getReportIssueStatus(item) !== "passed",
   ) ?? diagnosticResults[0];
@@ -225,6 +244,31 @@ export function PatchWorkshop({
     : 0;
   const previewStart = Math.max(0, priorityParagraphIndex - 1);
   const articlePreview = paragraphs.slice(previewStart, previewStart + 3);
+
+  useEffect(() => {
+    const incoming = { ...initialPatchStates(), ...initialPatches };
+    const signature = JSON.stringify(incoming);
+    const source = createPatchSourceSignature({ sourceHash, title, paragraphs });
+    const sourceChanged = source !== patchSourceRef.current;
+    if (sourceChanged) {
+      patchSourceRef.current = source;
+      userEditedPatchRef.current = false;
+    }
+    if (!shouldAdoptExternalPatchState({
+      sourceChanged,
+      incomingSignature: signature,
+      lastIncomingSignature: lastInitialPatchesSignatureRef.current,
+      userEdited: userEditedPatchRef.current,
+    })) return;
+    lastInitialPatchesSignatureRef.current = signature;
+    if (userEditedPatchRef.current) return;
+    setPatches((current) => {
+      // Parent updates caused by this component's own callback already contain
+      // the same state; only merge a genuinely restored external state.
+      if (JSON.stringify(current) === signature) return current;
+      return incoming;
+    });
+  }, [initialPatches, paragraphs, sourceHash, title]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -241,7 +285,27 @@ export function PatchWorkshop({
   }
 
   function setPatchForMode(mode: PatchMode, next: PatchState) {
+    userEditedPatchRef.current = true;
     setPatches((current) => ({ ...current, [mode]: next }));
+    onPatchStateChange?.(mode, next);
+  }
+
+  async function ensurePatchSession(signal: AbortSignal): Promise<string> {
+    if (runId) return runId;
+    if (restoredPatchSessionRef.current) return restoredPatchSessionRef.current.runId;
+
+    const response = await postGeoJson("/api/analysis-session", {}, {
+      includeAnalysisToken: false,
+      signal,
+    });
+    if (!response.ok) throw new Error(await readError(response));
+    const session = (await response.json()) as { token?: unknown; runId?: unknown };
+    if (typeof session.token !== "string" || typeof session.runId !== "string") {
+      throw new Error("分析会话无效，请重新提交。");
+    }
+    setGeoAnalysisToken(session.token);
+    restoredPatchSessionRef.current = { runId: session.runId };
+    return session.runId;
   }
 
   async function generatePatches() {
@@ -265,9 +329,10 @@ export function PatchWorkshop({
 
     setPatchForMode(requestMode, { status: "loading" });
     setCopyStatus("idle");
-    if (runId) void postGeoBetaEvent({ event: "patch_requested", runId });
 
     try {
+      const patchRunId = await ensurePatchSession(requestController.signal);
+      if (patchRunId) void postGeoBetaEvent({ event: "patch_requested", runId: patchRunId });
       const response = await postGeoJson("/api/generate-patches", {
         title,
         numbered_paragraphs: paragraphs,
@@ -283,7 +348,7 @@ export function PatchWorkshop({
         throw createGeoAbortError();
       }
       setPatchForMode(requestMode, { status: "success", data });
-      if (runId && !requestController.signal.aborted) void postGeoBetaEvent({ event: "patch_generated", runId });
+      if (patchRunId && !requestController.signal.aborted) void postGeoBetaEvent({ event: "patch_generated", runId: patchRunId });
     } catch (requestError) {
       if (!mountedRef.current || requestId !== patchRequestIdRef.current) return;
       if (requestController.signal.aborted || isGeoAbortError(requestError)) {
@@ -342,8 +407,8 @@ export function PatchWorkshop({
     <section id="patch-workshop" className="phase2-patch-page section-anchor" aria-busy={activePatch.status === "loading"}>
       <header className="phase2-subpage-header">
         <div>
-          <p className="phase2-breadcrumb">我的审查 <span>/</span> Report Overview <span>/</span> Patch</p>
-          <h1>优化建议 Patch</h1>
+          <p className="phase2-breadcrumb">我的审查 <span>/</span> 报告概览 <span>/</span> 修改建议</p>
+          <h1>优化修改建议</h1>
           <p>基于已识别的可信度问题，逐项审阅可应用的编辑建议。</p>
         </div>
         <div className="phase2-subpage-actions">
@@ -366,17 +431,17 @@ export function PatchWorkshop({
           <div>
             <p className="data-label">等待诊断结论</p>
             <h3>完成至少一项诊断后生成修改建议</h3>
-            <p>修改材料只会使用已有诊断与 Evidence，不创建超出报告的数据。</p>
+            <p>修改材料只会使用已有诊断与证据，不创建超出报告的数据。</p>
           </div>
         </div>
       ) : null}
 
-      {canGenerate ? (
+      {canDisplay ? (
         <div className="phase2-patch-layout">
           <section className="phase2-patch-original" aria-labelledby="patch-original-heading">
             <header>
               <div>
-                <h2 id="patch-original-heading">Original</h2>
+                <h2 id="patch-original-heading">原始内容</h2>
                 <p>原始内容</p>
               </div>
             </header>
@@ -401,7 +466,7 @@ export function PatchWorkshop({
           <section className="phase2-patch-suggestions" aria-labelledby="patch-suggestion-heading">
             <header>
               <div>
-                <h2 id="patch-suggestion-heading">Suggested Patch</h2>
+                <h2 id="patch-suggestion-heading">修改建议</h2>
                 <p>修改建议</p>
               </div>
             </header>
@@ -441,7 +506,7 @@ export function PatchWorkshop({
                   </div>
                   {appliedVisibleCount ? (
                     <div className="phase3-patch-recheck-bar" role="status" aria-live="polite">
-                      <span><Check aria-hidden="true" />修改清单已有 {checklistItems.length} 项建议</span>
+                      <span><Check aria-hidden="true" />修改清单已有 {currentChecklistItems.length} 项建议</span>
                       <p>请先人工修改正文，再进入重新验证。</p>
                       <button type="button" onClick={onOpenRecheck}>
                         进入重新验证
@@ -464,7 +529,7 @@ export function PatchWorkshop({
                     ref={generateButtonRef}
                     type="button"
                     onClick={generatePatches}
-                    disabled={activePatch.status === "loading"}
+                    disabled={!canGenerate || activePatch.status === "loading"}
                     className="phase2-patch-generate"
                   >
                     {activePatch.status === "error" ? (
@@ -480,7 +545,7 @@ export function PatchWorkshop({
                 <div className="phase2-patch-footer-actions">
                   <button type="button" onClick={copyMarkdown} disabled={copyStatus === "copying"}>
                     {copyStatus === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                    {copyStatus === "copied" ? "已复制" : "复制全部 Markdown"}
+                    {copyStatus === "copied" ? "已复制" : "复制全部文本"}
                   </button>
                   <button type="button" onClick={() => selectMode(activeMode === "advice" ? "content_draft" : "advice")}>
                     <FileCheck2 aria-hidden="true" />{activeMode === "advice" ? "查看内容草稿" : "返回修改建议"}
@@ -507,7 +572,7 @@ export function PatchWorkshop({
       {activePatch.status === "success" && copyStatus === "manual" ? (
             <div className="phase2-patch-manual-copy">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-bold">Markdown 文本</h3>
+                <h3 className="text-sm font-bold">可复制文本</h3>
                 <button
                   type="button"
                   onClick={() => manualCopyRef.current?.select()}
@@ -523,7 +588,7 @@ export function PatchWorkshop({
                 value={activePatch.data.markdown}
                 onFocus={(event) => event.currentTarget.select()}
                 className="mt-3 h-44 w-full resize-y rounded-lg border border-[var(--geo-status-warning-border)] bg-white p-3 font-mono text-xs leading-6 text-[var(--geo-text-body)] focus-visible:border-[var(--geo-primary)]"
-                aria-label="可手动复制的 Markdown 文本"
+                aria-label="可手动复制的文本"
               />
             </div>
       ) : null}

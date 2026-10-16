@@ -24,7 +24,7 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
   const [problem, setProblem] = useState("");
   const [improvement, setImprovement] = useState("");
   const mailtoUrl = useMemo(() => {
-    const subject = encodeURIComponent("Evidra Beta 使用反馈");
+    const subject = encodeURIComponent("Evidra 使用反馈");
     const body = encodeURIComponent([
       "请告诉我们你的真实体验、问题或建议：",
       problem.trim() || "未填写",
@@ -47,7 +47,7 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
           </span>
         </Link>
         <div className="feedback-topbar-actions">
-          <span><ShieldCheck aria-hidden="true" className="size-3.5" />受控 Beta</span>
+          <span><ShieldCheck aria-hidden="true" className="size-3.5" />受控体验</span>
           <Link href="/"><ArrowLeft aria-hidden="true" className="size-4" />返回工作台</Link>
         </div>
       </header>
@@ -55,7 +55,7 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
       <section className="feedback-content">
         <header className="feedback-hero">
           <div>
-            <p className="section-kicker">Evidra Beta 用户反馈</p>
+            <p className="section-kicker">Evidra 用户反馈</p>
             <h1>帮助我们做得更好</h1>
             <p>告诉我们你的真实体验。你的反馈会直接帮助 Evidra 改进内容可信度审查体验。</p>
           </div>
@@ -133,7 +133,7 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
                 <div className="feedback-contact-row">
                   <span className="feedback-contact-icon is-wechat"><MessagesSquare aria-hidden="true" className="size-5" /></span>
                   <span><small>绿泡泡</small><strong>Du-jQ7</strong></span>
-                  <span className="feedback-contact-meta">添加时请备注 Evidra Beta</span>
+                  <span className="feedback-contact-meta">添加时请备注 Evidra 体验版</span>
                 </div>
               </div>
             </section>
@@ -141,7 +141,7 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
             <section className="feedback-benefit" aria-labelledby="feedback-benefit-heading">
               <span className="feedback-benefit-icon"><Gift aria-hidden="true" className="size-5" /></span>
               <div>
-                <p className="section-kicker">Beta 用户福利</p>
+                <p className="section-kicker">体验版用户福利</p>
                 <h2 id="feedback-benefit-heading">感谢参与测试</h2>
                 <p>完成有效反馈后，将获得测试用户专属福利。</p>
               </div>

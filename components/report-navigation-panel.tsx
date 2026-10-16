@@ -28,10 +28,10 @@ type ReportNavigationPanelProps = {
 
 const NAVIGATION_ITEMS = [
   { id: "overview", label: "概览", icon: FileText },
-  { id: "evidence", label: "Evidence", icon: Link2 },
-  { id: "diagnosis", label: "Diagnosis", icon: CircleHelp },
-  { id: "patch", label: "Patch", icon: Lightbulb },
-  { id: "recheck", label: "Recheck", icon: RotateCcw },
+  { id: "evidence", label: "证据", icon: Link2 },
+  { id: "diagnosis", label: "诊断", icon: CircleHelp },
+  { id: "patch", label: "修改建议", icon: Lightbulb },
+  { id: "recheck", label: "重新验证", icon: RotateCcw },
 ] as const;
 
 export function ReportNavigationPanel({

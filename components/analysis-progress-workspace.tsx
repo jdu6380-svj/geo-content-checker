@@ -31,9 +31,9 @@ const FLOW_STEPS = [
     duration: "00:08",
   },
   {
-    label: "Evidence 分析",
+    label: "证据分析",
     description: "定位事实依据",
-    activity: "正在检查 Evidence...",
+    activity: "正在检查证据...",
     activityDescription: "正在匹配事实陈述与潜在数据来源",
     duration: "00:15",
   },
@@ -154,7 +154,7 @@ export function AnalysisProgressWorkspace({
           <header className="phase-analysis-heading">
             <p className="phase-editor-kicker">内容可信度审查</p>
             <h1>正在分析你的内容</h1>
-            <p>Evidra 基于 Evidence First 原则，全面审查内容的可信度与可引用性。</p>
+            <p>Evidra 基于证据优先原则，全面审查内容的可信度与可引用性。</p>
           </header>
 
           <section className="phase-analysis-card">

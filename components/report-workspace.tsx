@@ -3,13 +3,14 @@
 import type { FormEvent, RefObject } from "react";
 import { AnalysisProgressWorkspace } from "@/components/analysis-progress-workspace";
 import { DiagnosisSection } from "@/components/diagnosis-section";
-import { PatchWorkshop } from "@/components/patch-workshop";
+import { PatchWorkshop, type PatchState } from "@/components/patch-workshop";
 import { ReportCompletionSummary } from "@/components/report-completion-summary";
 import { ReportContextRail } from "@/components/report-context-rail";
 import { ReportEvidencePanel } from "@/components/report-evidence-panel";
 import { RecheckComparison } from "@/components/recheck-comparison";
 import type { ReportScoreBand } from "@/components/report-score-rail";
 import type { PatchChecklistItem } from "@/lib/client/patch-checklist";
+import { resolveRecheckStatus } from "@/lib/client/workflow-recovery";
 import type { DiagnosticsState, LoadState } from "@/lib/client/report-state";
 import {
   createReportComparisonSnapshot,
@@ -36,6 +37,7 @@ type ReportWorkspaceProps = {
   view: ReportWorkspaceView;
   title: string;
   runId: string | null;
+  sourceHash?: string | null;
   analysisSignal?: AbortSignal;
   contentAvailable: boolean;
   reportStatus: ReportStatusPresentation;
@@ -47,6 +49,7 @@ type ReportWorkspaceProps = {
   diagnostics: DiagnosticsState;
   diagnosticsSettled: boolean;
   diagnosticsSucceeded: boolean;
+  canOpenPatch: boolean;
   patchChecklist: PatchChecklistItem[];
   recheckBaseline: ReportComparisonSnapshot | null;
   completedCount: number;
@@ -78,6 +81,8 @@ type ReportWorkspaceProps = {
   onSubmitFollowUp: (event: FormEvent<HTMLFormElement>) => void;
   onDiagnosisFeedback: (question: string, helpful: boolean) => void;
   onAddPatchChecklistItem: (item: PatchChecklistItem) => void;
+  initialPatchStates?: Partial<Record<"advice" | "content_draft", PatchState>>;
+  onPatchStateChange?: (mode: "advice" | "content_draft", state: PatchState) => void;
   onScrollToSection: (sectionId: string) => void;
 };
 
@@ -85,6 +90,7 @@ export function ReportWorkspace({
   view,
   title,
   runId,
+  sourceHash,
   analysisSignal,
   contentAvailable,
   reportStatus,
@@ -96,6 +102,7 @@ export function ReportWorkspace({
   diagnostics,
   diagnosticsSettled,
   diagnosticsSucceeded,
+  canOpenPatch,
   patchChecklist,
   recheckBaseline,
   completedCount,
@@ -127,6 +134,8 @@ export function ReportWorkspace({
   onSubmitFollowUp,
   onDiagnosisFeedback,
   onAddPatchChecklistItem,
+  initialPatchStates,
+  onPatchStateChange,
   onScrollToSection,
 }: ReportWorkspaceProps) {
   const evidenceCount = Object.values(diagnostics).reduce(
@@ -148,13 +157,12 @@ export function ReportWorkspace({
   const currentComparison = comparisonComplete && scoring.status === "success"
     ? createReportComparisonSnapshot(scoring.data, questionOrder, diagnostics)
     : null;
-  const recheckStatus = restoredFromCache
-    ? "cached" as const
-    : flowHasError
-      ? "error" as const
-      : comparisonComplete
-        ? "complete" as const
-        : "running" as const;
+  const recheckStatus = resolveRecheckStatus({
+    hasBaseline: Boolean(recheckBaseline),
+    comparisonReady: comparisonComplete && Boolean(currentComparison),
+    restoredFromCache,
+    flowHasError,
+  });
   const loadingMessage = session.status === "loading"
     ? "正在建立分析会话并整理文章结构。"
     : scoring.status === "loading" && questions.status === "loading"
@@ -185,7 +193,7 @@ export function ReportWorkspace({
           <button type="button" aria-current={view === "overview" ? "page" : undefined} onClick={() => onScrollToSection("report-overview")}>报告</button>
           <button type="button" aria-current={view === "evidence" ? "page" : undefined} disabled={!reportComplete} onClick={() => onScrollToSection("evidence-section")}>依据</button>
           <button type="button" aria-current={view === "diagnosis" ? "page" : undefined} disabled={!reportComplete} onClick={() => onScrollToSection("diagnostic-section")}>诊断</button>
-          <button type="button" aria-current={view === "patch" ? "page" : undefined} disabled={!flowComplete} onClick={() => onScrollToSection("patch-workshop")}>修改</button>
+          <button type="button" aria-current={view === "patch" ? "page" : undefined} disabled={!canOpenPatch} onClick={() => onScrollToSection("patch-workshop")}>修改</button>
           <button
             type="button"
             aria-current={view === "recheck" ? "page" : undefined}
@@ -266,6 +274,7 @@ export function ReportWorkspace({
                     restoredFromCache={restoredFromCache}
                     analysisSettled={diagnosticsSettled}
                     analysisSucceeded={diagnosticsSucceeded}
+                    patchAvailable={canOpenPatch}
                     hasRecheckBaseline={Boolean(recheckBaseline)}
                     onBackToEditor={onBackToEditor}
                   />
@@ -295,6 +304,7 @@ export function ReportWorkspace({
                   totalCount={questionOrder.length}
                   diagnosticsSettled={diagnosticsSettled}
                   diagnosticsSucceeded={diagnosticsSucceeded}
+                  canOpenPatch={canOpenPatch}
                   expandedQuestion={expandedQuestion}
                   latestQuestion={latestQuestion}
                   latestQuestionRef={latestQuestionRef}
@@ -327,9 +337,12 @@ export function ReportWorkspace({
                   paragraphs={paragraphs}
                   diagnostics={diagnostics}
                   runId={runId}
+                  sourceHash={sourceHash}
                   analysisSignal={analysisSignal}
                   checklistItems={patchChecklist}
                   onAddChecklistItem={onAddPatchChecklistItem}
+                  initialPatches={initialPatchStates}
+                  onPatchStateChange={onPatchStateChange}
                   onBackToEditor={onBackToEditor}
                   onOpenOverview={() => onScrollToSection("report-overview")}
                   onOpenRecheck={onBackToEditor}

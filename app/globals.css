@@ -2179,6 +2179,25 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
 }
 
+/* The rail card now explains the real review flow instead of showing placeholder scores. */
+.phase-recent-report .phase-recent-metrics { gap: 17px; margin-top: 22px; }
+.phase-recent-report .phase-recent-metrics li { grid-template-columns: 31px minmax(0, 1fr); gap: 12px; align-items: start; }
+.phase-recent-report .phase-recent-metrics .phase-guide-index { width: 31px; height: 31px; }
+.phase-recent-report .phase-recent-metrics li > div { display: grid; gap: 4px; padding-top: 1px; }
+.phase-recent-report .phase-recent-metrics li p { color: #8b93a4; font-size: 11px; line-height: 1.5; }
+.phase-core-workflow-kicker { color: var(--phase-purple); font-size: 10px; font-weight: 780; }
+.phase-recent-report > header h2 { margin-top: 6px; }
+.phase-core-workflow-status { display: inline-flex; align-items: center; gap: 5px; color: #23a765; font-size: 10px; font-weight: 720; white-space: nowrap; }
+.phase-core-workflow-status i { width: 8px; height: 8px; border-radius: 50%; background: #22ad66; }
+.phase-core-workflow-description { margin-top: 17px; color: #8b93a4; font-size: 11px; line-height: 1.55; }
+.phase-recent-report .phase-recent-metrics { gap: 14px; margin-top: 21px; }
+.phase-recent-report .phase-recent-metrics li { grid-template-columns: 24px 30px minmax(0, 1fr); gap: 9px; }
+.phase-core-workflow-index { color: var(--phase-purple); font-size: 9px; font-weight: 800; }
+.phase-core-workflow-icon { display: grid; width: 29px; height: 29px; place-items: center; border: 1px solid #e1d9ff; border-radius: 8px; background: #fbfaff; color: var(--phase-purple); }
+.phase-core-workflow-icon svg { width: 14px; height: 14px; color: var(--phase-purple); }
+.phase-core-workflow-footer { display: flex; align-items: center; gap: 7px; margin-top: 20px; border-top: 1px solid #edf0f5; padding-top: 14px; color: #81a18e; font-size: 10px; }
+.phase-core-workflow-footer svg { width: 14px; height: 14px; color: #32b875; }
+
 /* D.0.8.1 visual simplification */
 .app-header {
   box-shadow: var(--geo-shadow-header);
@@ -10760,6 +10779,96 @@ body {
   min-height: 56px;
 }
 
+/* Readability pass for the recheck editor: keep hierarchy, raise the small copy. */
+.editor-workspace.phase-one-editor .phase-editor-page-heading h1 {
+  font-size: 32px;
+}
+
+.editor-workspace.phase-one-editor .phase-editor-page-heading > p:last-child {
+  font-size: 15px;
+}
+
+.editor-workspace.phase-one-editor .phase-recheck-checklist h2 {
+  font-size: 16px;
+}
+
+.editor-workspace.phase-one-editor .phase-recheck-checklist header p,
+.editor-workspace.phase-one-editor .phase-recheck-checklist header > strong {
+  font-size: 13px;
+}
+
+.editor-workspace.phase-one-editor .phase-recheck-checklist li > span {
+  font-size: 11px;
+}
+
+.editor-workspace.phase-one-editor .phase-recheck-checklist li strong {
+  font-size: 15px;
+}
+
+.editor-workspace.phase-one-editor .phase-recheck-checklist li p {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.editor-workspace.phase-one-editor .phase-recheck-checklist li small,
+.editor-workspace.phase-one-editor .phase-recheck-checklist-empty {
+  font-size: 12px;
+}
+
+.editor-workspace.phase-one-editor .phase-editor-tabs button {
+  font-size: 16px;
+}
+
+.editor-workspace.phase-one-editor .phase-field-heading label {
+  font-size: 15px;
+}
+
+.editor-workspace.phase-one-editor .phase-field-heading span,
+.editor-workspace.phase-one-editor .phase-paste-submit-row > span {
+  font-size: 13px;
+}
+
+.editor-workspace.phase-one-editor .phase-paste-editor input,
+.editor-workspace.phase-one-editor .phase-rich-editor textarea {
+  font-size: 15px;
+}
+
+.editor-workspace.phase-one-editor .phase-rich-editor textarea {
+  line-height: 1.8;
+}
+
+.editor-workspace.phase-one-editor .phase-guide-card h2,
+.editor-workspace.phase-one-editor .phase-recent-report h2 {
+  font-size: 18px;
+}
+
+.editor-workspace.phase-one-editor .phase-guide-list strong {
+  font-size: 16px;
+}
+
+.editor-workspace.phase-one-editor .phase-guide-list p,
+.editor-workspace.phase-one-editor .phase-core-workflow-description {
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .editor-workspace.phase-one-editor .phase-editor-page-heading h1 {
+    font-size: 28px;
+  }
+
+  .editor-workspace.phase-one-editor .phase-editor-page-heading > p:last-child {
+    font-size: 14px;
+  }
+
+  .editor-workspace.phase-one-editor .phase-recheck-checklist li strong {
+    font-size: 14px;
+  }
+
+  .editor-workspace.phase-one-editor .phase-guide-list strong {
+    font-size: 15px;
+  }
+}
+
 .phase-account-popover {
   top: calc(100% + 5px);
   right: 14px;
@@ -11059,6 +11168,31 @@ body {
 .phase2-subpage-actions button { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: #465064; font-size: 12px; font-weight: 660; }
 .phase2-subpage-actions button:hover { color: var(--phase-purple); }
 .phase2-subpage-actions button svg { width: 15px; height: 15px; }
+.phase2-subpage-actions .phase2-evidence-diagnosis-action {
+  min-height: 46px;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid var(--phase-purple);
+  border-radius: 8px;
+  background: var(--phase-purple);
+  padding: 0 18px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 740;
+  box-shadow: 0 7px 18px rgba(91, 45, 244, .18);
+  transition: background-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.phase2-subpage-actions .phase2-evidence-diagnosis-action:hover {
+  background: var(--phase-purple-dark);
+  color: #ffffff;
+  box-shadow: 0 9px 22px rgba(91, 45, 244, .23);
+  transform: translateY(-1px);
+}
+.phase2-subpage-actions .phase2-evidence-diagnosis-action:focus-visible {
+  outline: 3px solid #cfc5ff;
+  outline-offset: 3px;
+}
+.phase2-subpage-actions .phase2-evidence-diagnosis-action svg { width: 17px; height: 17px; }
 
 .phase2-evidence-layout { display: grid; min-height: 660px; grid-template-columns: minmax(0, 1.16fr) minmax(430px, .94fr); gap: 22px; }
 .phase2-article-surface,
@@ -11154,6 +11288,20 @@ body {
 .phase2-diagnosis-summary > p { grid-column: 1 / -1; align-self: end; border-top: 1px solid #edf0f5; padding: 11px 20px; color: #778095; font-size: 10px; }
 
 .phase2-diagnosis-toolbar { display: flex; min-height: 60px; align-items: center; justify-content: space-between; gap: 20px; }
+.phase2-diagnosis-next-step { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 18px 0 10px; border: 1px solid #ddd7ff; border-radius: 10px; background: #fbfaff; padding: 18px 20px; }
+.phase2-diagnosis-next-step > div:first-child { display: flex; min-width: 0; align-items: center; gap: 14px; }
+.phase2-diagnosis-next-step > div:first-child > span { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 9px; background: #eeeaff; color: var(--phase-purple); font-size: 12px; font-weight: 800; }
+.phase2-diagnosis-next-step h2 { margin-top: 4px; color: #252b3a; font-size: 16px; font-weight: 780; }
+.phase2-diagnosis-next-step > div:first-child p:not(.data-label) { margin-top: 4px; color: #737d91; font-size: 11px; line-height: 1.5; }
+.phase2-diagnosis-next-step-action { display: grid; flex: 0 0 auto; justify-items: end; gap: 6px; }
+.phase2-diagnosis-next-step-action > button { display: inline-flex; min-height: 38px; align-items: center; gap: 7px; border: 0; border-radius: 7px; background: var(--phase-purple); padding: 0 14px; color: #fff; font-size: 12px; font-weight: 760; box-shadow: 0 6px 15px rgba(91, 45, 244, .17); transition: background-color 140ms ease, box-shadow 140ms ease, transform 140ms ease; }
+.phase2-diagnosis-next-step-action > button:hover:not(:disabled) { background: var(--phase-purple-dark); box-shadow: 0 9px 22px rgba(91, 45, 244, .23); transform: translateY(-1px); }
+.phase2-diagnosis-next-step-action > button:active:not(:disabled) { box-shadow: 0 4px 10px rgba(91, 45, 244, .18); transform: translateY(0); }
+.phase2-diagnosis-next-step-action > button:focus-visible { outline: 3px solid #cfc5ff; outline-offset: 3px; }
+.phase2-diagnosis-next-step-action > button svg { width: 15px; height: 15px; transition: transform 140ms ease; }
+.phase2-diagnosis-next-step-action > button:hover:not(:disabled) svg { transform: translateX(2px); }
+.phase2-diagnosis-next-step-action > button:disabled { cursor: not-allowed; background: #d8d3e9; color: #77718c; box-shadow: none; }
+.phase2-diagnosis-next-step-status { color: #8a829f; font-size: 10px; }
 .phase2-diagnosis-toolbar h2 { color: #202633; font-size: 18px; font-weight: 800; }
 .phase2-diagnosis-toolbar > div { display: flex; align-items: center; gap: 8px; }
 .phase2-diagnosis-toolbar button { min-height: 34px; border: 1px solid #e0e4eb; border-radius: 7px; background: #ffffff; padding: 0 14px; color: #6d7688; font-size: 11px; font-weight: 680; }
@@ -11495,6 +11643,7 @@ body {
   .phase2-report-page-header,
   .phase2-subpage-header { min-height: 0; align-items: flex-start; flex-direction: column; padding-bottom: 18px; }
   .phase2-subpage-actions { width: 100%; align-items: flex-start; }
+  .phase2-subpage-actions .phase2-evidence-diagnosis-action { width: 100%; }
   .phase2-report-stat-strip { width: 100%; overflow-x: auto; }
   .phase2-report-layout,
   .phase2-evidence-layout,
