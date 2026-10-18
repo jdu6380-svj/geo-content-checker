@@ -4,6 +4,7 @@ import { withGeoRequestLogging } from "@/lib/server/geo-observability";
 import {
   areDistinctSecuritySecrets,
   isHttpsUrl,
+  isValidSupportEmail,
   isStrongSecuritySecret,
 } from "@/lib/server/security-config";
 
@@ -46,7 +47,7 @@ async function handleGet(_request: NextRequest): Promise<Response> {
       betaEventSecret !== process.env.ANALYSIS_TOKEN_SECRET?.trim(),
     feedbackConfigured:
       isHttpsUrl(process.env.NEXT_PUBLIC_FEEDBACK_URL) &&
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail),
+      isValidSupportEmail(supportEmail),
     sentryConfigured: isHttpsUrl(process.env.NEXT_PUBLIC_SENTRY_DSN),
   };
   const ready = Object.values(checks).every(Boolean);

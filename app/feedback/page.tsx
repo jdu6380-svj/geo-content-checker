@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 
 import { FeedbackWorkspace } from "@/components/feedback-workspace";
-
-const PUBLIC_BETA_FEEDBACK_URL =
-  "https://docs.google.com/forms/d/e/1FAIpQLSdMoDgDsLlI2AgxvzgtVdyqYvtFxTJUcVopJg2mfDtkMiWgbQ/viewform?usp=publish-editor";
+import { isHttpsUrl, isValidSupportEmail } from "@/lib/feedback-config";
 
 export const metadata: Metadata = {
   title: "Evidra 用户反馈",
@@ -11,7 +9,12 @@ export const metadata: Metadata = {
 };
 
 export default function FeedbackPage() {
-  const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL || PUBLIC_BETA_FEEDBACK_URL;
+  const configuredFeedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL?.trim();
+  const configuredSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
+  const feedbackUrl = isHttpsUrl(configuredFeedbackUrl) ? configuredFeedbackUrl : undefined;
+  const supportEmail = isValidSupportEmail(configuredSupportEmail)
+    ? configuredSupportEmail
+    : undefined;
 
-  return <FeedbackWorkspace feedbackUrl={feedbackUrl} />;
+  return <FeedbackWorkspace feedbackUrl={feedbackUrl} supportEmail={supportEmail} />;
 }

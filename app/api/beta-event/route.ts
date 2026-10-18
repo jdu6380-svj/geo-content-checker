@@ -7,6 +7,14 @@ import {
   resolveBetaAnonymousId,
 } from "@/lib/server/beta-identity";
 import {
+  AnalysisIdentityConfigurationError,
+  resolveAnalysisIdentity,
+} from "@/lib/server/analysis-identity";
+import {
+  AnalysisRateLimitUnavailableError,
+  checkBetaEventRateLimit,
+} from "@/lib/server/analysis-rate-limit";
+import {
   BetaMetricsUnavailableError,
   recordBetaEvent,
 } from "@/lib/server/beta-metrics";
@@ -14,6 +22,7 @@ import {
   analysisOperationErrorResponse,
   verifyAnalysisSession,
 } from "@/lib/server/analysis-operation";
+import { handleBetaEvent } from "@/lib/server/beta-event-handler";
 import { withGeoRequestLogging } from "@/lib/server/geo-observability";
 import { GeoRequestBodyError, readGeoJsonBody } from "@/lib/server/geo-request-body";
 
@@ -31,21 +40,12 @@ async function handlePost(request: NextRequest): Promise<Response> {
       );
     }
 
-    if ("runId" in input.data) {
-      const claims = await verifyAnalysisSession(request);
-      if (claims.runId !== input.data.runId) {
-        return NextResponse.json(
-          { error: "RUN_ID_MISMATCH", message: "分析事件与当前会话不匹配。" },
-          { status: 403 },
-        );
-      }
-    }
-
-    const anonymousId = resolveBetaAnonymousId(request);
-    const result = await recordBetaEvent(input.data, anonymousId);
-    return NextResponse.json(result, {
-      status: result.duplicate ? 200 : 202,
-      headers: { "X-GEO-Metrics-Mode": result.mode },
+    return await handleBetaEvent(request, input.data, {
+      resolveBetaAnonymousId,
+      resolveAnalysisIdentity,
+      checkBetaEventRateLimit,
+      verifyAnalysisSession,
+      recordBetaEvent,
     });
   } catch (error) {
     const authorizationError = analysisOperationErrorResponse(error);
@@ -54,6 +54,12 @@ async function handlePost(request: NextRequest): Promise<Response> {
       return NextResponse.json(
         { error: "INVALID_CLIENT_ID", message: "匿名设备标识无效。" },
         { status: 400 },
+      );
+    }
+    if (error instanceof AnalysisIdentityConfigurationError || error instanceof AnalysisRateLimitUnavailableError) {
+      return NextResponse.json(
+        { error: "METRICS_UNAVAILABLE", message: "统计服务暂时不可用。" },
+        { status: 503 },
       );
     }
     if (

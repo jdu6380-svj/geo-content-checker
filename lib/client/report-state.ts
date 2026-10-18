@@ -83,10 +83,24 @@ function isCacheEnvelope(value: unknown): value is CacheEnvelope {
     typeof envelope.report?.title === "string" &&
     (envelope.report?.questionSource === "model" || envelope.report?.questionSource === "fallback") &&
     Array.isArray(envelope.report?.questionOrder) &&
-    Boolean(envelope.report?.scoring) &&
+    hasCompatibleScoring(envelope.report?.scoring) &&
     hasCompatibleDiagnostics(envelope.report?.diagnostics) &&
     hasCacheableDiagnostics(envelope.report.questionOrder, envelope.report.diagnostics)
   );
+}
+
+function hasCompatibleScoring(value: unknown): value is EvaluateScoringResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const scoring = value as Partial<EvaluateScoringResponse>;
+  return Array.isArray(scoring.numbered_paragraphs) &&
+    scoring.numbered_paragraphs.every((paragraph) =>
+      Boolean(paragraph) &&
+      typeof paragraph === "object" &&
+      typeof paragraph.id === "string" &&
+      /^Para-\d+$/.test(paragraph.id) &&
+      typeof paragraph.text === "string" &&
+      paragraph.text.length > 0,
+    );
 }
 
 function hasCompatibleDiagnostics(value: unknown): value is DiagnosticsState {
@@ -94,12 +108,32 @@ function hasCompatibleDiagnostics(value: unknown): value is DiagnosticsState {
 
   return Object.values(value).every((item) => {
     if (!item || typeof item !== "object") return false;
-    const data = (item as Partial<DiagnosticItem>).data;
-    return data === undefined || (
-      data.evidenceStatus === "valid" ||
-      data.evidenceStatus === "missing" ||
-      data.evidenceStatus === "invalid"
-    );
+    const diagnostic = item as Partial<DiagnosticItem>;
+    if (typeof diagnostic.question !== "string" ||
+      !["queued", "loading", "success", "error"].includes(diagnostic.status ?? "") ||
+      typeof diagnostic.errorCount !== "number" ||
+      !Number.isInteger(diagnostic.errorCount) ||
+      diagnostic.errorCount < 0) return false;
+    if (diagnostic.data === undefined) return true;
+
+    const data = diagnostic.data as Partial<DiagnosticResult>;
+    return typeof data.question === "string" &&
+      ["可以完全回答", "信息不足", "有风险"].includes(data.answerability ?? "") &&
+      ["low", "medium", "high"].includes(data.riskLevel ?? "") &&
+      ["model", "fallback"].includes(data.source ?? "") &&
+      ["valid", "missing", "invalid"].includes(data.evidenceStatus ?? "") &&
+      Array.isArray(data.evidence) &&
+      data.evidence.every((entry) =>
+        Boolean(entry) &&
+        typeof entry === "object" &&
+        typeof entry.paragraphId === "string" &&
+        /^Para-\d+$/.test(entry.paragraphId) &&
+        typeof entry.quote === "string" &&
+        entry.quote.trim().length > 0,
+      ) &&
+      Array.isArray(data.missingInfo) &&
+      data.missingInfo.every((info) => typeof info === "string") &&
+      typeof data.recommendation === "string";
   });
 }
 
@@ -186,6 +220,7 @@ export function saveCachedReport(report: CachedReport, analysisHash: string): vo
 
   const cacheSafeReport: CachedReport = {
     ...report,
+    scoring: { ...report.scoring, numbered_paragraphs: [] },
     diagnostics: stripCachedEvidence(report.diagnostics),
   };
   let envelope: CacheEnvelope = {

@@ -14,13 +14,17 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EvidraBrandMark } from "@/components/evidra-brand-mark";
+import { isHttpsUrl, isValidSupportEmail } from "@/lib/feedback-config";
 
 type FeedbackWorkspaceProps = {
   feedbackUrl?: string;
+  supportEmail?: string;
 };
 
-export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
-  const canOpenForm = Boolean(feedbackUrl?.startsWith("https://"));
+export function FeedbackWorkspace({ feedbackUrl, supportEmail }: FeedbackWorkspaceProps) {
+  const safeFeedbackUrl = isHttpsUrl(feedbackUrl) ? feedbackUrl : undefined;
+  const safeSupportEmail = isValidSupportEmail(supportEmail) ? supportEmail : undefined;
+  const canOpenForm = Boolean(safeFeedbackUrl);
   const [problem, setProblem] = useState("");
   const [improvement, setImprovement] = useState("");
   const mailtoUrl = useMemo(() => {
@@ -32,8 +36,10 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
       "你希望我们如何改进：",
       improvement.trim() || "未填写",
     ].join("\n"));
-    return `mailto:3949536640@qq.com?subject=${subject}&body=${body}`;
-  }, [improvement, problem]);
+    return safeSupportEmail
+      ? `mailto:${safeSupportEmail}?subject=${subject}&body=${body}`
+      : undefined;
+  }, [improvement, problem, safeSupportEmail]);
   const canSubmit = Boolean(problem.trim() || improvement.trim());
 
   return (
@@ -101,15 +107,15 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
 
               <div className="feedback-form-actions">
                 {canOpenForm ? (
-                  <a href={feedbackUrl} target="_blank" rel="noreferrer" className="feedback-secondary-action">
+                  <a href={safeFeedbackUrl} target="_blank" rel="noreferrer" className="feedback-secondary-action">
                     打开完整反馈表
                     <ExternalLink aria-hidden="true" className="size-4" />
                   </a>
                 ) : null}
                 <a
-                  href={canSubmit ? mailtoUrl : undefined}
-                  aria-disabled={!canSubmit}
-                  className={`feedback-primary-action ${canSubmit ? "" : "is-disabled"}`}
+                  href={canSubmit && mailtoUrl ? mailtoUrl : undefined}
+                  aria-disabled={!canSubmit || !mailtoUrl}
+                  className={`feedback-primary-action ${canSubmit && mailtoUrl ? "" : "is-disabled"}`}
                 >
                   提交反馈
                   <ArrowRight aria-hidden="true" className="size-4" />
@@ -125,16 +131,20 @@ export function FeedbackWorkspace({ feedbackUrl }: FeedbackWorkspaceProps) {
                 <h2 id="feedback-contact-heading">需要补充说明？</h2>
               </div>
               <div className="feedback-contact-list">
-                <a href="mailto:3949536640@qq.com" className="feedback-contact-row">
-                  <span className="feedback-contact-icon is-email"><Mail aria-hidden="true" className="size-5" /></span>
-                  <span><small>邮箱</small><strong>3949536640@qq.com</strong></span>
-                  <ArrowRight aria-hidden="true" className="size-4" />
-                </a>
-                <div className="feedback-contact-row">
-                  <span className="feedback-contact-icon is-wechat"><MessagesSquare aria-hidden="true" className="size-5" /></span>
-                  <span><small>绿泡泡</small><strong>Du-jQ7</strong></span>
-                  <span className="feedback-contact-meta">添加时请备注 Evidra 体验版</span>
-                </div>
+                {safeSupportEmail ? (
+                  <a href={`mailto:${safeSupportEmail}`} className="feedback-contact-row">
+                    <span className="feedback-contact-icon is-email"><Mail aria-hidden="true" className="size-5" /></span>
+                    <span><small>邮箱</small><strong>{safeSupportEmail}</strong></span>
+                    <ArrowRight aria-hidden="true" className="size-4" />
+                  </a>
+                ) : null}
+                {!safeSupportEmail && !canOpenForm ? (
+                  <div className="feedback-contact-row">
+                    <span className="feedback-contact-icon is-wechat"><MessagesSquare aria-hidden="true" className="size-5" /></span>
+                    <span><small>联系方式</small><strong>暂未配置公开联系方式</strong></span>
+                    <span className="feedback-contact-meta">请联系产品负责人获取反馈入口</span>
+                  </div>
+                ) : null}
               </div>
             </section>
 

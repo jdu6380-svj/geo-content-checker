@@ -16,6 +16,7 @@ const automationBypassSecret = resolveAutomationBypassSecret(baseUrl);
 const expectedSourceArgument = process.argv.find((value) => value.startsWith("--expect-source="));
 const expectedSource = expectedSourceArgument?.split("=", 2)[1] || "either";
 const skipDeclaredLengthCheck = process.argv.includes("--skip-declared-length-check");
+const expectWarmupRateLimit = process.argv.includes("--expect-warmup-rate-limit");
 if (!["either", "model", "fallback"].includes(expectedSource)) {
   throw new Error("--expect-source must be either, model, or fallback");
 }
@@ -25,6 +26,9 @@ const alternateClientId = randomUUID();
 const warmupClientId = randomUUID();
 const markdownClientId = randomUUID();
 const oversizedClientId = randomUUID();
+const betaRateLimitClientId = randomUUID();
+const betaRateLimitIp = "203.0.113.77";
+const rotatingBetaIp = "203.0.113.78";
 const paragraphs = [
   {
     id: "Para-1",
@@ -385,6 +389,40 @@ await check("records editor start idempotently", async () => {
   assert.equal(second.body?.duplicate, true);
 });
 
+await check("limits anonymous beta events per device", async () => {
+  const init = {
+    method: "POST",
+    headers: headers({ clientId: betaRateLimitClientId, ip: betaRateLimitIp }),
+    body: JSON.stringify({ event: "feedback_clicked" }),
+  };
+  for (let index = 0; index < 6; index += 1) {
+    const result = await request("/api/beta-event", init);
+    assert.ok([200, 202].includes(result.response.status), responseSummary(result));
+  }
+  const limited = await request("/api/beta-event", init);
+  assert.equal(limited.response.status, 429, responseSummary(limited));
+  assert.equal(limited.body?.error, "RATE_LIMITED");
+  assert.equal(limited.response.headers.get("x-geo-ratelimit-mode"), "memory");
+});
+
+await check("limits anonymous beta events when client IDs rotate", async () => {
+  for (let index = 0; index < 30; index += 1) {
+    const result = await request("/api/beta-event", {
+      method: "POST",
+      headers: headers({ clientId: randomUUID(), ip: rotatingBetaIp }),
+      body: JSON.stringify({ event: "visit" }),
+    });
+    assert.ok([200, 202].includes(result.response.status), responseSummary(result));
+  }
+  const limited = await request("/api/beta-event", {
+    method: "POST",
+    headers: headers({ clientId: randomUUID(), ip: rotatingBetaIp }),
+    body: JSON.stringify({ event: "visit" }),
+  });
+  assert.equal(limited.response.status, 429, responseSummary(limited));
+  assert.equal(limited.body?.error, "RATE_LIMITED");
+});
+
 await expectStatus(
   "requires token for analysis started event",
   "/api/beta-event",
@@ -665,18 +703,25 @@ await expectStatus(
   "OPERATION_LIMIT_REACHED",
 );
 
-await check("limits warmup to once per device window", async () => {
-  const warmupHeaders = headers({ clientId: warmupClientId });
-  const first = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
-  const second = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
-  assert.equal(first.response.status, 200, responseSummary(first));
-  assert.equal(first.body?.status, "deprecated");
-  assert.equal(first.response.headers.get("deprecation"), "true");
-  assert.equal(first.response.headers.get("x-geo-warmup-status"), "deprecated");
-  assert.equal(second.response.status, 429, responseSummary(second));
-  assert.equal(second.response.headers.get("deprecation"), "true");
-  assert.equal(second.body?.error, "RATE_LIMITED");
-});
+if (!expectWarmupRateLimit) {
+  skip(
+    "limits warmup to once per device window",
+    "requires --expect-warmup-rate-limit; lightweight development mode intentionally bypasses warmup admission",
+  );
+} else {
+  await check("limits warmup to once per device window", async () => {
+    const warmupHeaders = headers({ clientId: warmupClientId });
+    const first = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
+    const second = await request("/api/warmup", { method: "POST", headers: warmupHeaders });
+    assert.equal(first.response.status, 200, responseSummary(first));
+    assert.equal(first.body?.status, "deprecated");
+    assert.equal(first.response.headers.get("deprecation"), "true");
+    assert.equal(first.response.headers.get("x-geo-warmup-status"), "deprecated");
+    assert.equal(second.response.status, 429, responseSummary(second));
+    assert.equal(second.response.headers.get("deprecation"), "true");
+    assert.equal(second.body?.error, "RATE_LIMITED");
+  });
+}
 
 await check("escapes raw HTML in Markdown patches", async () => {
   const sessionHeaders = headers({ clientId: markdownClientId });

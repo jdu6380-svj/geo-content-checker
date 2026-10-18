@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 
 import { LegalDocument } from "@/components/legal-document";
+import { isValidSupportEmail } from "@/lib/feedback-config";
 
 export const metadata: Metadata = {
   title: "使用条款",
 };
 
 export default function TermsPage() {
-  const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
+  const configuredSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
+  const supportEmail = isValidSupportEmail(configuredSupportEmail)
+    ? configuredSupportEmail
+    : undefined;
 
   return (
     <LegalDocument

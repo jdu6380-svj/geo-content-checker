@@ -63,6 +63,10 @@ import {
 import { MAX_ARTICLE_CHARACTERS } from "../lib/constants/input-limits.ts";
 import { formatPatchMarkdown } from "../lib/markdown/patch-markdown.ts";
 import { betaEventSchema } from "../lib/schemas/beta-event.ts";
+import {
+  handleBetaEvent,
+  type BetaEventHandlerDependencies,
+} from "../lib/server/beta-event-handler.ts";
 import { consumeModelCallBudget } from "../lib/server/model-call-budget.ts";
 import {
   GEO_DECOMPRESSED_BODY_LIMIT_BYTES,
@@ -71,8 +75,16 @@ import {
 } from "../lib/server/geo-request-body.ts";
 import {
   areDistinctSecuritySecrets,
+  isHttpsUrl,
+  isValidSupportEmail,
   isStrongSecuritySecret,
 } from "../lib/server/security-config.ts";
+import {
+  AnalysisRateLimitUnavailableError,
+  checkBetaEventRateLimit,
+  isQuotaMemoryFallbackAllowed,
+  setRateLimitRedisClientForTests,
+} from "../lib/server/analysis-rate-limit.ts";
 import { isLightweightDevelopmentMode } from "../lib/server/development-runtime.ts";
 import {
   classifyGeoProviderResponseReadError,
@@ -6205,6 +6217,193 @@ function runReleaseConfig(overrides: Partial<NodeJS.ProcessEnv> = {}) {
 
 const validReleaseConfig = runReleaseConfig();
 assert.equal(validReleaseConfig.status, 0, validReleaseConfig.stderr);
+
+const betaHandlerRequest = new Request("http://localhost/api/beta-event", { method: "POST" });
+const betaHandlerIdentity = {
+  ipHash: "a".repeat(64),
+  deviceHash: "b".repeat(64),
+  source: "client-id" as const,
+  clientId: "00000000-0000-4000-8000-000000000001",
+};
+const allowedBetaRateLimit = {
+  allowed: true as const,
+  mode: "memory" as const,
+  retryAfter: 0,
+  remaining: { deviceMinute: 5, deviceDay: 29, ipMinute: 29, ipDay: 119 },
+};
+const makeBetaHandlerDependencies = (
+  overrides: Partial<BetaEventHandlerDependencies> = {},
+): BetaEventHandlerDependencies => ({
+  resolveBetaAnonymousId: () => "anonymous-test-id",
+  resolveAnalysisIdentity: () => betaHandlerIdentity,
+  checkBetaEventRateLimit: async () => allowedBetaRateLimit,
+  verifyAnalysisSession: async () => ({ runId: "00000000-0000-4000-8000-000000000002" }),
+  recordBetaEvent: async () => ({ accepted: true, duplicate: false, mode: "memory" }),
+  ...overrides,
+});
+
+let betaWriteCalls = 0;
+const allowedResponse = await handleBetaEvent(
+  betaHandlerRequest,
+  { event: "visit" },
+  makeBetaHandlerDependencies({
+    recordBetaEvent: async () => {
+      betaWriteCalls += 1;
+      return { accepted: true, duplicate: false, mode: "memory" };
+    },
+  }),
+);
+assert.equal(allowedResponse.status, 202);
+assert.equal(betaWriteCalls, 1);
+
+betaWriteCalls = 0;
+const unavailableResponse = await handleBetaEvent(
+  betaHandlerRequest,
+  { event: "visit" },
+  makeBetaHandlerDependencies({
+    checkBetaEventRateLimit: async () => {
+      throw new AnalysisRateLimitUnavailableError();
+    },
+    recordBetaEvent: async () => {
+      betaWriteCalls += 1;
+      throw new Error("write sentinel must not run");
+    },
+  }),
+);
+assert.equal(unavailableResponse.status, 503);
+assert.equal(betaWriteCalls, 0);
+const unavailableBody = await unavailableResponse.json() as { error?: string; message?: string };
+assert.deepEqual(unavailableBody, {
+  error: "METRICS_UNAVAILABLE",
+  message: "统计服务暂时不可用。",
+});
+
+betaWriteCalls = 0;
+const deniedResponse = await handleBetaEvent(
+  betaHandlerRequest,
+  { event: "visit" },
+  makeBetaHandlerDependencies({
+    checkBetaEventRateLimit: async () => ({
+      ...allowedBetaRateLimit,
+      allowed: false,
+      reason: "device-minute" as const,
+      retryAfter: 30,
+    }),
+    recordBetaEvent: async () => {
+      betaWriteCalls += 1;
+      throw new Error("write sentinel must not run");
+    },
+  }),
+);
+assert.equal(deniedResponse.status, 429);
+assert.equal(betaWriteCalls, 0);
+
+betaWriteCalls = 0;
+const mismatchedRunResponse = await handleBetaEvent(
+  betaHandlerRequest,
+  { event: "analysis_started", runId: "00000000-0000-4000-8000-000000000003" },
+  makeBetaHandlerDependencies({
+    recordBetaEvent: async () => {
+      betaWriteCalls += 1;
+      throw new Error("write sentinel must not run");
+    },
+  }),
+);
+assert.equal(mismatchedRunResponse.status, 403);
+assert.equal(betaWriteCalls, 0);
+
+assert.equal(isHttpsUrl("https://feedback.example/form"), true);
+assert.equal(isHttpsUrl("https://"), false);
+assert.equal(isHttpsUrl("http://feedback.example/form"), false);
+assert.equal(isValidSupportEmail("support@example.com"), true);
+assert.equal(isValidSupportEmail("support@example"), false);
+assert.equal(isValidSupportEmail(""), false);
+assert.equal(isQuotaMemoryFallbackAllowed("beta-event", "true"), false);
+assert.equal(isQuotaMemoryFallbackAllowed("beta-event", "false"), false);
+assert.equal(isQuotaMemoryFallbackAllowed("analysis", "true"), true);
+assert.equal(isQuotaMemoryFallbackAllowed("warmup", "TRUE"), true);
+
+const previousRateLimitEnvironment = {
+  nodeEnv: process.env.NODE_ENV,
+  redisUrl: process.env.UPSTASH_REDIS_REST_URL,
+  redisToken: process.env.UPSTASH_REDIS_REST_TOKEN,
+};
+const mutableEnvironment = process.env as Record<string, string | undefined>;
+mutableEnvironment.NODE_ENV = "production";
+delete mutableEnvironment.UPSTASH_REDIS_REST_URL;
+delete mutableEnvironment.UPSTASH_REDIS_REST_TOKEN;
+await assert.rejects(
+  checkBetaEventRateLimit({ deviceHash: "device-test", ipHash: "ip-test" }),
+  (error) => error instanceof AnalysisRateLimitUnavailableError,
+);
+
+const rateLimitFailureCases = [
+  { name: "quota", error: new Error("request quota exceeded") },
+  { name: "connection", error: new Error("connection refused") },
+  { name: "timeout", error: Object.assign(new Error("timed out"), { name: "AbortError" }) },
+  { name: "invalid response", result: [1, 0] },
+] as const;
+for (const failure of rateLimitFailureCases) {
+  const restoreRedisClient = setRateLimitRedisClientForTests({
+    async eval<TArgs extends unknown[], TData = unknown>() {
+      if ("error" in failure) throw failure.error;
+      return failure.result as TData;
+    },
+  });
+  mutableEnvironment.NODE_ENV = "production";
+  mutableEnvironment.REDIS_QUOTA_FAIL_OPEN = "true";
+  await assert.rejects(
+    checkBetaEventRateLimit({ deviceHash: `failure-${failure.name}`, ipHash: "ip-test" }),
+    (error) => error instanceof AnalysisRateLimitUnavailableError,
+    `${failure.name} must fail closed`,
+  );
+  restoreRedisClient();
+}
+delete mutableEnvironment.REDIS_QUOTA_FAIL_OPEN;
+
+const cacheShapeCases = [
+  { name: "missing scoring", mutate: (cache: any) => { delete cache.report.scoring; } },
+  { name: "missing paragraphs", mutate: (cache: any) => { delete cache.report.scoring.numbered_paragraphs; } },
+  { name: "null paragraphs", mutate: (cache: any) => { cache.report.scoring.numbered_paragraphs = null; } },
+  { name: "string paragraphs", mutate: (cache: any) => { cache.report.scoring.numbered_paragraphs = "invalid"; } },
+  { name: "object paragraphs", mutate: (cache: any) => { cache.report.scoring.numbered_paragraphs = {}; } },
+  { name: "missing evidence", mutate: (cache: any) => { delete cache.report.diagnostics[validDiagnostic.question].data.evidence; } },
+  { name: "invalid evidence", mutate: (cache: any) => { cache.report.diagnostics[validDiagnostic.question].data.evidence = "invalid"; } },
+] as const;
+for (const cacheCase of cacheShapeCases) {
+  const malformed = structuredClone(cachedReport);
+  cacheCase.mutate(malformed);
+  localStorageValues.set(reportCacheKey, JSON.stringify(malformed));
+  assert.equal(readCachedReport(), null, `${cacheCase.name} must be rejected`);
+}
+if (previousRateLimitEnvironment.nodeEnv === undefined) delete mutableEnvironment.NODE_ENV;
+else mutableEnvironment.NODE_ENV = previousRateLimitEnvironment.nodeEnv;
+if (previousRateLimitEnvironment.redisUrl === undefined) delete mutableEnvironment.UPSTASH_REDIS_REST_URL;
+else mutableEnvironment.UPSTASH_REDIS_REST_URL = previousRateLimitEnvironment.redisUrl;
+if (previousRateLimitEnvironment.redisToken === undefined) delete mutableEnvironment.UPSTASH_REDIS_REST_TOKEN;
+else mutableEnvironment.UPSTASH_REDIS_REST_TOKEN = previousRateLimitEnvironment.redisToken;
+
+const betaEventRouteSource = readFileSync(
+  fileURLToPath(new URL("../app/api/beta-event/route.ts", import.meta.url)),
+  "utf8",
+);
+const betaEventHandlerSource = readFileSync(
+  fileURLToPath(new URL("../lib/server/beta-event-handler.ts", import.meta.url)),
+  "utf8",
+);
+assert.ok(
+  betaEventHandlerSource.indexOf("await dependencies.checkBetaEventRateLimit") <
+    betaEventHandlerSource.indexOf("await dependencies.recordBetaEvent"),
+);
+assert.match(betaEventRouteSource, /handleBetaEvent\(request, input\.data/);
+
+const identitySource = readFileSync(
+  fileURLToPath(new URL("../lib/server/analysis-identity.ts", import.meta.url)),
+  "utf8",
+);
+assert.match(identitySource, /headers\.get\("x-vercel-forwarded-for"\)/);
+assert.match(identitySource, /headers\.get\("x-forwarded-for"\)/);
+assert.match(identitySource, /headers\.get\("x-real-ip"\)/);
 
 const missingFeedbackConfig = runReleaseConfig({ NEXT_PUBLIC_FEEDBACK_URL: "" });
 assert.equal(missingFeedbackConfig.status, 1);

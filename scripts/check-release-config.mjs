@@ -18,7 +18,8 @@ function requireValue(name) {
 function requireHttpsUrl(name) {
   const value = read(name);
   try {
-    if (!value || new URL(value).protocol !== "https:") {
+    const url = new URL(value);
+    if (!value || url.protocol !== "https:" || !url.hostname) {
       errors.push(`${name} must be an HTTPS URL`);
     }
   } catch {

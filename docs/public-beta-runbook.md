@@ -12,7 +12,7 @@
 - DeepSeek OpenAI-compatible credentials.
 - Upstash Redis REST credentials.
 - Sentry project, DSN, org, project name, and auth token.
-- Google Form URL and support email.
+- External feedback URL configured through `NEXT_PUBLIC_FEEDBACK_URL`, plus a support email configured through `NEXT_PUBLIC_SUPPORT_EMAIL`.
 - Three distinct secrets of at least 32 bytes: `RATE_LIMIT_SALT`, `ANALYSIS_TOKEN_SECRET`, and `BETA_EVENT_HMAC_SECRET`.
 
 Run `npm run release:check` before Preview or Production deployment. Vercel builds also run the same check automatically.

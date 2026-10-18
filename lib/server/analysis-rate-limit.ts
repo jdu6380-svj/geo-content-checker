@@ -1,12 +1,14 @@
 import { Redis } from "@upstash/redis";
 
 export type AnalysisRateLimitMode = "redis" | "memory" | "memory-quota";
+export type AnalysisRateLimitScope = "analysis" | "warmup" | "beta-event";
 export type AnalysisRateLimitReason =
   | "device-minute"
   | "device-day"
   | "ip-minute"
   | "ip-day";
 export type WarmupRateLimitReason = "device-window" | "ip-minute" | "ip-day";
+export type BetaEventRateLimitReason = "device-minute" | "device-day" | "ip-minute" | "ip-day";
 
 export interface AnalysisRateLimitRemaining {
   deviceMinute: number;
@@ -37,6 +39,21 @@ export interface WarmupRateLimitResult {
   remaining: WarmupRateLimitRemaining;
 }
 
+export interface BetaEventRateLimitRemaining {
+  deviceMinute: number;
+  deviceDay: number;
+  ipMinute: number;
+  ipDay: number;
+}
+
+export interface BetaEventRateLimitResult {
+  allowed: boolean;
+  mode: AnalysisRateLimitMode;
+  retryAfter: number;
+  reason?: BetaEventRateLimitReason;
+  remaining: BetaEventRateLimitRemaining;
+}
+
 export interface CheckAnalysisRateLimitInput {
   deviceHash: string;
   ipHash: string;
@@ -48,6 +65,13 @@ export class AnalysisRateLimitUnavailableError extends Error {
     super("Analysis rate limiting is unavailable");
     this.name = "AnalysisRateLimitUnavailableError";
   }
+}
+
+export function isQuotaMemoryFallbackAllowed(
+  scope: AnalysisRateLimitScope,
+  configuredValue: string | undefined = process.env.REDIS_QUOTA_FAIL_OPEN,
+): boolean {
+  return scope !== "beta-event" && configuredValue?.trim().toLowerCase() === "true";
 }
 
 interface CounterDefinition<TName extends string, TReason extends string> {
@@ -82,6 +106,13 @@ const WARMUP_LIMITS = {
   deviceWindow: 1,
   ipMinute: 30,
   ipDay: 100,
+} as const;
+
+const BETA_EVENT_LIMITS = {
+  deviceMinute: 6,
+  deviceDay: 30,
+  ipMinute: 30,
+  ipDay: 120,
 } as const;
 
 const ATOMIC_RATE_LIMIT_SCRIPT = `
@@ -124,6 +155,19 @@ return allowed
 const memoryCounters = new Map<string, MemoryCounter>();
 
 let redisClient: Redis | null | undefined;
+type RateLimitRedisClient = Pick<Redis, "eval">;
+let redisClientOverride: RateLimitRedisClient | null | undefined;
+
+// Narrow seam for isolated failure-path tests; production callers use the configured client.
+export function setRateLimitRedisClientForTests(
+  client: RateLimitRedisClient | null | undefined,
+): () => void {
+  const previous = redisClientOverride;
+  redisClientOverride = client;
+  return () => {
+    redisClientOverride = previous;
+  };
+}
 let lastMemoryCleanup = 0;
 
 function secondsUntilNextUtcDay(now: Date): number {
@@ -216,7 +260,56 @@ function createWarmupDefinitions(
   ];
 }
 
+function betaEventIpMinuteKey(ipHash: string, now: Date): string {
+  return `geo:beta-event-admission:v1:ip:minute:${Math.floor(now.getTime() / 60_000)}:${ipHash}`;
+}
+
+function betaEventIpDayKey(ipHash: string, now: Date): string {
+  return `geo:beta-event-admission:v1:ip:day:${utcDateKey(now)}:${ipHash}`;
+}
+
+function createBetaEventDefinitions(
+  input: CheckAnalysisRateLimitInput,
+  now: Date,
+): Array<CounterDefinition<keyof BetaEventRateLimitRemaining, BetaEventRateLimitReason>> {
+  const minuteBucket = Math.floor(now.getTime() / 60_000);
+  const dayBucket = utcDateKey(now);
+  const dayTtl = secondsUntilNextUtcDay(now);
+
+  return [
+    {
+      name: "deviceMinute",
+      reason: "device-minute",
+      limit: BETA_EVENT_LIMITS.deviceMinute,
+      key: `geo:beta-event-admission:v1:device:minute:${minuteBucket}:${input.deviceHash}`,
+      ttlSeconds: 60,
+    },
+    {
+      name: "deviceDay",
+      reason: "device-day",
+      limit: BETA_EVENT_LIMITS.deviceDay,
+      key: `geo:beta-event-admission:v1:device:day:${dayBucket}:${input.deviceHash}`,
+      ttlSeconds: dayTtl,
+    },
+    {
+      name: "ipMinute",
+      reason: "ip-minute",
+      limit: BETA_EVENT_LIMITS.ipMinute,
+      key: betaEventIpMinuteKey(input.ipHash, now),
+      ttlSeconds: 60,
+    },
+    {
+      name: "ipDay",
+      reason: "ip-day",
+      limit: BETA_EVENT_LIMITS.ipDay,
+      key: betaEventIpDayKey(input.ipHash, now),
+      ttlSeconds: dayTtl,
+    },
+  ];
+}
+
 function getRedisClient(): Redis | null {
+  if (redisClientOverride !== undefined) return redisClientOverride as Redis;
   if (redisClient !== undefined) return redisClient;
 
   const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
@@ -320,6 +413,7 @@ function checkMemoryCounters<TName extends string, TReason extends string>(
 async function checkCounters<TName extends string, TReason extends string>(
   definitions: Array<CounterDefinition<TName, TReason>>,
   now: Date,
+  scope: AnalysisRateLimitScope,
 ): Promise<CounterResult<TReason>> {
   const redis = getRedisClient();
 
@@ -346,7 +440,7 @@ async function checkCounters<TName extends string, TReason extends string>(
     }
     if (
       isRedisQuotaExceeded(error) &&
-      process.env.REDIS_QUOTA_FAIL_OPEN?.trim().toLowerCase() === "true"
+      isQuotaMemoryFallbackAllowed(scope)
     ) {
       return checkMemoryCounters(definitions, now.getTime(), "memory-quota");
     }
@@ -372,7 +466,7 @@ export async function checkAnalysisRateLimit(
 ): Promise<AnalysisRateLimitResult> {
   const now = input.now ?? new Date();
   const definitions = createAnalysisDefinitions(input, now);
-  const result = await checkCounters(definitions, now);
+  const result = await checkCounters(definitions, now, "analysis");
 
   return {
     allowed: result.allowed,
@@ -388,7 +482,23 @@ export async function checkWarmupRateLimit(
 ): Promise<WarmupRateLimitResult> {
   const now = input.now ?? new Date();
   const definitions = createWarmupDefinitions(input, now);
-  const result = await checkCounters(definitions, now);
+  const result = await checkCounters(definitions, now, "warmup");
+
+  return {
+    allowed: result.allowed,
+    mode: result.mode,
+    retryAfter: result.retryAfter,
+    ...(result.reason ? { reason: result.reason } : {}),
+    remaining: remainingByName(definitions, result.counts),
+  };
+}
+
+export async function checkBetaEventRateLimit(
+  input: CheckAnalysisRateLimitInput,
+): Promise<BetaEventRateLimitResult> {
+  const now = input.now ?? new Date();
+  const definitions = createBetaEventDefinitions(input, now);
+  const result = await checkCounters(definitions, now, "beta-event");
 
   return {
     allowed: result.allowed,
