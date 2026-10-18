@@ -6361,6 +6361,27 @@ for (const failure of rateLimitFailureCases) {
 }
 delete mutableEnvironment.REDIS_QUOTA_FAIL_OPEN;
 
+mutableEnvironment.NODE_ENV = "development";
+const fixedRateLimitNow = new Date("2026-07-14T12:34:00.000Z");
+const fixedRateLimitIpHash = "fixed-memory-ip";
+for (let index = 0; index < 30; index += 1) {
+  const result = await checkBetaEventRateLimit({
+    deviceHash: `fixed-memory-device-${index}`,
+    ipHash: fixedRateLimitIpHash,
+    now: fixedRateLimitNow,
+  });
+  assert.equal(result.allowed, true, `fixed-time IP request ${index + 1} must pass`);
+  assert.equal(result.mode, "memory");
+}
+const fixedRateLimitDenied = await checkBetaEventRateLimit({
+  deviceHash: "fixed-memory-device-31",
+  ipHash: fixedRateLimitIpHash,
+  now: fixedRateLimitNow,
+});
+assert.equal(fixedRateLimitDenied.allowed, false);
+assert.equal(fixedRateLimitDenied.reason, "ip-minute");
+assert.equal(fixedRateLimitDenied.mode, "memory");
+
 const cacheShapeCases = [
   { name: "missing scoring", mutate: (cache: any) => { delete cache.report.scoring; } },
   { name: "missing paragraphs", mutate: (cache: any) => { delete cache.report.scoring.numbered_paragraphs; } },

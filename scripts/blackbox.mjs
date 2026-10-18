@@ -406,21 +406,18 @@ await check("limits anonymous beta events per device", async () => {
 });
 
 await check("limits anonymous beta events when client IDs rotate", async () => {
-  for (let index = 0; index < 30; index += 1) {
-    const result = await request("/api/beta-event", {
+  const results = await Promise.all(
+    Array.from({ length: 31 }, () => request("/api/beta-event", {
       method: "POST",
       headers: headers({ clientId: randomUUID(), ip: rotatingBetaIp }),
       body: JSON.stringify({ event: "visit" }),
-    });
-    assert.ok([200, 202].includes(result.response.status), responseSummary(result));
-  }
-  const limited = await request("/api/beta-event", {
-    method: "POST",
-    headers: headers({ clientId: randomUUID(), ip: rotatingBetaIp }),
-    body: JSON.stringify({ event: "visit" }),
-  });
-  assert.equal(limited.response.status, 429, responseSummary(limited));
-  assert.equal(limited.body?.error, "RATE_LIMITED");
+    })),
+  );
+  const limited = results.filter((result) => result.response.status === 429);
+  const accepted = results.filter((result) => result.response.status === 202);
+  assert.equal(accepted.length, 30, JSON.stringify(results.map(responseSummary)));
+  assert.equal(limited.length, 1, JSON.stringify(results.map(responseSummary)));
+  assert.equal(limited[0].body?.error, "RATE_LIMITED");
 });
 
 await expectStatus(
