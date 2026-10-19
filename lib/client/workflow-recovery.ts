@@ -7,10 +7,15 @@ export function resolveRecheckStatus(input: {
   hasBaseline: boolean;
   comparisonReady: boolean;
   restoredFromCache: boolean;
+  completeWorkflowRestored: boolean;
   flowHasError: boolean;
 }): RecheckStatus {
   if (input.flowHasError) return "error";
-  if (input.hasBaseline && input.comparisonReady) return "complete";
+  if (
+    input.hasBaseline &&
+    input.comparisonReady &&
+    (!input.restoredFromCache || input.completeWorkflowRestored)
+  ) return "complete";
   if (input.restoredFromCache) return "cached";
   return "running";
 }

@@ -57,6 +57,7 @@ type ReportWorkspaceProps = {
   latestQuestion: string | null;
   latestQuestionRef: RefObject<HTMLDivElement | null>;
   restoredFromCache: boolean;
+  completeWorkflowRestored: boolean;
   analysisProgressStep: number;
   analysisProgressAnimationKey: number;
   analysisProgressComplete: boolean;
@@ -110,6 +111,7 @@ export function ReportWorkspace({
   latestQuestion,
   latestQuestionRef,
   restoredFromCache,
+  completeWorkflowRestored,
   analysisProgressStep,
   analysisProgressAnimationKey,
   analysisProgressComplete,
@@ -161,6 +163,7 @@ export function ReportWorkspace({
     hasBaseline: Boolean(recheckBaseline),
     comparisonReady: comparisonComplete && Boolean(currentComparison),
     restoredFromCache,
+    completeWorkflowRestored,
     flowHasError,
   });
   const loadingMessage = session.status === "loading"

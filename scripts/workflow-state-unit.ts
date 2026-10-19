@@ -137,10 +137,11 @@ assert.equal(resolveWorkflowRecovery({ workflow: state, draft: { draft, analysis
 assert.equal(resolveWorkflowRecovery({ workflow: state, draft: { draft: { ...draft, content: "新正文" }, analysisVersion: ANALYSIS_VERSION, analysisContractVersion: ANALYSIS_CONTRACT_VERSION, reportSchemaVersion: REPORT_SCHEMA_VERSION, savedAt: new Date().toISOString() }, draftHash: "0".repeat(64) }).kind, "pending-draft");
 assert.equal(resolveWorkflowRecovery({ workflow: null, workflowInvalid: true, draft: { draft, analysisVersion: ANALYSIS_VERSION, analysisContractVersion: ANALYSIS_CONTRACT_VERSION, reportSchemaVersion: REPORT_SCHEMA_VERSION, savedAt: new Date().toISOString() }, draftHash: reportHash }).kind, "draft");
 assert.equal(resolveWorkflowRecovery({ workflow: null, workflowError: true, draft: null, draftHash: null }).kind, "empty");
-assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: true, restoredFromCache: true, flowHasError: false }), "complete");
-assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: false, restoredFromCache: true, flowHasError: false }), "cached");
-assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: false, restoredFromCache: false, flowHasError: false }), "running");
-assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: true, restoredFromCache: true, flowHasError: true }), "error");
+assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: true, restoredFromCache: true, completeWorkflowRestored: true, flowHasError: false }), "complete");
+assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: true, restoredFromCache: true, completeWorkflowRestored: false, flowHasError: false }), "cached");
+assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: false, restoredFromCache: true, completeWorkflowRestored: false, flowHasError: false }), "cached");
+assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: false, restoredFromCache: false, completeWorkflowRestored: false, flowHasError: false }), "running");
+assert.equal(resolveRecheckStatus({ hasBaseline: true, comparisonReady: true, restoredFromCache: true, completeWorkflowRestored: true, flowHasError: true }), "error");
 const persistenceContext = {
   storageReady: true,
   analysisStarted: true,

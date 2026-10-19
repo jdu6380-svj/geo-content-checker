@@ -50,6 +50,11 @@ import {
   saveCachedReport,
 } from "../lib/client/report-state.ts";
 import {
+  describeReportDimensionScoreChange,
+  describeReportIssueCountChange,
+} from "../lib/client/report-comparison.ts";
+import { resolveRecheckStatus } from "../lib/client/workflow-recovery.ts";
+import {
   ANALYSIS_CONTRACT_VERSION,
   ANALYSIS_VERSION,
   REPORT_SCHEMA_VERSION,
@@ -392,6 +397,14 @@ const reportScoreRailSource = readFileSync(
   fileURLToPath(new URL("../components/report-score-rail.tsx", import.meta.url)),
   "utf8",
 );
+const recheckComparisonSource = readFileSync(
+  fileURLToPath(new URL("../components/recheck-comparison.tsx", import.meta.url)),
+  "utf8",
+);
+const reportCompletionSummarySource = readFileSync(
+  fileURLToPath(new URL("../components/report-completion-summary.tsx", import.meta.url)),
+  "utf8",
+);
 const diagnosisSectionSource = readFileSync(
   fileURLToPath(new URL("../components/diagnosis-section.tsx", import.meta.url)),
   "utf8",
@@ -415,6 +428,7 @@ assert.ok(reportWorkspaceSource.includes("const analysisBusy ="), "report worksp
 assert.ok(reportWorkspaceSource.includes("aria-busy={analysisBusy || Boolean(loadingMessage)}"), "report workspace must clear busy on terminal errors");
 assert.ok(reportWorkspaceSource.includes("onReturnToEditor: () => void"), "report workspace must separate error recovery from recheck");
 assert.ok(reportWorkspaceSource.includes("onReturnToEditor={onReturnToEditor}"), "report error states must use ordinary editor recovery");
+assert.ok(reportWorkspaceSource.includes("completeWorkflowRestored"), "recheck must distinguish a persisted complete workflow from a report cache hit");
 assert.ok(reportWorkspaceSource.includes("const recheckAvailable = flowComplete && contentAvailable"), "mobile recheck must use succeeded workflow gate");
 assert.ok(reportWorkspaceSource.includes('if (recheckBaseline) onScrollToSection("recheck-comparison");'), "mobile recheck must navigate existing baselines");
 assert.ok(reportWorkspaceSource.includes("else onBackToEditor();"), "mobile recheck must establish a missing baseline");
@@ -433,6 +447,41 @@ assert.ok(diagnosisSectionSource.includes("const unconfirmedCount ="), "mixed pa
 assert.ok(diagnosisSectionSource.includes('label: "待确认"'), "empty partial diagnosis risk must be pending");
 assert.ok(pageSource.includes("workflowSucceeded\n              ? openEditorForRecheck"), "header editor action must only enter recheck after success");
 assert.ok(pageSource.includes("returnToEditorAfterError()"), "header editor action must use ordinary recovery for incomplete runs");
+assert.match(recheckComparisonSource, /评分上升不代表 Evidence 状态改变或外部事实已验证/);
+assert.doesNotMatch(recheckComparisonSource, /来源引用与证据关联完成补强|每项评分变化均可追溯至应用的修改建议与来源/);
+assert.doesNotMatch(recheckComparisonSource, /关键事实覆盖更完整|观点与来源关联更清晰/);
+assert.match(recheckComparisonSource, /describeReportDimensionScoreChange\(label, before, after\)/);
+assert.equal(describeReportDimensionScoreChange("事实完整度", 12, 15), "事实完整度维度评分上升 3 分。");
+assert.equal(describeReportDimensionScoreChange("证据覆盖", 15, 12), "证据覆盖维度评分下降 3 分。");
+assert.equal(describeReportDimensionScoreChange("可验证性", 12, 12), "可验证性维度评分持平。");
+assert.match(reportCompletionSummarySource, /评分变化不代表 Evidence 状态改变或外部事实已核实/);
+assert.doesNotMatch(reportCompletionSummarySource, /评分变化均可追溯至应用的修改建议与来源|项已解决/);
+assert.doesNotMatch(reportCompletionSummarySource, /补充可核验来源|建立观点与证据对应/);
+assert.match(reportCompletionSummarySource, /<small>查看并编辑建议<\/small>/);
+assert.equal(describeReportIssueCountChange(3, 1), "待处理诊断项净减少 2 项");
+assert.equal(describeReportIssueCountChange(1, 3), "待处理诊断项净增加 2 项");
+assert.equal(describeReportIssueCountChange(2, 2), "待处理诊断项数量持平");
+assert.equal(resolveRecheckStatus({
+  hasBaseline: true,
+  comparisonReady: true,
+  restoredFromCache: true,
+  completeWorkflowRestored: false,
+  flowHasError: false,
+}), "cached");
+assert.equal(resolveRecheckStatus({
+  hasBaseline: true,
+  comparisonReady: true,
+  restoredFromCache: true,
+  completeWorkflowRestored: true,
+  flowHasError: false,
+}), "complete");
+assert.equal(resolveRecheckStatus({
+  hasBaseline: true,
+  comparisonReady: true,
+  restoredFromCache: false,
+  completeWorkflowRestored: false,
+  flowHasError: false,
+}), "complete");
 
 const scoringRouteSource = readFileSync(
   fileURLToPath(new URL("../app/api/evaluate-scoring/route.ts", import.meta.url)),

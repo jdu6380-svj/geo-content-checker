@@ -56,6 +56,24 @@ export function summarizeReportIssueStatuses(
   }, { high: 0, attention: 0, passed: 0 });
 }
 
+export function describeReportIssueCountChange(before: number, after: number): string {
+  const difference = before - after;
+  if (difference > 0) return `待处理诊断项净减少 ${difference} 项`;
+  if (difference < 0) return `待处理诊断项净增加 ${Math.abs(difference)} 项`;
+  return "待处理诊断项数量持平";
+}
+
+export function describeReportDimensionScoreChange(
+  label: string,
+  before: number,
+  after: number,
+): string {
+  const difference = after - before;
+  if (difference > 0) return `${label}维度评分上升 ${difference} 分。`;
+  if (difference < 0) return `${label}维度评分下降 ${Math.abs(difference)} 分。`;
+  return `${label}维度评分持平。`;
+}
+
 export function createReportComparisonSnapshot(
   scoring: EvaluateScoringResponse,
   questionOrder: string[],

@@ -1403,6 +1403,7 @@ export default function Home() {
             latestQuestion={latestQuestion}
             latestQuestionRef={latestQuestionRef}
             restoredFromCache={restoredFromCache}
+            completeWorkflowRestored={completeWorkflowRestored}
             analysisProgressStep={analysisProgressStep}
             analysisProgressAnimationKey={activeRunRef.current}
             analysisProgressComplete={analysisProgressComplete}

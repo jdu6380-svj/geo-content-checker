@@ -13,6 +13,8 @@ import {
 
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import {
+  describeReportDimensionScoreChange,
+  describeReportIssueCountChange,
   getReportIssueStatus,
   isReportIssue,
   type ReportComparisonSnapshot,
@@ -87,25 +89,21 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
   const scorePresentation = changePresentation(scoreChange);
   const baselineIssues = baseline.diagnostics.filter(isReportIssue);
   const currentIssues = current.diagnostics.filter(isReportIssue);
-  const improvedIssueCount = Math.max(0, baselineIssues.length - currentIssues.length);
   const dimensionCards = [
     {
       key: "factCompleteness" as const,
       label: "事实完整度",
       icon: FileCheck2,
-      description: "关键事实覆盖更完整。",
     },
     {
       key: "questionCoverage" as const,
       label: "证据覆盖",
       icon: Link2,
-      description: "观点与来源关联更清晰。",
     },
     {
       key: "freshness" as const,
       label: "可验证性",
       icon: ShieldCheck,
-      description: "来源与定位信息便于复核。",
     },
   ];
   const evidenceValidBefore = baseline.diagnostics.filter((item) => item.evidenceStatus === "valid").length;
@@ -114,28 +112,28 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
   const highRiskAfter = current.diagnostics.filter((item) => getReportIssueStatus(item) === "high").length;
   const summaryItems = [
     evidenceValidAfter > evidenceValidBefore
-      ? "更多关键观点已获得有效证据支撑"
+      ? "有效证据诊断项数量上升"
       : evidenceValidAfter < evidenceValidBefore
-        ? "有效证据数量下降，建议复核来源关联"
-        : "关键观点与证据已重新核验",
+        ? "有效证据诊断项数量下降，建议复核来源关联"
+        : "有效证据诊断项数量持平",
     current.dimensions.factCompleteness.score > baseline.dimensions.factCompleteness.score
-      ? "事实完整度得到改善"
+      ? "事实完整度维度评分上升"
       : current.dimensions.factCompleteness.score < baseline.dimensions.factCompleteness.score
-        ? "事实完整度下降，建议核对本轮修改"
-        : "事实完整度保持稳定",
+        ? "事实完整度维度评分下降，建议核对本轮修改"
+        : "事实完整度维度评分持平",
     highRiskAfter < highRiskBefore
-      ? "高风险问题数量已下降"
+      ? "高风险诊断项数量下降"
       : highRiskAfter > highRiskBefore
-        ? "高风险问题数量增加，建议继续处理"
-        : "高风险表述已完成复核",
+        ? "高风险诊断项数量增加，建议继续处理"
+        : "高风险诊断项数量持平",
   ];
   const SummaryIcon = scoreChange < 0 ? AlertTriangle : ShieldCheck;
-  const summaryTitle = scoreChange > 0 ? "可信度提升" : scoreChange < 0 ? "可信度下降" : "可信度保持稳定";
+  const summaryTitle = scoreChange > 0 ? "评分上升" : scoreChange < 0 ? "评分下降" : "评分持平";
   const summaryDescription = scoreChange > 0
-    ? "本轮修改改善了来源透明度、证据覆盖与结论可验证性。"
+    ? "重新分析后的总评分高于修改前结果；请结合诊断与 Evidence 状态阅读。"
     : scoreChange < 0
-      ? "本轮修改未形成预期改善，建议返回证据与诊断核对新增缺口。"
-      : "本轮修改完成复核，整体可信度评分保持稳定。";
+      ? "重新分析后的总评分低于修改前结果；建议返回诊断核对新增缺口。"
+      : "重新分析后的总评分与修改前持平；Evidence 状态仍单独呈现。";
 
   return (
     <section id="recheck-comparison" className="phase2-recheck-page section-anchor">
@@ -159,13 +157,13 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
               <div className={`is-change ${scorePresentation.className}`}><strong><AnimatedNumber value={scoreChange} duration={520} delay={360} showSign /></strong><span>{scorePresentation.label}</span></div>
               <div className="is-after"><span>After</span><strong><AnimatedNumber value={current.totalScore} from={baseline.totalScore} duration={760} delay={180} /></strong><small>/100</small></div>
             </div>
-            <p>{scoreChange > 0 ? "来源引用与证据关联完成补强，整体可信度重新计算完成。" : scoreChange < 0 ? "重新验证后评分下降，建议回到证据与诊断核对新增缺口。" : "重新验证完成，整体评分保持稳定。"}</p>
+            <p>{scoreChange > 0 ? "本轮重新分析评分高于修改前结果；评分上升不代表 Evidence 状态改变或外部事实已验证。" : scoreChange < 0 ? "本轮重新分析评分低于修改前结果；评分变化不代表 Evidence 状态改变或外部事实已验证。" : "本轮重新分析评分与修改前持平；Evidence 状态仍需单独查看。"}</p>
           </section>
 
           <section className="phase2-recheck-metrics">
             <h2>指标变化</h2>
             <div>
-              {dimensionCards.map(({ key, label, icon: Icon, description }) => {
+              {dimensionCards.map(({ key, label, icon: Icon }) => {
                 const before = baseline.dimensions[key].score;
                 const after = current.dimensions[key].score;
                 const change = after - before;
@@ -174,7 +172,7 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
                   <article key={key} className={presentation.className}>
                     <header><Icon aria-hidden="true" /><strong>{label}</strong></header>
                     <div><b>{scoreChangeLabel(change)}</b><span>{presentation.label}</span></div>
-                    <p>{change > 0 ? description : change < 0 ? "该维度评分下降，建议复核本轮修改。" : "该维度评分保持稳定。"}</p>
+                    <p>{describeReportDimensionScoreChange(label, before, after)}</p>
                     <small>{before} <ArrowRight aria-hidden="true" /> {after}</small>
                   </article>
                 );
@@ -188,12 +186,12 @@ export function RecheckComparison({ baseline, current, status, onOpenOverview }:
           <div className={`phase2-recheck-summary-title ${scorePresentation.className}`}><SummaryIcon aria-hidden="true" /><strong>{summaryTitle}</strong></div>
           <p>{summaryDescription}</p>
           <ul>{summaryItems.map((item) => <li key={item}><CheckCircle2 aria-hidden="true" />{item}</li>)}</ul>
-          <span>{improvedIssueCount} 项问题改善 · 复核完成</span>
+          <span>{describeReportIssueCountChange(baselineIssues.length, currentIssues.length)} · 复核完成</span>
           <button type="button" onClick={onOpenOverview}>查看完整报告</button>
         </aside>
       </div>
 
-      <footer className="phase2-recheck-evidence-first"><ShieldCheck aria-hidden="true" /><strong>证据优先</strong><span>每项评分变化均可追溯至应用的修改建议与来源。</span></footer>
+      <footer className="phase2-recheck-evidence-first"><ShieldCheck aria-hidden="true" /><strong>证据优先</strong><span>评分变化与 Evidence 状态分别展示；评分不代表外部事实已核实。</span></footer>
     </section>
   );
 }

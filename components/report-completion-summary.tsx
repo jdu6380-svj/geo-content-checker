@@ -12,6 +12,7 @@ import {
 import { ReportNavigationPanel, type ReportNavigationView } from "@/components/report-navigation-panel";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import {
+  describeReportIssueCountChange,
   getReportIssueStatus,
   isReportIssue,
   summarizeReportIssueStatuses,
@@ -48,11 +49,11 @@ export function ReportCompletionSummary({
   const riskSummary = summarizeReportIssueStatuses(diagnosticItems);
   const issueCount = current.diagnostics.filter(isReportIssue).length;
   const baselineIssueCount = baseline.diagnostics.filter(isReportIssue).length;
-  const resolvedCount = Math.max(0, baselineIssueCount - issueCount);
+  const issueCountChange = describeReportIssueCountChange(baselineIssueCount, issueCount);
   const riskLabel = riskSummary.high ? "高风险" : riskSummary.attention ? "中风险" : "低风险";
   const riskClassName = riskSummary.high ? "is-danger" : riskSummary.attention ? "is-warning" : "is-success";
   const scoreChange = current.totalScore - baseline.totalScore;
-  const scoreChangeLabel = scoreChange > 0 ? "提升" : scoreChange < 0 ? "下降" : "持平";
+  const scoreChangeLabel = scoreChange > 0 ? "上升" : scoreChange < 0 ? "下降" : "持平";
   const scoreChangeClassName = scoreChange > 0 ? "is-success" : scoreChange < 0 ? "is-danger" : "is-neutral";
   const highlightedQuestions = diagnosticItems
     .filter((item) => getReportIssueStatus(item) !== "passed")
@@ -74,15 +75,15 @@ export function ReportCompletionSummary({
             <section>
               <span>可信度评分</span>
               <div><strong><AnimatedNumber value={scoring.totalScore} from={baseline.totalScore} /></strong><small>/100</small></div>
-              <p>已基于人工修改后的内容完成重新验证，可信度已重新评估。</p>
+              <p>已基于人工修改后的内容重新分析评分；评分变化不代表 Evidence 状态改变或外部事实已核实。</p>
               <span>{riskSummary.passed} 项已通过 · {riskSummary.attention} 项注意 · {riskSummary.high} 项高风险</span>
               <b>Before {baseline.totalScore} <span>→</span> After {current.totalScore} · {scoreChangeLabel} <em className={scoreChangeClassName}>{scoreChange > 0 ? `+${scoreChange}` : scoreChange}</em></b>
             </section>
             <section>
               <h2>风险总结</h2>
               <p>风险等级 · <strong className={riskClassName}>{riskLabel}</strong></p>
-              <b>原发现 {baselineIssueCount} 个可信度问题</b>
-              <span>{resolvedCount} 项已解决 · {issueCount} 项待跟进 · {diagnosticItems.length - issueCount} 项通过</span>
+              <b>修改前待处理诊断项 {baselineIssueCount} 项</b>
+              <span>{issueCountChange} · {issueCount} 项待跟进 · {diagnosticItems.length - issueCount} 项通过</span>
               <small>{highlightedQuestions[0] || "主要风险已完成复核"}</small>
             </section>
           </div>
@@ -96,20 +97,19 @@ export function ReportCompletionSummary({
             </button>
             <button type="button" onClick={() => onNavigate("diagnosis")}>
               <span className="is-warning"><AlertTriangle aria-hidden="true" /></span>
-              <strong>问题诊断<small>{questionOrder.length} 个问题 · {resolvedCount} 项已解决 · {issueCount} 项待跟进</small></strong>
+              <strong>问题诊断<small>{questionOrder.length} 个问题 · {issueCount} 项待跟进</small></strong>
               <p>{highlightedQuestions.map((question) => <span key={question}>· {question}</span>)}</p>
               <b>查看问题诊断</b>
             </button>
             <button type="button" onClick={() => onNavigate("patch")}>
               <span className="is-success"><Wrench aria-hidden="true" /></span>
-              <strong>修改建议<small>{Math.max(resolvedCount, 1)} 项建议 · 已完成人工应用流程</small></strong>
-              <p><span>· 补充可核验来源</span><span>· 建立观点与证据对应</span></p>
+              <strong>修改建议<small>查看并编辑建议</small></strong>
               <b>查看修改建议</b>
             </button>
             <button type="button" onClick={() => onNavigate("recheck")}>
               <span className="is-info"><RotateCcw aria-hidden="true" /></span>
               <strong>重新验证结果<small>修改前 {baseline.totalScore} → 修改后 {current.totalScore}</small></strong>
-              <p><span className={scoreChangeClassName}>{scoreChange > 0 ? `+${scoreChange}` : scoreChange}</span><span>评分变化均可追溯至应用的修改建议与来源。</span></p>
+              <p><span className={scoreChangeClassName}>{scoreChange > 0 ? `+${scoreChange}` : scoreChange}</span><span>Evidence 状态单独展示；评分变化不代表外部事实已核实。</span></p>
               <b>查看重新验证详情</b>
             </button>
           </div>
@@ -120,7 +120,7 @@ export function ReportCompletionSummary({
             activeView="overview"
             evidencePendingCount={pendingCount}
             diagnosisIssueCount={issueCount}
-            patchCount={Math.max(resolvedCount, 1)}
+            patchCount={0}
             recheckLabel={`${scoreChange > 0 ? `+${scoreChange}` : scoreChange} 已完成`}
             analysisComplete
             recheckAvailable
