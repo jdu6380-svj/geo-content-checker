@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
 
+export { isHttpsUrl, isValidSupportEmail } from "../feedback-config.ts";
+
 export const MIN_SECURITY_SECRET_BYTES = 32;
 
 export function isStrongSecuritySecret(value: string | undefined): boolean {
@@ -20,12 +22,4 @@ export function areDistinctSecuritySecrets(
       isStrongSecuritySecret(tokenSecret) &&
       salt !== tokenSecret,
   );
-}
-
-export function isHttpsUrl(value: string | undefined): boolean {
-  try {
-    return new URL(value?.trim() || "").protocol === "https:";
-  } catch {
-    return false;
-  }
 }

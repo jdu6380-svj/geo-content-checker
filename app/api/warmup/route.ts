@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { callOpenAICompatibleModel } from "@/lib/ai/openai-compatible";
+import { WARMUP_STATUS } from "@/lib/constants/analysis-contract";
 import {
   AnalysisIdentityConfigurationError,
   InvalidAnalysisClientIdError,
@@ -12,10 +13,12 @@ import {
   AnalysisRateLimitUnavailableError,
   checkWarmupRateLimit,
 } from "@/lib/server/analysis-rate-limit";
+import { isLightweightDevelopmentMode } from "@/lib/server/development-runtime";
 import {
   markGeoRequestOutcome,
   withGeoRequestLogging,
 } from "@/lib/server/geo-observability";
+import { runWarmupModel } from "@/lib/server/warmup-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,20 +27,32 @@ export const maxDuration = 5;
 function responseHeaders(requestId: string, mode?: string): HeadersInit {
   return {
     "Cache-Control": "no-store",
+    Deprecation: "true",
     "X-Request-ID": requestId,
+    "X-GEO-Warmup-Status": WARMUP_STATUS,
     ...(mode ? { "X-GEO-RateLimit-Mode": mode } : {}),
   };
 }
 
 async function handlePost(request: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+  console.warn(
+    JSON.stringify({
+      event: "geo_api_deprecation_warning",
+      requestId,
+      route: "/api/warmup",
+      status: WARMUP_STATUS,
+    }),
+  );
 
   try {
     const identity = resolveAnalysisIdentity(request);
-    const rateLimit = await checkWarmupRateLimit({
-      deviceHash: identity.deviceHash,
-      ipHash: identity.ipHash,
-    });
+    const rateLimit = isLightweightDevelopmentMode()
+      ? { allowed: true, retryAfter: 0, mode: "memory" as const, reason: undefined }
+      : await checkWarmupRateLimit({
+          deviceHash: identity.deviceHash,
+          ipHash: identity.ipHash,
+        });
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -56,9 +71,8 @@ async function handlePost(request: NextRequest): Promise<Response> {
       );
     }
 
-    let warmed = false;
-    try {
-      await callOpenAICompatibleModel({
+    const warmed = await runWarmupModel(process.env, () =>
+      callOpenAICompatibleModel({
         messages: [
           { role: "system", content: "Return one minimal JSON object and no other text." },
           { role: "user", content: "Return {\"ok\":true}." },
@@ -67,15 +81,12 @@ async function handlePost(request: NextRequest): Promise<Response> {
         timeoutMs: 4_000,
         maxTokens: 16,
         rateLimitMode: rateLimit.mode,
-      });
-      warmed = true;
-    } catch {
-      warmed = false;
-    }
+      }),
+    );
     markGeoRequestOutcome({ source: warmed ? "model" : "fallback" });
 
     return NextResponse.json(
-      { warmed, rateLimitMode: rateLimit.mode },
+      { warmed, rateLimitMode: rateLimit.mode, status: WARMUP_STATUS },
       { headers: responseHeaders(requestId, rateLimit.mode) },
     );
   } catch (error) {

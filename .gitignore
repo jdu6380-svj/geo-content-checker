@@ -12,9 +12,14 @@
 
 # Local test and tool output
 /.playwright-cli/
+/artifacts/
 /coverage/
+/output/
 /outputs/
 /work/
+/design-qa/
+/design-qa-artifacts/
+/design-baseline-before.png
 *.log
 npm-debug.log*
 yarn-debug.log*

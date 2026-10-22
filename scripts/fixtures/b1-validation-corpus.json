@@ -1,0 +1,92 @@
+[
+  {
+    "category": "public_account",
+    "quality": "high",
+    "length": "short",
+    "permission": "public",
+    "title": "夹具文章一",
+    "publishedAt": "2026-07-01",
+    "content": "这是公开内容夹具的第一段，包含明确主题、适用对象和可核对事实。\n\n第二段说明方法、限制条件与更新时间。"
+  },
+  {
+    "category": "public_account",
+    "quality": "high",
+    "length": "medium",
+    "permission": "authorized",
+    "title": "夹具文章二",
+    "publishedAt": "2026-07-02",
+    "content": "这是一篇已授权的合成测试文章，用于验证语料分类和匿名编号。\n\n文章说明步骤、证据来源、适用范围以及不适用情况。"
+  },
+  {
+    "category": "public_account",
+    "quality": "medium",
+    "length": "long",
+    "permission": "public",
+    "title": "夹具文章三",
+    "publishedAt": "2026-07-03",
+    "content": "这篇合成文章提供基本结论，但部分事实缺少来源说明。\n\n后续段落给出操作建议，同时保留若干待补充信息。"
+  },
+  {
+    "category": "public_account",
+    "quality": "medium",
+    "length": "short",
+    "permission": "authorized",
+    "title": "夹具文章四",
+    "publishedAt": "2026-07-04",
+    "content": "这篇测试文章覆盖核心问题和目标用户。\n\n限制条件与时效信息仍不完整。"
+  },
+  {
+    "category": "blog_longform",
+    "quality": "medium",
+    "length": "medium",
+    "permission": "public",
+    "title": "夹具文章五",
+    "publishedAt": "2026-07-05",
+    "content": "博客夹具介绍一个完整流程，并列出三个执行步骤。\n\n文章包含案例描述，但没有给出全部验证依据。"
+  },
+  {
+    "category": "blog_longform",
+    "quality": "medium",
+    "length": "long",
+    "permission": "authorized",
+    "title": "夹具文章六",
+    "publishedAt": "2026-07-06",
+    "content": "长文章夹具分段说明背景、方法和预期结果。\n\n内容经过授权并已脱敏，保留了结构测试所需的信息。"
+  },
+  {
+    "category": "blog_longform",
+    "quality": "low",
+    "length": "short",
+    "permission": "public",
+    "title": "夹具文章七",
+    "publishedAt": "2026-07-07",
+    "content": "这篇低质量夹具只有宽泛结论。\n\n它缺少事实依据、适用范围和限制说明。"
+  },
+  {
+    "category": "ai_generated",
+    "quality": "high",
+    "length": "medium",
+    "permission": "authorized",
+    "title": "夹具文章八",
+    "publishedAt": "2026-07-08",
+    "content": "这篇 AI 合成文章具有清晰标题、分层结构和完整事实说明。\n\n文中明确标注适用对象、执行方式与风险边界。"
+  },
+  {
+    "category": "ai_generated",
+    "quality": "low",
+    "length": "medium",
+    "permission": "public",
+    "title": "夹具文章九",
+    "publishedAt": "2026-07-09",
+    "content": "这篇 AI 合成内容重复表达相同观点。\n\n文章没有来源、日期或限制条件。"
+  },
+  {
+    "category": "ai_generated",
+    "quality": "low",
+    "length": "long",
+    "permission": "authorized",
+    "title": "夹具文章十",
+    "publishedAt": "2026-07-10",
+    "content": "最后一篇夹具包含较多泛化描述，但缺少可执行细节。\n\n内容仅用于离线测试，不代表任何真实人物或组织。"
+  }
+]

@@ -1,3 +1,147 @@
+export const JSON_BOUNDARY_CHARACTER_TYPES = [
+  "none",
+  "object-open",
+  "object-close",
+  "array-open",
+  "array-close",
+  "double-quote",
+  "single-quote",
+  "backtick",
+  "digit",
+  "minus",
+  "letter",
+  "whitespace",
+  "other",
+] as const;
+
+export type JsonBoundaryCharacterType =
+  (typeof JSON_BOUNDARY_CHARACTER_TYPES)[number];
+
+export const JSON_PARSER_ERROR_NAMES = [
+  "SyntaxError",
+  "Error",
+  "UnknownError",
+] as const;
+
+export type JsonParserErrorName = (typeof JSON_PARSER_ERROR_NAMES)[number];
+
+export const JSON_ERROR_CATEGORIES = [
+  "unterminated_string",
+  "invalid_escape",
+  "trailing_comma",
+  "multiple_root_object",
+  "missing_bracket",
+  "unexpected_token",
+  "unexpected_end",
+  "invalid_character",
+  "other",
+] as const;
+
+export type JsonErrorCategory = (typeof JSON_ERROR_CATEGORIES)[number];
+
+export const JSON_LAST_CHARACTER_CATEGORIES = [
+  "quote",
+  "comma",
+  "brace",
+  "bracket",
+  "whitespace",
+  "other",
+  "unknown",
+] as const;
+
+export type JsonLastCharacterCategory =
+  (typeof JSON_LAST_CHARACTER_CATEGORIES)[number];
+
+export const VALIDATION_RECEIVED_TYPES = [
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+  "null",
+  "missing",
+  "unknown",
+] as const;
+
+export type ValidationReceivedType =
+  (typeof VALIDATION_RECEIVED_TYPES)[number];
+
+export const VALIDATION_EXPECTED_TYPES = [
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+  "null",
+  "unknown",
+] as const;
+
+export type ValidationExpectedType =
+  (typeof VALIDATION_EXPECTED_TYPES)[number];
+
+export const VALIDATION_ISSUE_CODES = [
+  "invalid_type",
+  "invalid_literal",
+  "custom",
+  "invalid_union",
+  "invalid_union_discriminator",
+  "invalid_enum_value",
+  "unrecognized_keys",
+  "invalid_arguments",
+  "invalid_return_type",
+  "invalid_date",
+  "invalid_string",
+  "too_small",
+  "too_big",
+  "invalid_intersection_types",
+  "not_multiple_of",
+  "not_finite",
+  "unknown",
+] as const;
+
+export type ValidationIssueCode = (typeof VALIDATION_ISSUE_CODES)[number];
+
+export interface SchemaValidationFailureTelemetry {
+  validationReceivedType: ValidationReceivedType;
+  validationExpectedType: ValidationExpectedType;
+  validationIssueCode: ValidationIssueCode;
+}
+
+export const SCHEMA_FAILURE_CATEGORIES = [
+  "required_field_missing",
+  "type_mismatch",
+  "schema_validation_failed",
+  "malformed_schema_issue",
+] as const;
+
+export type SchemaFailureCategory =
+  (typeof SCHEMA_FAILURE_CATEGORIES)[number];
+
+export interface SchemaValidationFailureDetails
+  extends SchemaValidationFailureTelemetry {
+  expectedType: ValidationExpectedType;
+  receivedType: ValidationReceivedType;
+  requiredFieldMissing: boolean;
+  schemaFailureCategory: SchemaFailureCategory;
+}
+
+export interface JsonParseFailureTelemetry {
+  responseLength: number;
+  trimmedLength: number;
+  firstCharType: JsonBoundaryCharacterType;
+  lastCharType: JsonBoundaryCharacterType;
+  startsWithCodeFence: boolean;
+  endsWithCodeFence: boolean;
+  parserErrorName: JsonParserErrorName;
+  parserErrorPosition: number | null;
+  jsonErrorCategory: JsonErrorCategory;
+  parserErrorCategory: JsonErrorCategory;
+  lastCharacterCategory: JsonLastCharacterCategory;
+  containsMultipleTopLevelValues: boolean;
+  hasLeadingNonWhitespaceText: boolean;
+  hasTrailingNonWhitespaceText: boolean;
+}
+
 export function cleanModelJson(raw: string): string {
   const withoutFences = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
   const objectStart = withoutFences.indexOf("{");
@@ -5,4 +149,314 @@ export function cleanModelJson(raw: string): string {
 
   if (objectStart === -1 || objectEnd < objectStart) return withoutFences;
   return withoutFences.slice(objectStart, objectEnd + 1);
+}
+
+function boundaryCharacterType(
+  character: string | undefined,
+): JsonBoundaryCharacterType {
+  if (character === undefined) return "none";
+  if (character === "{") return "object-open";
+  if (character === "}") return "object-close";
+  if (character === "[") return "array-open";
+  if (character === "]") return "array-close";
+  if (character === '"') return "double-quote";
+  if (character === "'") return "single-quote";
+  if (character === "`") return "backtick";
+  if (/[0-9]/.test(character)) return "digit";
+  if (character === "-") return "minus";
+  if (/\s/u.test(character)) return "whitespace";
+  if (/\p{L}/u.test(character)) return "letter";
+  return "other";
+}
+
+function parserErrorName(error: unknown): JsonParserErrorName {
+  if (error instanceof SyntaxError) return "SyntaxError";
+  if (error instanceof Error) return "Error";
+  return "UnknownError";
+}
+
+function parserErrorPosition(error: unknown, parserInput: string): number | null {
+  if (!(error instanceof Error)) return null;
+  const positionMatch = error.message.match(/\bposition\s+(\d+)\b/i);
+  if (positionMatch) {
+    const position = Number(positionMatch[1]);
+    if (Number.isSafeInteger(position) && position >= 0) return position;
+  }
+  if (/unexpected end/i.test(error.message)) return parserInput.length;
+  return null;
+}
+
+function jsonErrorCategory(error: unknown): JsonErrorCategory {
+  if (!(error instanceof Error)) return "other";
+  const message = error.message.toLowerCase();
+
+  if (/unterminated string/.test(message)) return "unterminated_string";
+  if (/(?:bad|invalid) (?:escaped character|escape|unicode escape)/.test(message)) {
+    return "invalid_escape";
+  }
+  if (/(?:unexpected end|end of json input|end of data)/.test(message)) {
+    return "unexpected_end";
+  }
+  if (
+    /(?:bad control character|bad character|invalid character|unexpected non-whitespace character)/.test(
+      message,
+    )
+  ) {
+    return "invalid_character";
+  }
+  if (
+    /(?:unexpected token|expected |unexpected keyword|unexpected character|unexpected non-digit|no number after minus sign|missing digits|property names must be double-quoted)/.test(
+      message,
+    )
+  ) {
+    return "unexpected_token";
+  }
+  return "other";
+}
+
+function lastCharacterCategory(raw: string): JsonLastCharacterCategory {
+  const character = raw.at(-1);
+  if (character === undefined) return "unknown";
+  if (character === '"' || character === "'") return "quote";
+  if (character === ",") return "comma";
+  if (character === "{" || character === "}") return "brace";
+  if (character === "[" || character === "]") return "bracket";
+  if (/\s/u.test(character)) return "whitespace";
+  return "other";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function analyzeSchemaValidationFailure(
+  issue: unknown,
+): SchemaValidationFailureTelemetry {
+  if (!isRecord(issue)) {
+    return {
+      validationReceivedType: "unknown",
+      validationExpectedType: "unknown",
+      validationIssueCode: "unknown",
+    };
+  }
+
+  const validationIssueCode = VALIDATION_ISSUE_CODES.includes(
+    issue.code as ValidationIssueCode,
+  )
+    ? (issue.code as ValidationIssueCode)
+    : "unknown";
+  const validationReceivedType =
+    issue.received === "undefined"
+      ? "missing"
+      : VALIDATION_RECEIVED_TYPES.includes(
+            issue.received as ValidationReceivedType,
+          )
+        ? (issue.received as ValidationReceivedType)
+        : "unknown";
+  const validationExpectedType = VALIDATION_EXPECTED_TYPES.includes(
+    issue.expected as ValidationExpectedType,
+  )
+    ? (issue.expected as ValidationExpectedType)
+    : "unknown";
+
+  return {
+    validationReceivedType,
+    validationExpectedType,
+    validationIssueCode,
+  };
+}
+
+export function analyzeSchemaValidationFailureDetails(
+  issue: unknown,
+): SchemaValidationFailureDetails {
+  const telemetry = analyzeSchemaValidationFailure(issue);
+  const malformedIssue =
+    !isRecord(issue) ||
+    telemetry.validationIssueCode === "unknown" ||
+    (
+      telemetry.validationIssueCode === "invalid_type" &&
+      telemetry.validationExpectedType === "unknown" &&
+      telemetry.validationReceivedType === "unknown"
+    );
+  const requiredFieldMissing =
+    telemetry.validationIssueCode === "invalid_type" &&
+    telemetry.validationReceivedType === "missing";
+  const schemaFailureCategory: SchemaFailureCategory = malformedIssue
+    ? "malformed_schema_issue"
+    : requiredFieldMissing
+      ? "required_field_missing"
+      : telemetry.validationIssueCode === "invalid_type"
+        ? "type_mismatch"
+        : "schema_validation_failed";
+
+  return {
+    ...telemetry,
+    expectedType: telemetry.validationExpectedType,
+    receivedType: telemetry.validationReceivedType,
+    requiredFieldMissing,
+    schemaFailureCategory,
+  };
+}
+
+function containsMultipleTopLevelValues(value: string): boolean {
+  const expectedClosers: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let completedValues = 0;
+
+  for (const character of value) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      expectedClosers.push(character === "{" ? "}" : "]");
+      continue;
+    }
+    if (character !== "}" && character !== "]") continue;
+    if (expectedClosers.at(-1) !== character) {
+      expectedClosers.length = 0;
+      continue;
+    }
+    expectedClosers.pop();
+    if (expectedClosers.length === 0) {
+      completedValues += 1;
+      if (completedValues > 1) return true;
+    }
+  }
+
+  return false;
+}
+
+function hasTrailingComma(value: string): boolean {
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character !== ",") continue;
+
+    let nextIndex = index + 1;
+    while (nextIndex < value.length && /\s/u.test(value[nextIndex] ?? "")) {
+      nextIndex += 1;
+    }
+    if (value[nextIndex] === "}" || value[nextIndex] === "]") return true;
+  }
+
+  return false;
+}
+
+function hasUnclosedContainer(value: string): boolean {
+  const expectedClosers: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (const character of value) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      expectedClosers.push(character === "{" ? "}" : "]");
+      continue;
+    }
+    if (character !== "}" && character !== "]") continue;
+    if (expectedClosers.at(-1) !== character) return false;
+    expectedClosers.pop();
+  }
+
+  return expectedClosers.length > 0;
+}
+
+function refinedJsonErrorCategory(params: {
+  parserInput: string;
+  parserCategory: JsonErrorCategory;
+  parserPosition: number | null;
+  multipleTopLevelValues: boolean;
+}): JsonErrorCategory {
+  if (hasTrailingComma(params.parserInput)) return "trailing_comma";
+  if (params.multipleTopLevelValues) return "multiple_root_object";
+  if (
+    hasUnclosedContainer(params.parserInput) &&
+    (params.parserCategory === "unexpected_end" ||
+      params.parserPosition === params.parserInput.length)
+  ) {
+    return "missing_bracket";
+  }
+  return params.parserCategory;
+}
+
+export function analyzeJsonParseFailure(
+  raw: string,
+  error: unknown,
+): JsonParseFailureTelemetry {
+  const trimmed = raw.trim();
+  const withoutFences = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const objectStart = withoutFences.indexOf("{");
+  const objectEnd = withoutFences.lastIndexOf("}");
+  const parserInput = cleanModelJson(raw);
+  const parserErrorCategory = jsonErrorCategory(error);
+  const parserPosition = parserErrorPosition(error, parserInput);
+  const multipleTopLevelValues =
+    containsMultipleTopLevelValues(withoutFences);
+
+  return {
+    responseLength: raw.length,
+    trimmedLength: trimmed.length,
+    firstCharType: boundaryCharacterType(trimmed[0]),
+    lastCharType: boundaryCharacterType(trimmed.at(-1)),
+    startsWithCodeFence: /^```(?:json)?(?:\s|$)/i.test(trimmed),
+    endsWithCodeFence: /```\s*$/.test(trimmed),
+    parserErrorName: parserErrorName(error),
+    parserErrorPosition: parserPosition,
+    jsonErrorCategory: refinedJsonErrorCategory({
+      parserInput,
+      parserCategory: parserErrorCategory,
+      parserPosition,
+      multipleTopLevelValues,
+    }),
+    parserErrorCategory,
+    lastCharacterCategory: lastCharacterCategory(raw),
+    containsMultipleTopLevelValues: multipleTopLevelValues,
+    hasLeadingNonWhitespaceText:
+      objectStart > 0 && withoutFences.slice(0, objectStart).trim().length > 0,
+    hasTrailingNonWhitespaceText:
+      objectEnd >= 0 &&
+      objectEnd + 1 < withoutFences.length &&
+      withoutFences.slice(objectEnd + 1).trim().length > 0,
+  };
 }

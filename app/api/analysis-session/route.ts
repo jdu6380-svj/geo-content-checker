@@ -12,6 +12,7 @@ import {
   checkAnalysisRateLimit,
   type AnalysisRateLimitMode,
 } from "@/lib/server/analysis-rate-limit";
+import { isLightweightDevelopmentMode } from "@/lib/server/development-runtime";
 import {
   ANALYSIS_OPERATION_LIMITS,
   AnalysisTokenConfigurationError,
@@ -43,10 +44,12 @@ async function handlePost(request: NextRequest): Promise<Response> {
 
   try {
     const identity = resolveAnalysisIdentity(request);
-    const rateLimit = await checkAnalysisRateLimit({
-      deviceHash: identity.deviceHash,
-      ipHash: identity.ipHash,
-    });
+    const rateLimit = isLightweightDevelopmentMode()
+      ? { allowed: true, retryAfter: 0, mode: "memory" as const, reason: undefined }
+      : await checkAnalysisRateLimit({
+          deviceHash: identity.deviceHash,
+          ipHash: identity.ipHash,
+        });
 
     if (!rateLimit.allowed) {
       return NextResponse.json(

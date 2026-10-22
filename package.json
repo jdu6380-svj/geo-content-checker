@@ -3,25 +3,44 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.23.x"
+  },
   "scripts": {
-    "dev": "next dev",
+    "dev": "EVIDRA_DEV_MODEL=false UPSTASH_REDIS_REST_URL= UPSTASH_REDIS_REST_TOKEN= next dev --turbopack",
+    "dev:model": "EVIDRA_DEV_MODEL=true next dev --turbopack",
+    "dev:webpack": "EVIDRA_DEV_MODEL=false UPSTASH_REDIS_REST_URL= UPSTASH_REDIS_REST_TOKEN= next dev",
+    "prebuild": "node --env-file-if-exists=.env.local scripts/check-release-config.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck:app": "tsc -p tsconfig.app.json --noEmit",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
+    "typecheck": "npm run typecheck:app && npm run typecheck:scripts",
     "check": "npm run typecheck && npm run lint",
     "setup:env": "node scripts/setup-local-env.mjs",
     "security:unit": "node --experimental-strip-types scripts/security-unit.ts",
     "blackbox": "node scripts/blackbox.mjs",
     "blackbox:fallback": "node scripts/blackbox.mjs --expect-source=fallback",
-    "blackbox:model": "node scripts/blackbox.mjs --expect-source=model"
+    "blackbox:model": "node scripts/blackbox.mjs --expect-source=model",
+    "metrics:beta": "node scripts/beta-metrics-report.mjs",
+    "model:validate": "node scripts/model-validation.mjs",
+    "b1:validate": "node --experimental-strip-types scripts/b1-technical-validation.ts",
+    "b1.5:calibrate": "node --experimental-strip-types scripts/b1.5-model-calibration.ts",
+    "release:check": "REQUIRE_RELEASE_CONFIG=true node --env-file-if-exists=.env.local scripts/check-release-config.mjs"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.66.0",
     "@upstash/redis": "^1.38.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "jose": "^6.2.3",
+    "lucide-react": "^1.24.0",
     "next": "15.5.20",
+    "radix-ui": "^1.6.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "tailwind-merge": "^3.6.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
