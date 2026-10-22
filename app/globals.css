@@ -2179,6 +2179,116 @@ h1, h2, h3, p { letter-spacing: 0; }
   }
 }
 
+/* Local review history */
+.review-history-page {
+  min-height: calc(100vh - var(--phase-header-height));
+  padding: 48px clamp(22px, 5vw, 72px) 72px;
+  background: var(--phase-canvas);
+}
+
+.review-history-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  max-width: 1080px;
+  margin: 0 auto 30px;
+}
+
+.review-history-header h1 {
+  margin-top: 7px;
+  color: var(--phase-ink);
+  font-size: 32px;
+  font-weight: 820;
+  letter-spacing: -.035em;
+}
+
+.review-history-header p:last-child {
+  margin-top: 9px;
+  color: var(--phase-body);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.review-history-list {
+  display: grid;
+  max-width: 1080px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--phase-border);
+  border-radius: 8px;
+  background: var(--phase-surface);
+  box-shadow: var(--phase-shadow);
+}
+
+.review-history-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--phase-border);
+}
+
+.review-history-item:last-child { border-bottom: 0; }
+.review-history-item:hover { background: #fcfcfe; }
+
+.review-history-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--phase-purple-soft);
+  color: var(--phase-purple);
+}
+
+.review-history-icon svg { width: 18px; height: 18px; }
+.review-history-main { min-width: 0; }
+.review-history-main h2 { overflow: hidden; color: var(--phase-ink); font-size: 14px; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
+.review-history-main p { display: flex; align-items: center; gap: 7px; margin-top: 6px; color: var(--phase-muted); font-size: 11px; }
+.review-history-main p svg { width: 13px; height: 13px; }
+.review-history-score { display: flex; align-items: baseline; gap: 2px; color: var(--phase-ink); white-space: nowrap; }
+.review-history-score strong { font-size: 22px; font-weight: 820; }
+.review-history-score span { color: var(--phase-muted); font-size: 11px; }
+.review-history-risk { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; border-radius: 999px; padding: 0 9px; font-size: 11px; font-weight: 720; white-space: nowrap; }
+.review-history-risk svg { width: 13px; height: 13px; }
+.review-history-risk.is-danger { background: #fff0f0; color: #c43d3d; }
+.review-history-risk.is-warning { background: #fff7e6; color: #a86d00; }
+.review-history-risk.is-success { background: #eaf9f0; color: #20834c; }
+.review-history-open { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 7px 0 7px 8px; color: var(--phase-purple); font-size: 12px; font-weight: 760; white-space: nowrap; }
+.review-history-open:hover { color: var(--phase-purple-dark); }
+.review-history-open svg { width: 15px; height: 15px; }
+
+.review-history-empty {
+  display: grid;
+  max-width: 560px;
+  margin: 60px auto 0;
+  place-items: center;
+  border: 1px dashed var(--phase-border-strong);
+  border-radius: 8px;
+  background: var(--phase-surface);
+  padding: 58px 24px;
+  text-align: center;
+}
+
+.review-history-empty > svg { width: 30px; height: 30px; color: var(--phase-purple); }
+.review-history-empty h2 { margin-top: 15px; color: var(--phase-ink); font-size: 18px; font-weight: 780; }
+.review-history-empty p { margin: 8px 0 22px; color: var(--phase-body); font-size: 13px; }
+.review-history-note { max-width: 1080px; margin: 18px auto 0; color: var(--phase-muted); font-size: 11px; line-height: 1.6; }
+
+@media (max-width: 760px) {
+  .review-history-page { padding: 28px 14px 50px; }
+  .review-history-header { align-items: flex-start; flex-direction: column; gap: 18px; margin-bottom: 22px; }
+  .review-history-header h1 { font-size: 26px; }
+  .review-history-header .phase-primary-button { width: 100%; }
+  .review-history-item { grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; padding: 17px 15px; }
+  .review-history-score { grid-column: 3; grid-row: 1; }
+  .review-history-risk { grid-column: 2; grid-row: 2; justify-self: start; }
+  .review-history-open { grid-column: 3; grid-row: 2; }
+}
+
 /* The rail card now explains the real review flow instead of showing placeholder scores. */
 .phase-recent-report .phase-recent-metrics { gap: 17px; margin-top: 22px; }
 .phase-recent-report .phase-recent-metrics li { grid-template-columns: 31px minmax(0, 1fr); gap: 12px; align-items: start; }

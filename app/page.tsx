@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { EditorWorkspace } from "@/components/editor-workspace";
 import type { PatchState } from "@/components/patch-workshop";
 import { ReportWorkspace, type ReportWorkspaceView } from "@/components/report-workspace";
+import { ReviewHistory } from "@/components/review-history";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
 import type { WorkspaceStage } from "@/components/workspace-command-bar";
 import {
@@ -29,6 +30,7 @@ import {
 } from "@/lib/client/geo-api";
 import {
   readCachedReport,
+  readReportHistory,
   saveCachedReport,
   deriveDiagnosticCompletion,
   type CacheEnvelope,
@@ -339,6 +341,8 @@ export default function Home() {
   const [patchChecklist, setPatchChecklist] = useState<PatchChecklistItem[]>([]);
   const [patchStates, setPatchStates] = useState<Record<"advice" | "content_draft", PatchState | null>>({ advice: null, content_draft: null });
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("review");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState<CacheEnvelope[]>([]);
   const [reportView, setReportView] = useState<ReportWorkspaceView>("overview");
   const [analysisProgressStep, setAnalysisProgressStep] = useState(0);
   const [analysisProgressComplete, setAnalysisProgressComplete] = useState(false);
@@ -528,6 +532,7 @@ export default function Home() {
     setAnalysisProgressComplete(true);
     setWorkspaceStage("report");
     setReportView("overview");
+    setHistoryOpen(false);
   }, [abortActiveAnalysis, clearAnalysisProgressTimers]);
 
   const restoreWorkflow = useCallback((workflow: WorkflowState, pendingDraft?: ArticleDraft) => {
@@ -704,6 +709,7 @@ export default function Home() {
 
       storageReadyRef.current = true;
       setStorageReady(true);
+      setHistoryItems(readReportHistory());
       setIsRestoringWorkflow(false);
     }
 
@@ -777,12 +783,14 @@ export default function Home() {
     markDraftAnalysis(draft, analysisHash, "success");
     saveCachedReport({
       title: draft.title,
+      content: draft.content,
       publishedAt: draft.publishedAt,
       scoring: scoring.data,
       questionSource: questions.data.source,
       questionOrder,
       diagnostics,
     }, analysisHash);
+    setHistoryItems(readReportHistory());
   }, [analysisStarted, diagnostics, diagnosticsSettled, diagnosticsSucceeded, draft, questionOrder, questions, restoredFromCache, scoring]);
 
   function updateDraft(field: keyof ArticleDraft, value: string) {
@@ -1137,6 +1145,7 @@ export default function Home() {
 
   function startNewAnalysis() {
     workflowPersistenceBlockedRef.current = true;
+    setHistoryOpen(false);
     setRecheckBaseline(null);
     setPatchChecklist([]);
     setPatchStates({ advice: null, content_draft: null });
@@ -1145,6 +1154,20 @@ export default function Home() {
     setReportView("overview");
     backToEditor();
     focusEditor();
+  }
+
+  function openHistory() {
+    setHistoryItems(readReportHistory());
+    setHistoryOpen(true);
+  }
+
+  function openHistoryItem(item: CacheEnvelope) {
+    const restoredDraft: ArticleDraft = {
+      title: item.report.title,
+      content: item.report.content ?? "",
+      publishedAt: item.report.publishedAt,
+    };
+    restoreCachedAnalysis(item, restoredDraft);
   }
 
   function scrollToSection(sectionId: string) {
@@ -1238,6 +1261,11 @@ export default function Home() {
   }
 
   function openReviewStage() {
+    if (historyOpen && analysisStarted) {
+      setHistoryOpen(false);
+      scrollToSection("report-overview");
+      return;
+    }
     if (analysisStarted) {
       startNewAnalysis();
       return;
@@ -1250,16 +1278,19 @@ export default function Home() {
 
   function openReportStage() {
     if (!analysisStarted) return;
+    setHistoryOpen(false);
     scrollToSection("report-overview");
   }
 
   function openAdviceStage() {
     if (!canOpenAdvice) return;
+    setHistoryOpen(false);
     scrollToSection("patch-workshop");
   }
 
   function openRecheckStage() {
     if (!canOpenRecheck) return;
+    setHistoryOpen(false);
     if (recheckBaseline && workflowSucceeded) {
       scrollToSection("recheck-comparison");
       return;
@@ -1363,11 +1394,12 @@ export default function Home() {
           canOpenRecheck={canOpenRecheck}
           onOpenReview={openReviewStage}
           onOpenReport={openReportStage}
+          historyOpen={historyOpen}
+          onOpenHistory={openHistory}
           onOpenEvidence={() => scrollToSection("evidence-section")}
           onOpenDiagnosis={() => scrollToSection("diagnostic-section")}
           onOpenAdvice={openAdviceStage}
           onOpenRecheck={openRecheckStage}
-          onFeedbackClick={() => void postGeoBetaEvent({ event: "feedback_clicked" })}
         />
 
         <div className="workspace-shell-content">
@@ -1378,6 +1410,8 @@ export default function Home() {
               <h1 className="mt-2 text-xl font-semibold text-[var(--geo-text-strong)]">正在检查上次审查状态</h1>
               <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--geo-text-muted)]">正在读取本地工作流状态。恢复完成后会保留当前报告、修改建议和工作区位置。</p>
             </section>
+          ) : historyOpen ? (
+            <ReviewHistory items={historyItems} onOpen={openHistoryItem} onStartNew={startNewAnalysis} />
           ) : analysisStarted ? (
             <ReportWorkspace
             view={reportView}

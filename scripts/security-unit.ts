@@ -47,6 +47,7 @@ import {
 import {
   deriveDiagnosticCompletion,
   readCachedReport,
+  readReportHistory,
   saveCachedReport,
 } from "../lib/client/report-state.ts";
 import {
@@ -2527,6 +2528,7 @@ Object.defineProperty(globalThis, "window", {
 
 saveCachedReport({
   title: "缓存测试",
+  content: "用于验证历史记录恢复的文章正文。",
   publishedAt: "",
   scoring: {
     totalScore: 60,
@@ -2555,6 +2557,22 @@ assert.ok(cachedReport);
 assert.equal(cachedReport.report.scoring.numbered_paragraphs.length, 0);
 assert.equal(cachedReport.report.diagnostics[validDiagnostic.question].data?.evidenceStatus, "valid");
 assert.equal(cachedReport.report.diagnostics[validDiagnostic.question].data?.evidence.length, 0);
+assert.equal(readReportHistory().length, 1);
+assert.equal(readReportHistory()[0]?.report.content, "用于验证历史记录恢复的文章正文。");
+
+const secondAnalysisHash = "a".repeat(64);
+saveCachedReport({ ...cachedReport.report, title: "第二条历史记录" }, secondAnalysisHash);
+assert.deepEqual(readReportHistory().map((item) => item.report.title), ["第二条历史记录", "缓存测试"]);
+saveCachedReport({ ...cachedReport.report, title: "更新后的缓存测试" }, normalizedHash);
+assert.deepEqual(readReportHistory().map((item) => item.report.title), ["更新后的缓存测试", "第二条历史记录"]);
+
+const expiredReport = {
+  ...cachedReport,
+  savedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString(),
+};
+localStorageValues.set("geo:report-history:v1", JSON.stringify([expiredReport]));
+assert.deepEqual(readReportHistory(), []);
+assert.equal(localStorageValues.get("geo:report-history:v1"), "[]");
 
 const reportCacheKey = localStorageValues.keys().next().value;
 if (!reportCacheKey) throw new Error("report cache key was not written");

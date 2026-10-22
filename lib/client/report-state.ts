@@ -47,6 +47,7 @@ export type LoadState<T> =
 
 export type CachedReport = {
   title: string;
+  content?: string;
   publishedAt: string;
   scoring: EvaluateScoringResponse;
   questionSource: PredictQuestionsResponse["source"];
@@ -55,6 +56,8 @@ export type CachedReport = {
 };
 
 const CACHE_KEY = "geo:last-report";
+const HISTORY_KEY = "geo:report-history:v1";
+const MAX_HISTORY_ITEMS = 10;
 const MAX_CACHE_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_BYTES = 500 * 1024;
 
@@ -81,6 +84,7 @@ function isCacheEnvelope(value: unknown): value is CacheEnvelope {
     typeof envelope.savedAt === "string" &&
     Boolean(envelope.report) &&
     typeof envelope.report?.title === "string" &&
+    (envelope.report.content === undefined || (typeof envelope.report.content === "string" && envelope.report.content.length <= 12_000)) &&
     (envelope.report?.questionSource === "model" || envelope.report?.questionSource === "fallback") &&
     Array.isArray(envelope.report?.questionOrder) &&
     hasCompatibleScoring(envelope.report?.scoring) &&
@@ -179,6 +183,39 @@ export function readCachedReport(): CacheEnvelope | null {
   }
 }
 
+export function readReportHistory(): CacheEnvelope[] {
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (!raw) {
+      const latest = readCachedReport();
+      return latest ? [latest] : [];
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const history = parsed
+      .filter(isCacheEnvelope)
+      .filter((item) => {
+        const savedAt = Date.parse(item.savedAt);
+        return Number.isFinite(savedAt) && Date.now() - savedAt <= MAX_CACHE_AGE_MS;
+      })
+      .sort((left, right) => Date.parse(right.savedAt) - Date.parse(left.savedAt))
+      .slice(0, MAX_HISTORY_ITEMS);
+
+    if (history.length !== parsed.length) {
+      try {
+        window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+      } catch {
+        // Expiration cleanup must not make readable history unavailable.
+      }
+    }
+    return history;
+  } catch {
+    return [];
+  }
+}
+
 function stripCachedEvidence(diagnostics: DiagnosticsState): DiagnosticsState {
   return Object.fromEntries(
     Object.entries(diagnostics).map(([question, item]) => [
@@ -247,6 +284,11 @@ export function saveCachedReport(report: CachedReport, analysisHash: string): vo
 
   try {
     window.localStorage.setItem(CACHE_KEY, serialized);
+    const history = [
+      envelope,
+      ...readReportHistory().filter((item) => item.analysisHash !== envelope.analysisHash),
+    ].slice(0, MAX_HISTORY_ITEMS);
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   } catch {
     clearCache();
   }
